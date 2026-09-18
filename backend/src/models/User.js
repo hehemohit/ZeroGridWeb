@@ -54,7 +54,7 @@ const userSchema = new mongoose.Schema(
 );
 
 // Pre-save hook to ensure updatedAt is current and maintain role/approval consistency
-userSchema.pre('save', function (next) {
+userSchema.pre('save', function () {
   this.updatedAt = new Date();
   if (this.isModified('role')) {
     if (this.role === 'ADMIN' && this.adminApproved === null) {
@@ -63,7 +63,6 @@ userSchema.pre('save', function (next) {
       this.adminApproved = null;
     }
   }
-  next();
 });
 
 const User = mongoose.model('User', userSchema);
