@@ -38,6 +38,25 @@ const userSchema = new mongoose.Schema(
       default: null
       // null = not applicable for citizens; false = admin pending approval; true = admin approved
     },
+    // Profile completion fields
+    phoneNumber: {
+      type: String,
+      trim: true,
+      default: null
+    },
+    dateOfBirth: {
+      type: Date,
+      default: null
+    },
+    photoUrl: {
+      type: String,
+      default: null
+    },
+    profileComplete: {
+      type: Boolean,
+      default: false
+    },
+    // Future feature fields (reserved)
     accountType: {
       type: String,
       enum: ['STANDARD', 'CHILD'],
@@ -53,9 +72,8 @@ const userSchema = new mongoose.Schema(
   }
 );
 
-// Pre-save hook to ensure updatedAt is current and maintain role/approval consistency
-userSchema.pre('save', function () {
-  this.updatedAt = new Date();
+// Pre-save hook: maintain role/approval consistency
+userSchema.pre('save', function (next) {
   if (this.isModified('role')) {
     if (this.role === 'ADMIN' && this.adminApproved === null) {
       this.adminApproved = false;
@@ -63,6 +81,7 @@ userSchema.pre('save', function () {
       this.adminApproved = null;
     }
   }
+  next();
 });
 
 const User = mongoose.model('User', userSchema);
