@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const { isValidPhone, isValidPastDate } = require('../utils/validation');
 
 /** Builds the safe user payload (no passwordHash) */
 function buildUserPayload(user) {
@@ -35,13 +36,13 @@ async function getMe(req, res) {
 
 /**
  * PUT /api/users/me
- * Updates profile fields. WHITELIST ENFORCED — role, email, passwordHash,
+ * Updates profile fields. WHITELIST ENFORCED - role, email, passwordHash,
  * and adminApproved cannot be updated via this route to prevent privilege escalation.
  * Allowed: displayName, phoneNumber, dateOfBirth, photoUrl
  */
 async function updateMe(req, res) {
   try {
-    // Strict whitelist — only these fields can be updated
+    // Strict whitelist - only these fields can be updated
     const ALLOWED_FIELDS = ['displayName', 'phoneNumber', 'dateOfBirth', 'photoUrl'];
     const updates = {};
 
@@ -62,22 +63,18 @@ async function updateMe(req, res) {
     // Validate phoneNumber if provided
     if (updates.phoneNumber !== undefined && updates.phoneNumber !== null) {
       const phoneStr = String(updates.phoneNumber).trim();
-      if (phoneStr.length < 7 || phoneStr.length > 20) {
-        return res.status(400).json({ message: 'Phone number must be between 7 and 20 characters' });
+      if (!isValidPhone(phoneStr)) {
+        return res.status(400).json({ message: 'Please provide a valid phone number (7-15 digits, optional + country code)' });
       }
       updates.phoneNumber = phoneStr;
     }
 
     // Validate dateOfBirth if provided
     if (updates.dateOfBirth !== undefined && updates.dateOfBirth !== null) {
-      const dob = new Date(updates.dateOfBirth);
-      if (isNaN(dob.getTime())) {
-        return res.status(400).json({ message: 'Invalid date of birth format. Use YYYY-MM-DD' });
+      if (!isValidPastDate(updates.dateOfBirth)) {
+        return res.status(400).json({ message: 'Invalid date of birth. Must be a valid past date (between 1900 and today).' });
       }
-      if (dob > new Date()) {
-        return res.status(400).json({ message: 'Date of birth cannot be in the future' });
-      }
-      updates.dateOfBirth = dob;
+      updates.dateOfBirth = new Date(updates.dateOfBirth);
     }
 
     if (Object.keys(updates).length === 0) {
@@ -104,28 +101,22 @@ async function updateMe(req, res) {
 /**
  * PUT /api/users/me/complete-profile
  * Validates phoneNumber + dateOfBirth, persists them, sets profileComplete: true.
- * This is a one-way transition — once complete, the route still works for updates.
  */
 async function completeProfile(req, res) {
   try {
     const { phoneNumber, dateOfBirth } = req.body;
 
     // Validate phoneNumber
-    if (!phoneNumber || typeof phoneNumber !== 'string' || phoneNumber.trim().length < 7) {
-      return res.status(400).json({ message: 'A valid phone number is required (minimum 7 digits)' });
+    if (!phoneNumber || !isValidPhone(phoneNumber)) {
+      return res.status(400).json({ message: 'A valid phone number is required (7-15 digits, optional + country code)' });
     }
 
     // Validate dateOfBirth
-    if (!dateOfBirth) {
-      return res.status(400).json({ message: 'Date of birth is required' });
+    if (!dateOfBirth || !isValidPastDate(dateOfBirth)) {
+      return res.status(400).json({ message: 'A valid past date of birth is required (between 1900 and today)' });
     }
+
     const dob = new Date(dateOfBirth);
-    if (isNaN(dob.getTime())) {
-      return res.status(400).json({ message: 'Invalid date of birth format. Use YYYY-MM-DD' });
-    }
-    if (dob > new Date()) {
-      return res.status(400).json({ message: 'Date of birth cannot be in the future' });
-    }
 
     const user = await User.findByIdAndUpdate(
       req.user.userId,
