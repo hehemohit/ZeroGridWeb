@@ -84,7 +84,7 @@ async function updateMe(req, res) {
     const user = await User.findByIdAndUpdate(
       req.user.userId,
       { $set: updates },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     ).select('-passwordHash');
 
     if (!user) {
@@ -127,7 +127,7 @@ async function completeProfile(req, res) {
           profileComplete: true
         }
       },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     ).select('-passwordHash');
 
     if (!user) {
