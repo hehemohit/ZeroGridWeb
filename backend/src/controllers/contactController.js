@@ -14,8 +14,8 @@ async function getContacts(req, res) {
       .sort({ createdAt: -1 });
 
     const formatted = contacts
-      .filter(c => c.contactUserId != null)
-      .map(c => ({
+      .filter((c) => c.contactUserId != null)
+      .map((c) => ({
         id: c._id,
         label: c.label || 'Emergency Contact',
         createdAt: c.createdAt,
@@ -55,20 +55,22 @@ async function addContact(req, res) {
 
     if (!isEmail && !isPhone) {
       return res.status(400).json({
-        message: 'Please provide a valid email address or phone number (7-15 digits with optional + country code)'
+        message:
+          'Please provide a valid email address or phone number (7-15 digits with optional + country code)'
       });
     }
 
     // Lookup target user
-    const query = isEmail
-      ? { email: trimmedInput.toLowerCase() }
-      : { phoneNumber: trimmedInput };
+    const query = isEmail ? { email: trimmedInput.toLowerCase() } : { phoneNumber: trimmedInput };
 
     const targetUser = await User.findOne(query);
 
     if (!targetUser) {
       return res.status(404).json({
-        message: 'No registered ZeroGrid user found with this ' + (isEmail ? 'email address' : 'phone number') + '. They must register first.'
+        message:
+          'No registered ZeroGrid user found with this ' +
+          (isEmail ? 'email address' : 'phone number') +
+          '. They must register first.'
       });
     }
 

@@ -12,7 +12,8 @@ const userSchema = new mongoose.Schema(
     },
     passwordHash: {
       type: String,
-      required: [true, 'Password hash is required']
+      default: null
+      // Required only for LOCAL auth; Google OAuth users will not have a password hash
     },
     displayName: {
       type: String,
@@ -64,6 +65,22 @@ const userSchema = new mongoose.Schema(
     },
     fcmToken: {
       type: String,
+      default: null
+    },
+    // Last known location (updated via family location sharing)
+    lastKnownLocation: {
+      type: {
+        type: String,
+        enum: ['Point'],
+        default: 'Point'
+      },
+      coordinates: {
+        type: [Number], // [longitude, latitude]
+        default: null
+      }
+    },
+    lastLocationAt: {
+      type: Date,
       default: null
     }
   },
