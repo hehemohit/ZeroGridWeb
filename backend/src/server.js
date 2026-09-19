@@ -10,6 +10,9 @@ const contactRoutes = require('./routes/contactRoutes');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Trust reverse proxy (e.g., Render) for correct IP rate limiting
+app.set('trust proxy', 1);
+
 // Middleware
 // TODO: Restrict CORS origins to allowed frontend domains before deploying to production
 app.use(cors());

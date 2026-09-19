@@ -73,7 +73,7 @@ const userSchema = new mongoose.Schema(
 );
 
 // Pre-save hook: maintain role/approval consistency
-userSchema.pre('save', function (next) {
+userSchema.pre('save', function () {
   if (this.isModified('role')) {
     if (this.role === 'ADMIN' && this.adminApproved === null) {
       this.adminApproved = false;
@@ -81,7 +81,6 @@ userSchema.pre('save', function (next) {
       this.adminApproved = null;
     }
   }
-  next();
 });
 
 const User = mongoose.model('User', userSchema);
