@@ -2,31 +2,28 @@
  * FCM Push Notification Utility — ZeroGrid Backend
  *
  * Wraps Firebase Admin SDK for sending FCM push messages.
- * Initialized lazily on first use so the server still boots if
- * FCM_SERVER_KEY is not yet configured (graceful degradation).
+ * Initialized with graceful degradation so the server boots cleanly
+ * even if Firebase credentials are not yet configured.
  *
  * FCM is used ONLY for push delivery — not for auth or database.
  *
- * Environment Variables Required:
- *   FCM_SERVER_KEY — Base64-encoded Firebase Admin SDK service account JSON
- *                    (from Firebase Console > Project Settings > Service accounts)
- *
- * To encode your service account JSON:
- *   node -e "console.log(Buffer.from(require('fs').readFileSync('./serviceAccount.json')).toString('base64'))"
+ * Environment Variables:
+ *   FIREBASE_SERVICE_ACCOUNT_BASE64 — Base64-encoded Firebase Admin SDK service account JSON
+ *   FCM_SERVER_KEY                  — Legacy fallback for service account JSON (raw or base64)
  */
 
 let admin = null;
 let fcmAvailable = false;
 
 function initFirebaseAdmin() {
-  if (admin) return; // Already initialized
+  if (admin && admin.apps.length > 0) return;
 
-  const encodedKey = process.env.FCM_SERVER_KEY;
+  const encodedKey = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64 || process.env.FCM_SERVER_KEY;
 
   if (!encodedKey) {
     console.warn(
-      '[FCM] WARNING: FCM_SERVER_KEY is not set. Push notifications will be disabled. ' +
-        'Set FCM_SERVER_KEY (base64-encoded service account JSON) to enable.'
+      '[FCM] WARNING: FIREBASE_SERVICE_ACCOUNT_BASE64 is not set. Push notifications will be disabled. ' +
+        'Set FIREBASE_SERVICE_ACCOUNT_BASE64 (base64-encoded service account JSON) to enable.'
     );
     return;
   }
@@ -36,11 +33,11 @@ function initFirebaseAdmin() {
 
     let serviceAccount;
     try {
-      // Support both raw JSON string and base64-encoded JSON
+      // Decode base64 UTF-8 string
       const decoded = Buffer.from(encodedKey, 'base64').toString('utf8');
       serviceAccount = JSON.parse(decoded);
     } catch {
-      // Maybe it's raw JSON directly
+      // Fallback in case raw JSON string was passed directly
       serviceAccount = JSON.parse(encodedKey);
     }
 
@@ -59,26 +56,67 @@ function initFirebaseAdmin() {
 }
 
 /**
- * Sends a single FCM push notification to a device.
+ * Sends high-priority SOS emergency push notification to an emergency contact device.
  *
- * @param {string} fcmToken    - The target device FCM registration token
- * @param {string} title       - Notification title
- * @param {string} body        - Notification body text
- * @param {Object} [data={}]   - Optional key-value data payload
- * @returns {Promise<boolean>} - true if sent, false if skipped/failed
+ * @param {Object} params
+ * @param {string} params.fcmToken   - Target device FCM registration token
+ * @param {string} params.senderName - Display name of the user who triggered the SOS
+ * @param {string} params.category   - Emergency category (e.g., MEDICAL, DISASTER)
+ * @param {string} [params.message]  - Optional message/notes from the user
+ * @param {string} params.sosId      - Mongo ID of the created SosEvent
+ * @param {number|string} params.lat - Latitude coordinate
+ * @param {number|string} params.lng - Longitude coordinate
+ * @returns {Promise<{success?: boolean, skipped?: boolean, result?: any, error?: string, reason?: string}>}
  */
-async function sendPushNotification(fcmToken, title, body, data = {}) {
-  if (!fcmAvailable) {
+async function sendSosPush({ fcmToken, senderName, category, message, sosId, lat, lng }) {
+  if (!fcmToken) return { skipped: true, reason: 'no fcmToken' };
+
+  if (!admin || !admin.apps.length) {
     initFirebaseAdmin();
   }
 
-  if (!fcmAvailable) {
-    console.warn('[FCM] Push notification skipped — FCM not configured');
-    return false;
+  if (!admin || !admin.apps.length) {
+    return { skipped: true, reason: 'firebase not initialized' };
   }
 
-  if (!fcmToken) {
-    console.warn('[FCM] Push notification skipped — no FCM token provided');
+  try {
+    const result = await admin.messaging().send({
+      token: fcmToken,
+      notification: {
+        title: `SOS Alert - ${category}`,
+        body: `${senderName || 'Someone'} has triggered an emergency SOS. Please check on them immediately.`,
+      },
+      data: {
+        sosId: String(sosId),
+        category: String(category),
+        lat: String(lat),
+        lng: String(lng),
+      },
+      android: {
+        priority: 'high',
+        notification: {
+          sound: 'default',
+          channelId: 'sos_alerts'
+        },
+      },
+    });
+    return { success: true, result };
+  } catch (err) {
+    // Log and continue — a failed push to one contact must never fail the whole SOS creation response
+    console.error(`[FCM] Push failed for token ${fcmToken?.slice(0, 10)}...:`, err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Sends a single generic FCM push notification to a device.
+ */
+async function sendPushNotification(fcmToken, title, body, data = {}) {
+  if (!admin || !admin.apps.length) {
+    initFirebaseAdmin();
+  }
+
+  if (!admin || !admin.apps.length || !fcmToken) {
     return false;
   }
 
@@ -86,7 +124,7 @@ async function sendPushNotification(fcmToken, title, body, data = {}) {
     token: fcmToken,
     notification: { title, body },
     data: Object.fromEntries(
-      Object.entries(data).map(([k, v]) => [k, String(v)]) // FCM data must be string values
+      Object.entries(data).map(([k, v]) => [k, String(v)])
     ),
     android: {
       priority: 'high',
@@ -99,26 +137,18 @@ async function sendPushNotification(fcmToken, title, body, data = {}) {
 
   try {
     const response = await admin.messaging().send(message);
-    console.log(`[FCM] Push sent successfully. MessageId: ${response}`);
     return true;
   } catch (err) {
-    console.error(`[FCM] Failed to send push to token ${fcmToken?.slice(0, 10)}...: ${err.message}`);
+    console.error(`[FCM] Failed to send push to token: ${err.message}`);
     return false;
   }
 }
 
 /**
  * Sends FCM push notifications to multiple tokens concurrently.
- * Failures on individual tokens are logged but do not throw.
- *
- * @param {string[]} fcmTokens - Array of device tokens
- * @param {string}   title
- * @param {string}   body
- * @param {Object}   [data={}]
  */
 async function sendPushToMany(fcmTokens, title, body, data = {}) {
   if (!Array.isArray(fcmTokens) || fcmTokens.length === 0) return;
-
   const validTokens = fcmTokens.filter(Boolean);
   if (validTokens.length === 0) return;
 
@@ -130,7 +160,11 @@ async function sendPushToMany(fcmTokens, title, body, data = {}) {
   console.log(`[FCM] Batch push complete: ${succeeded}/${validTokens.length} delivered`);
 }
 
-// Initialize on module load
+// Initial bootstrap attempt
 initFirebaseAdmin();
 
-module.exports = { sendPushNotification, sendPushToMany };
+module.exports = {
+  sendSosPush,
+  sendPushNotification,
+  sendPushToMany
+};

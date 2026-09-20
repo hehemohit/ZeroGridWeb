@@ -1,8 +1,7 @@
 const mongoose = require('mongoose');
 const SosEvent = require('../models/SosEvent');
 const Contact = require('../models/Contact');
-const User = require('../models/User');
-const { sendPushToMany } = require('../utils/fcm');
+const { sendSosPush } = require('../utils/fcm');
 
 /** Helper to get io instance from app (set in server.js) */
 function getIo(req) {
@@ -93,45 +92,56 @@ async function triggerSos(req, res) {
       io.of('/sos').emit('sos:new', buildSosPayload(populatedSos));
     }
 
-    // Fire FCM push to all emergency contacts of the triggered user (non-blocking)
+    // 1. Prepare and send the HTTP response first so the SOS creator's request does not wait on push delivery
+    res.status(201).json({
+      message: 'SOS dispatched successfully',
+      sos: buildSosPayload(populatedSos)
+    });
+
+    // 2. Fire FCM push to all linked emergency contacts asynchronously (non-blocking)
     setImmediate(async () => {
       try {
-        // Find emergency contacts
         const contacts = await Contact.find({ ownerId: req.user.userId }).populate({
           path: 'contactUserId',
           select: 'fcmToken displayName'
         });
 
-        const fcmTokens = contacts
-          .map((c) => c.contactUserId?.fcmToken)
-          .filter(Boolean);
+        // Filter contacts that have a linked registered user with an FCM token
+        const contactsToPush = contacts.filter(
+          (c) => c.contactUserId && c.contactUserId.fcmToken
+        );
 
-        if (fcmTokens.length > 0) {
+        if (contactsToPush.length > 0) {
           const senderName = populatedSos.triggeredBy?.displayName || 'Someone';
-          const categoryLabel = sosCategory.charAt(0) + sosCategory.slice(1).toLowerCase();
 
-          await sendPushToMany(
-            fcmTokens,
-            `SOS Alert - ${categoryLabel} Emergency`,
-            `${senderName} has triggered an emergency SOS. Please check on them immediately.`,
-            {
-              sosId: sosEvent._id.toString(),
+          const pushPromises = contactsToPush.map((contact) =>
+            sendSosPush({
+              fcmToken: contact.contactUserId.fcmToken,
+              senderName,
               category: sosCategory,
-              lat: String(latitude),
-              lng: String(longitude)
-            }
+              message: message ? String(message).trim() : '',
+              sosId: sosEvent._id,
+              lat: latitude,
+              lng: longitude
+            })
+          );
+
+          const results = await Promise.allSettled(pushPromises);
+          const succeeded = results.filter(
+            (r) => r.status === 'fulfilled' && r.value && r.value.success
+          ).length;
+
+          console.log(
+            `[SOS ${sosEvent._id}]: pushed to ${succeeded}/${contactsToPush.length} contacts`
           );
         }
       } catch (pushErr) {
-        // Push failures must never crash the SOS response
-        console.error('[SOS] FCM push dispatch failed (non-fatal):', pushErr.message);
+        // Push failures must never crash the server
+        console.error(`[SOS ${sosEvent._id}]: FCM push dispatch failed (non-fatal):`, pushErr.message);
       }
     });
 
-    return res.status(201).json({
-      message: 'SOS dispatched successfully',
-      sos: buildSosPayload(populatedSos)
-    });
+    return;
   } catch (error) {
     console.error('[SOS] triggerSos error:', error);
     return res.status(500).json({ message: 'Failed to dispatch SOS. Please try again.' });
