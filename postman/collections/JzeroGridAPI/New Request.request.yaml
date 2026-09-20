@@ -1,0 +1,7 @@
+$kind: http-request
+url: "{{base_url}}/health"
+method: GET
+body:
+  type: json
+  content: ""
+order: 1000

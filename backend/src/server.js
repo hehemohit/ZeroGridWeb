@@ -21,9 +21,20 @@ const PORT = process.env.PORT || 5000;
 // Trust reverse proxy (Render) for correct IP resolution in rate limiters
 app.set('trust proxy', 1);
 
-// TODO: Before production, restrict CORS origins to your actual frontend domains:
-// origin: ['https://zerogrid-admin.onrender.com', 'https://yourapp.com']
-app.use(cors());
+// Allowed origins: comma-separated list in ALLOWED_ORIGINS env var, or wildcard in dev
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : ['http://localhost:3000'];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, Postman, curl)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    callback(new Error(`CORS: origin ${origin} not allowed`));
+  },
+  credentials: true,
+}));
 app.use(express.json());
 
 // ─── HTTP Server + Socket.io ─────────────────────────────────────────────────
@@ -32,8 +43,7 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    // TODO: Lock this down to admin panel origin before production
-    origin: '*',
+    origin: allowedOrigins,
     methods: ['GET', 'POST']
   }
 });
