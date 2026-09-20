@@ -1,0 +1,7 @@
+workspace:
+  id: 537441fe-bea7-43c8-b0f2-2f327bbf534d
+cloudResources:
+  globals:
+    ../postman/globals/workspace.globals.yaml: bd7815ac-a6d4-449b-817f-fbcacda0b2f3
+  collections:
+    ../postman/collections/JzeroGridAPI: 40708144-d08d259c-2d20-4ad9-ae14-02646ddd33b2

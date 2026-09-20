@@ -64,7 +64,9 @@ async function updateMe(req, res) {
     if (updates.phoneNumber !== undefined && updates.phoneNumber !== null) {
       const phoneStr = String(updates.phoneNumber).trim();
       if (!isValidPhone(phoneStr)) {
-        return res.status(400).json({ message: 'Please provide a valid phone number (7-15 digits, optional + country code)' });
+        return res.status(400).json({
+          message: 'Please provide a valid phone number (7-15 digits, optional + country code)'
+        });
       }
       updates.phoneNumber = phoneStr;
     }
@@ -72,7 +74,9 @@ async function updateMe(req, res) {
     // Validate dateOfBirth if provided
     if (updates.dateOfBirth !== undefined && updates.dateOfBirth !== null) {
       if (!isValidPastDate(updates.dateOfBirth)) {
-        return res.status(400).json({ message: 'Invalid date of birth. Must be a valid past date (between 1900 and today).' });
+        return res.status(400).json({
+          message: 'Invalid date of birth. Must be a valid past date (between 1900 and today).'
+        });
       }
       updates.dateOfBirth = new Date(updates.dateOfBirth);
     }
@@ -108,12 +112,16 @@ async function completeProfile(req, res) {
 
     // Validate phoneNumber
     if (!phoneNumber || !isValidPhone(phoneNumber)) {
-      return res.status(400).json({ message: 'A valid phone number is required (7-15 digits, optional + country code)' });
+      return res.status(400).json({
+        message: 'A valid phone number is required (7-15 digits, optional + country code)'
+      });
     }
 
     // Validate dateOfBirth
     if (!dateOfBirth || !isValidPastDate(dateOfBirth)) {
-      return res.status(400).json({ message: 'A valid past date of birth is required (between 1900 and today)' });
+      return res.status(400).json({
+        message: 'A valid past date of birth is required (between 1900 and today)'
+      });
     }
 
     const dob = new Date(dateOfBirth);
@@ -141,4 +149,35 @@ async function completeProfile(req, res) {
   }
 }
 
-module.exports = { getMe, updateMe, completeProfile };
+/**
+ * PUT /api/users/me/fcm-token
+ * Registers or updates the Firebase Cloud Messaging device token.
+ * Called by Android app on login and whenever FCM refreshes the token.
+ * Body: { fcmToken }
+ */
+async function updateFcmToken(req, res) {
+  try {
+    const { fcmToken } = req.body;
+
+    if (!fcmToken || typeof fcmToken !== 'string' || !fcmToken.trim()) {
+      return res.status(400).json({ message: 'fcmToken is required and must be a non-empty string' });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.user.userId,
+      { $set: { fcmToken: fcmToken.trim() } },
+      { returnDocument: 'after' }
+    ).select('-passwordHash');
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    return res.status(200).json({ message: 'FCM token updated successfully' });
+  } catch (error) {
+    console.error('updateFcmToken error:', error);
+    return res.status(500).json({ message: 'Failed to update FCM token. Please try again.' });
+  }
+}
+
+module.exports = { getMe, updateMe, completeProfile, updateFcmToken };

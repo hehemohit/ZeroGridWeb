@@ -1,6 +1,6 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
-const { register, login } = require('../controllers/authController');
+const { register, login, googleAuth } = require('../controllers/authController');
 
 const router = express.Router();
 
@@ -17,5 +17,9 @@ const authLimiter = rateLimit({
 
 router.post('/register', authLimiter, register);
 router.post('/login', authLimiter, login);
+
+// POST /api/auth/google — Google ID token verification + upsert user
+// Rate-limited to the same window as local auth to prevent token-spray attacks.
+router.post('/google', authLimiter, googleAuth);
 
 module.exports = router;

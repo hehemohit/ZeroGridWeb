@@ -1,0 +1,9 @@
+$kind: collection
+variables:
+  BASE_URL: ""
+  TOKEN: ""
+  ADMIN_TOKEN: ""
+  LINK_ID: ""
+  SOS_ID: ""
+  CONTACT_ID: ""
+  TARGET_USER_ID: ""
