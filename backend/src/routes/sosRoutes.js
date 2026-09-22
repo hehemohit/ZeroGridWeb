@@ -5,6 +5,7 @@ const verifyAdminRole = require('../middleware/verifyAdminRole');
 const {
   triggerSos,
   getSosById,
+  getActiveSos,
   acknowledgeSos,
   resolveSos,
   addNoteToSos
@@ -32,6 +33,9 @@ const sosRateLimiter = rateLimit({
 
 // POST /api/sos — trigger a new SOS event (authenticated + rate-limited)
 router.post('/', verifyToken, sosRateLimiter, triggerSos);
+
+// GET /api/sos/active — active alerts for contacts/users/network
+router.get('/active', verifyToken, getActiveSos);
 
 // GET /api/sos/:id — get a single SOS event (creator or admin only)
 router.get('/:id', verifyToken, getSosById);

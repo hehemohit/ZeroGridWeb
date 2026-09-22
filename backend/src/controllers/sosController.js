@@ -322,9 +322,35 @@ async function addNoteToSos(req, res) {
   }
 }
 
+
+/**
+ * GET /api/sos/active
+ * Returns active SOS events for the user, their contacts, and active rescue network.
+ */
+async function getActiveSos(req, res) {
+  try {
+    const activeEvents = await SosEvent.find({
+      status: { $in: ['ACTIVE', 'ACKNOWLEDGED'] }
+    })
+      .sort({ createdAt: -1 })
+      .limit(30)
+      .populate({
+        path: 'triggeredBy',
+        select: 'displayName email phoneNumber photoUrl'
+      });
+
+    const payload = activeEvents.map(buildSosPayload);
+    return res.status(200).json({ events: payload });
+  } catch (error) {
+    console.error('[SOS] getActiveSos error:', error);
+    return res.status(500).json({ message: 'Failed to fetch active SOS events.' });
+  }
+}
+
 module.exports = {
   triggerSos,
   getSosById,
+  getActiveSos,
   acknowledgeSos,
   resolveSos,
   addNoteToSos
