@@ -12,6 +12,7 @@ import { Card, Button, StatusBadge, CategoryBadge, Spinner } from '@/components/
 
 interface SosEvent {
   id: string;
+  _id?: string;
   triggeredBy: { displayName: string; email: string };
   location: { type: string; coordinates: [number, number] };
   accuracyMeters?: number;
@@ -22,6 +23,35 @@ interface SosEvent {
   notes?: { authorId: string; text: string; timestamp: string }[];
   createdAt: string;
   updatedAt: string;
+}
+
+interface AdminUser {
+  id: string;
+  _id?: string;
+  displayName: string;
+  email: string;
+  role: string;
+  profileComplete: boolean;
+}
+
+function normalizeSos(ev: any): SosEvent {
+  const id = String(ev?.id || ev?._id || '');
+  return {
+    ...ev,
+    id,
+    _id: ev?._id ? String(ev._id) : id,
+    triggeredBy: ev?.triggeredBy || { displayName: 'Unknown', email: '' },
+    notes: ev?.notes || [],
+  };
+}
+
+function normalizeUser(u: any): AdminUser {
+  const id = String(u?.id || u?._id || '');
+  return {
+    ...u,
+    id,
+    _id: u?._id ? String(u._id) : id,
+  };
 }
 
 interface Pagination {
@@ -48,7 +78,7 @@ export default function AdminPage() {
   const [liveCount, setLiveCount] = useState(0);
 
   // Users directory state
-  const [users, setUsers] = useState<{ id: string; displayName: string; email: string; role: string; profileComplete: boolean }[]>([]);
+  const [users, setUsers] = useState<AdminUser[]>([]);
   const [userQuery, setUserQuery] = useState('');
   const [userLoading, setUserLoading] = useState(false);
 
@@ -66,10 +96,10 @@ export default function AdminPage() {
   const fetchSos = useCallback(async (status = statusFilter) => {
     setLoading(true);
     try {
-      const data = await api.get<{ events: SosEvent[]; pagination: Pagination }>(
+      const data = await api.get<{ events: any[]; pagination: Pagination }>(
         `/api/admin/sos?status=${status}&limit=20`
       );
-      setEvents(data.events);
+      setEvents((data.events || []).map(normalizeSos));
       setPagination(data.pagination);
     } finally {
       setLoading(false);
@@ -81,10 +111,10 @@ export default function AdminPage() {
     try {
       const params = new URLSearchParams({ limit: '20' });
       if (historyCategory) params.set('category', historyCategory);
-      const data = await api.get<{ events: SosEvent[]; pagination: Pagination }>(
+      const data = await api.get<{ events: any[]; pagination: Pagination }>(
         `/api/admin/sos/history?${params}`
       );
-      setEvents(data.events);
+      setEvents((data.events || []).map(normalizeSos));
       setPagination(data.pagination);
     } finally {
       setLoading(false);
@@ -94,10 +124,10 @@ export default function AdminPage() {
   const fetchUsers = useCallback(async (q = userQuery) => {
     setUserLoading(true);
     try {
-      const data = await api.get<{ users: typeof users; pagination: Pagination }>(
+      const data = await api.get<{ users: any[]; pagination: Pagination }>(
         `/api/admin/users?q=${encodeURIComponent(q)}&limit=20`
       );
-      setUsers(data.users);
+      setUsers((data.users || []).map(normalizeUser));
     } finally {
       setUserLoading(false);
     }
@@ -120,24 +150,27 @@ export default function AdminPage() {
   // Socket.io for real-time updates
   useEffect(() => {
     const BACKEND = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-    const socket = io(`${BACKEND}/sos`, { transports: ['websocket'] });
+    const socket = io(`${BACKEND}/sos`, { transports: ['polling', 'websocket'] });
     socketRef.current = socket;
 
-    socket.on('sos:new', (newSos: SosEvent) => {
+    socket.on('sos:new', (newSos: any) => {
+      const normalized = normalizeSos(newSos);
       setLiveCount(c => c + 1);
       if (tab === 'live' && statusFilter === 'ACTIVE') {
-        setEvents(prev => [newSos, ...prev]);
+        setEvents(prev => [normalized, ...prev.filter(e => (e.id || e._id) !== (normalized.id || normalized._id))]);
       }
     });
 
-    socket.on('sos:updated', (updated: SosEvent) => {
-      setEvents(prev => prev.map(e => e.id === updated.id ? updated : e));
+    socket.on('sos:updated', (updated: any) => {
+      const normalized = normalizeSos(updated);
+      setEvents(prev => prev.map(e => ((e.id && e.id === normalized.id) || (e._id && e._id === normalized._id)) ? normalized : e));
     });
 
     return () => { socket.disconnect(); };
   }, [tab, statusFilter]);
 
   async function handleAction(sosId: string, action: 'acknowledge' | 'resolve') {
+    if (!sosId || sosId === 'undefined') return;
     setActionLoading(sosId + action);
     try {
       await api.put(`/api/sos/${sosId}/${action}`, {});
@@ -147,6 +180,7 @@ export default function AdminPage() {
   }
 
   async function handleAddNote(sosId: string) {
+    if (!sosId || sosId === 'undefined') return;
     const text = noteText[sosId]?.trim();
     if (!text) return;
     setActionLoading(sosId + 'note');
@@ -233,109 +267,112 @@ export default function AdminPage() {
             </Card>
           ) : (
             <div className="space-y-3">
-              {events.map(ev => (
-                <Card key={ev.id} className="space-y-4">
-                  <div className="flex items-start gap-4">
-                    <div className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${ev.status === 'ACTIVE' ? 'bg-red-500 animate-pulse' : ev.status === 'ACKNOWLEDGED' ? 'bg-yellow-500' : 'bg-green-500'}`} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <StatusBadge status={ev.status} />
-                        <CategoryBadge category={ev.category} />
-                        <span className="text-xs text-gray-600">{ev.transport}</span>
+              {events.map((ev, index) => {
+                const evId = ev.id || ev._id || `ev-${index}`;
+                return (
+                  <Card key={evId} className="space-y-4">
+                    <div className="flex items-start gap-4">
+                      <div className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${ev.status === 'ACTIVE' ? 'bg-red-500 animate-pulse' : ev.status === 'ACKNOWLEDGED' ? 'bg-yellow-500' : 'bg-green-500'}`} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <StatusBadge status={ev.status} />
+                          <CategoryBadge category={ev.category} />
+                          <span className="text-xs text-gray-600">{ev.transport}</span>
+                        </div>
+                        <p className="font-semibold text-white mt-1">{ev.triggeredBy?.displayName || 'Unknown'}</p>
+                        <p className="text-xs text-gray-500">{ev.triggeredBy?.email}</p>
+                        {ev.message && <p className="text-sm text-gray-300 mt-1 italic">&quot;{ev.message}&quot;</p>}
+                        <div className="flex items-center gap-4 mt-2 text-xs text-gray-600">
+                          <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(ev.createdAt).toLocaleString()}</span>
+                          {ev.location && (
+                            <a
+                              href={`https://maps.google.com/?q=${ev.location.coordinates[1]},${ev.location.coordinates[0]}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-400 hover:text-blue-300 underline"
+                            >
+                              📍 View on Map
+                            </a>
+                          )}
+                        </div>
                       </div>
-                      <p className="font-semibold text-white mt-1">{ev.triggeredBy.displayName}</p>
-                      <p className="text-xs text-gray-500">{ev.triggeredBy.email}</p>
-                      {ev.message && <p className="text-sm text-gray-300 mt-1 italic">&quot;{ev.message}&quot;</p>}
-                      <div className="flex items-center gap-4 mt-2 text-xs text-gray-600">
-                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(ev.createdAt).toLocaleString()}</span>
-                        {ev.location && (
-                          <a
-                            href={`https://maps.google.com/?q=${ev.location.coordinates[1]},${ev.location.coordinates[0]}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-400 hover:text-blue-300 underline"
-                          >
-                            📍 View on Map
-                          </a>
-                        )}
-                      </div>
+
+                      <button
+                        onClick={() => setExpandedId(expandedId === evId ? null : evId)}
+                        className="text-gray-500 hover:text-gray-300 p-1"
+                      >
+                        {expandedId === evId ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </button>
                     </div>
 
-                    <button
-                      onClick={() => setExpandedId(expandedId === ev.id ? null : ev.id)}
-                      className="text-gray-500 hover:text-gray-300 p-1"
-                    >
-                      {expandedId === ev.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                    </button>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex gap-2 flex-wrap pl-6">
-                    {ev.status === 'ACTIVE' && (
-                      <Button
-                        id={`admin-ack-${ev.id}`}
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => handleAction(ev.id, 'acknowledge')}
-                        loading={actionLoading === ev.id + 'acknowledge'}
-                      >
-                        <CheckCircle className="w-3.5 h-3.5" />
-                        Acknowledge
-                      </Button>
-                    )}
-                    {(ev.status === 'ACTIVE' || ev.status === 'ACKNOWLEDGED') && (
-                      <Button
-                        id={`admin-resolve-${ev.id}`}
-                        size="sm"
-                        variant="primary"
-                        onClick={() => handleAction(ev.id, 'resolve')}
-                        loading={actionLoading === ev.id + 'resolve'}
-                      >
-                        <XCircle className="w-3.5 h-3.5" />
-                        Resolve
-                      </Button>
-                    )}
-                  </div>
-
-                  {/* Expanded: notes */}
-                  {expandedId === ev.id && (
-                    <div className="pl-6 space-y-3 border-t border-white/5 pt-4">
-                      {ev.notes && ev.notes.length > 0 && (
-                        <div className="space-y-2">
-                          <p className="text-xs text-gray-500 font-medium uppercase tracking-wider flex items-center gap-1">
-                            <StickyNote className="w-3 h-3" /> Notes
-                          </p>
-                          {ev.notes.map((n, i) => (
-                            <div key={i} className="bg-gray-900 rounded-lg px-3 py-2 text-sm text-gray-300">
-                              {n.text}
-                              <span className="block text-xs text-gray-600 mt-1">{new Date(n.timestamp).toLocaleString()}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      <div className="flex gap-2">
-                        <input
-                          id={`admin-note-input-${ev.id}`}
-                          placeholder="Add a note…"
-                          value={noteText[ev.id] ?? ''}
-                          onChange={e => setNoteText(prev => ({ ...prev, [ev.id]: e.target.value }))}
-                          onKeyDown={e => e.key === 'Enter' && handleAddNote(ev.id)}
-                          className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-red-500/50 focus:border-red-500"
-                        />
+                    {/* Actions */}
+                    <div className="flex gap-2 flex-wrap pl-6">
+                      {ev.status === 'ACTIVE' && (
                         <Button
-                          id={`admin-note-submit-${ev.id}`}
+                          id={`admin-ack-${evId}`}
                           size="sm"
                           variant="secondary"
-                          onClick={() => handleAddNote(ev.id)}
-                          loading={actionLoading === ev.id + 'note'}
+                          onClick={() => handleAction(evId, 'acknowledge')}
+                          loading={actionLoading === evId + 'acknowledge'}
                         >
-                          Add
+                          <CheckCircle className="w-3.5 h-3.5" />
+                          Acknowledge
                         </Button>
-                      </div>
+                      )}
+                      {(ev.status === 'ACTIVE' || ev.status === 'ACKNOWLEDGED') && (
+                        <Button
+                          id={`admin-resolve-${evId}`}
+                          size="sm"
+                          variant="primary"
+                          onClick={() => handleAction(evId, 'resolve')}
+                          loading={actionLoading === evId + 'resolve'}
+                        >
+                          <XCircle className="w-3.5 h-3.5" />
+                          Resolve
+                        </Button>
+                      )}
                     </div>
-                  )}
-                </Card>
-              ))}
+
+                    {/* Expanded: notes */}
+                    {expandedId === evId && (
+                      <div className="pl-6 space-y-3 border-t border-white/5 pt-4">
+                        {ev.notes && ev.notes.length > 0 && (
+                          <div className="space-y-2">
+                            <p className="text-xs text-gray-500 font-medium uppercase tracking-wider flex items-center gap-1">
+                              <StickyNote className="w-3 h-3" /> Notes
+                            </p>
+                            {ev.notes.map((n, i) => (
+                              <div key={i} className="bg-gray-900 rounded-lg px-3 py-2 text-sm text-gray-300">
+                                {n.text}
+                                <span className="block text-xs text-gray-600 mt-1">{new Date(n.timestamp).toLocaleString()}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div className="flex gap-2">
+                          <input
+                            id={`admin-note-input-${evId}`}
+                            placeholder="Add a note…"
+                            value={noteText[evId] ?? ''}
+                            onChange={e => setNoteText(prev => ({ ...prev, [evId]: e.target.value }))}
+                            onKeyDown={e => e.key === 'Enter' && handleAddNote(evId)}
+                            className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-red-500/50 focus:border-red-500"
+                          />
+                          <Button
+                            id={`admin-note-submit-${evId}`}
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => handleAddNote(evId)}
+                            loading={actionLoading === evId + 'note'}
+                          >
+                            Add
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </Card>
+                );
+              })}
             </div>
           )}
         </div>
@@ -367,31 +404,34 @@ export default function AdminPage() {
             </Card>
           ) : (
             <div className="space-y-3">
-              {events.map(ev => (
-                <Card key={ev.id} className="flex items-start gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <StatusBadge status={ev.status} />
-                      <CategoryBadge category={ev.category} />
+              {events.map((ev, index) => {
+                const evId = ev.id || ev._id || `ev-hist-${index}`;
+                return (
+                  <Card key={evId} className="flex items-start gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <StatusBadge status={ev.status} />
+                        <CategoryBadge category={ev.category} />
+                      </div>
+                      <p className="font-semibold text-white mt-1 text-sm">{ev.triggeredBy?.displayName || 'Unknown'}</p>
+                      {ev.message && <p className="text-sm text-gray-400 italic mt-0.5">&quot;{ev.message}&quot;</p>}
+                      <p className="text-xs text-gray-600 mt-1 flex items-center gap-1">
+                        <Clock className="w-3 h-3" />{new Date(ev.createdAt).toLocaleString()}
+                      </p>
                     </div>
-                    <p className="font-semibold text-white mt-1 text-sm">{ev.triggeredBy.displayName}</p>
-                    {ev.message && <p className="text-sm text-gray-400 italic mt-0.5">&quot;{ev.message}&quot;</p>}
-                    <p className="text-xs text-gray-600 mt-1 flex items-center gap-1">
-                      <Clock className="w-3 h-3" />{new Date(ev.createdAt).toLocaleString()}
-                    </p>
-                  </div>
-                  {ev.location && (
-                    <a
-                      href={`https://maps.google.com/?q=${ev.location.coordinates[1]},${ev.location.coordinates[0]}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-blue-400 hover:text-blue-300 shrink-0"
-                    >
-                      📍 Map
-                    </a>
-                  )}
-                </Card>
-              ))}
+                    {ev.location && (
+                      <a
+                        href={`https://maps.google.com/?q=${ev.location.coordinates[1]},${ev.location.coordinates[0]}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-blue-400 hover:text-blue-300 shrink-0"
+                      >
+                        📍 Map
+                      </a>
+                    )}
+                  </Card>
+                );
+              })}
             </div>
           )}
         </div>
@@ -419,23 +459,26 @@ export default function AdminPage() {
             <div className="flex justify-center py-16"><Spinner className="w-8 h-8 text-red-500" /></div>
           ) : (
             <div className="space-y-2">
-              {users.map(u => (
-                <Card key={u.id} className="flex items-center gap-4">
-                  <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-purple-500 rounded-xl flex items-center justify-center text-white text-sm font-bold shrink-0">
-                    {u.displayName?.[0]?.toUpperCase() ?? 'U'}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-white text-sm truncate">{u.displayName}</p>
-                    <p className="text-xs text-gray-500 truncate">{u.email}</p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${u.role === 'ADMIN' ? 'bg-orange-500/20 text-orange-400' : 'bg-gray-700 text-gray-400'}`}>
-                      {u.role}
-                    </span>
-                    {u.profileComplete && <CheckCircle className="w-4 h-4 text-green-400" />}
-                  </div>
-                </Card>
-              ))}
+              {users.map((u, index) => {
+                const uId = u.id || u._id || `u-${index}`;
+                return (
+                  <Card key={uId} className="flex items-center gap-4">
+                    <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-purple-500 rounded-xl flex items-center justify-center text-white text-sm font-bold shrink-0">
+                      {u.displayName?.[0]?.toUpperCase() ?? 'U'}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-white text-sm truncate">{u.displayName}</p>
+                      <p className="text-xs text-gray-500 truncate">{u.email}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${u.role === 'ADMIN' ? 'bg-orange-500/20 text-orange-400' : 'bg-gray-700 text-gray-400'}`}>
+                        {u.role}
+                      </span>
+                      {u.profileComplete && <CheckCircle className="w-4 h-4 text-green-400" />}
+                    </div>
+                  </Card>
+                );
+              })}
               {users.length === 0 && !userLoading && (
                 <Card className="text-center py-12">
                   <p className="text-gray-500">No users found</p>

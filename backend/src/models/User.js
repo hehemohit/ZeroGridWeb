@@ -85,7 +85,23 @@ const userSchema = new mongoose.Schema(
     }
   },
   {
-    timestamps: true
+    timestamps: true,
+    toJSON: {
+      virtuals: true,
+      transform: (doc, ret) => {
+        ret.id = ret._id ? ret._id.toString() : ret.id;
+        delete ret.passwordHash;
+        return ret;
+      }
+    },
+    toObject: {
+      virtuals: true,
+      transform: (doc, ret) => {
+        ret.id = ret._id ? ret._id.toString() : ret.id;
+        delete ret.passwordHash;
+        return ret;
+      }
+    }
   }
 );
 

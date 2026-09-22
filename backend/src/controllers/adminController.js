@@ -30,8 +30,13 @@ async function getActiveSosEvents(req, res) {
       SosEvent.countDocuments({ status: filterStatus })
     ]);
 
+    const formattedEvents = events.map(ev => ({
+      ...(ev.toJSON ? ev.toJSON() : ev.toObject ? ev.toObject() : ev),
+      id: ev._id.toString()
+    }));
+
     return res.status(200).json({
-      events,
+      events: formattedEvents,
       pagination: {
         total,
         page: pageNum,
@@ -83,8 +88,13 @@ async function getSosHistory(req, res) {
       SosEvent.countDocuments(filter)
     ]);
 
+    const formattedEvents = events.map(ev => ({
+      ...(ev.toJSON ? ev.toJSON() : ev.toObject ? ev.toObject() : ev),
+      id: ev._id.toString()
+    }));
+
     return res.status(200).json({
-      events,
+      events: formattedEvents,
       pagination: {
         total,
         page: pageNum,
@@ -134,8 +144,13 @@ async function getUsers(req, res) {
       User.countDocuments(searchFilter)
     ]);
 
+    const formattedUsers = users.map(u => ({
+      ...(u.toJSON ? u.toJSON() : u.toObject ? u.toObject() : u),
+      id: u._id.toString()
+    }));
+
     return res.status(200).json({
-      users,
+      users: formattedUsers,
       pagination: {
         total,
         page: pageNum,
