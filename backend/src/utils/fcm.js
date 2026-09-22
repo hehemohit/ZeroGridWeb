@@ -91,6 +91,8 @@ async function sendSosPush({ fcmToken, senderName, category, message, sosId, lat
         category: String(category),
         lat: String(lat),
         lng: String(lng),
+        senderName: String(senderName || 'Emergency Contact'),
+        message: String(message || ''),
       },
       android: {
         priority: 'high',
