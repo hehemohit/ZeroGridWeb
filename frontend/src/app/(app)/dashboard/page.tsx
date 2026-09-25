@@ -31,7 +31,7 @@ export default function DashboardPage() {
   }, [user, router]);
 
   useEffect(() => {
-    api.get<{ contacts: unknown[] }>('/api/contacts').then(d => setContactCount(d.contacts.length)).catch(() => {});
+    api.get<{ contacts: unknown[] }>('/api/contacts').then(d => setContactCount(d.contacts.length)).catch(() => { });
   }, []);
 
   useEffect(() => {
