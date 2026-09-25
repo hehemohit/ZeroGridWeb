@@ -16,7 +16,8 @@ import {
   X,
   Activity,
   AlertTriangle,
-  Cpu
+  Cpu,
+  Building2
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { api } from '@/lib/api';
@@ -109,6 +110,12 @@ function SidebarNavContent() {
       icon: AlertTriangle,
       active: pathname === '/admin' && currentFilter === 'ACTIVE',
       badge: activeSosCount > 0 ? activeSosCount : undefined,
+    },
+    {
+      href: '/admin/headquarters',
+      label: 'Headquarters',
+      icon: Building2,
+      active: pathname.startsWith('/admin/headquarters'),
     },
     {
       href: '/admin?modal=nodes',

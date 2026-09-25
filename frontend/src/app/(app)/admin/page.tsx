@@ -14,7 +14,8 @@ import {
   Battery,
   Radio,
   ChevronRight,
-  Loader2
+  Loader2,
+  Building2
 } from 'lucide-react';
 import { MapCanvas } from '@/components/admin/MapCanvas';
 import { SosDrawer, SosEventUI, NoteItem } from '@/components/admin/SosDrawer';
@@ -448,8 +449,17 @@ function AdminDashboardContent() {
               )}
 
               <button
-                onClick={() => setIsUserManagementOpen(true)}
+                onClick={() => router.push('/admin/headquarters')}
                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-surfaceElevated text-primaryText border border-hairline hover:bg-surfaceCard transition-colors shadow-sm ml-auto sm:ml-0"
+              >
+                <Building2 className="w-3.5 h-3.5 text-brandTeal" />
+                <span className="hidden sm:inline">Headquarters</span>
+                <span className="sm:hidden">HQs</span>
+              </button>
+
+              <button
+                onClick={() => setIsUserManagementOpen(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-surfaceElevated text-primaryText border border-hairline hover:bg-surfaceCard transition-colors shadow-sm"
               >
                 <Users className="w-3.5 h-3.5 text-brandTeal" />
                 <span className="hidden sm:inline">Nodes & Users</span>
