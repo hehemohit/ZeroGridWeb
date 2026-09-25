@@ -24,6 +24,7 @@ async function getActiveSosEvents(req, res) {
         .populate('triggeredBy', 'displayName email phoneNumber photoUrl')
         .populate('acknowledgedBy', 'displayName email')
         .populate('resolvedBy', 'displayName email')
+        .populate('assignedAdmin', 'displayName email photoUrl')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limitNum),
@@ -82,6 +83,7 @@ async function getSosHistory(req, res) {
         .populate('triggeredBy', 'displayName email phoneNumber')
         .populate('acknowledgedBy', 'displayName email')
         .populate('resolvedBy', 'displayName email')
+        .populate('assignedAdmin', 'displayName email photoUrl')
         .sort({ updatedAt: -1 })
         .skip(skip)
         .limit(limitNum),

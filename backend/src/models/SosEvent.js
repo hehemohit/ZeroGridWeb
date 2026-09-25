@@ -120,6 +120,11 @@ const sosEventSchema = new mongoose.Schema(
       ref: 'User',
       default: null
     },
+    assignedAdmin: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
     notes: {
       type: [sosNoteSchema],
       default: []

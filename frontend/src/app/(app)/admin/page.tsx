@@ -54,6 +54,16 @@ function mapSosFromBackend(raw: any): SosEventUI {
 
   const displayId = rawId.length >= 6 ? `sos-${rawId.slice(-4)}` : (rawId || `sos-${Math.floor(1000 + Math.random() * 9000)}`);
 
+  let assignedAdminData = raw.assignedAdmin || null;
+  if (assignedAdminData && typeof assignedAdminData === 'object') {
+    assignedAdminData = {
+      id: String(assignedAdminData.id || assignedAdminData._id || ''),
+      displayName: assignedAdminData.displayName || assignedAdminData.email || 'Admin',
+      email: assignedAdminData.email || '',
+      photoUrl: assignedAdminData.photoUrl || ''
+    };
+  }
+
   return {
     id: displayId,
     rawId,
@@ -70,6 +80,7 @@ function mapSosFromBackend(raw: any): SosEventUI {
     peerNodesInRange: peerCount,
     message: raw.message || '',
     notes: notesList,
+    assignedAdmin: assignedAdminData,
   };
 }
 
@@ -125,6 +136,16 @@ function AdminDashboardContent() {
     }
   }, [currentUser, router]);
 
+  const handleCloseUserManagement = useCallback(() => {
+    setIsUserManagementOpen(false);
+    const params = new URLSearchParams(searchParams.toString());
+    if (params.has('modal')) {
+      params.delete('modal');
+      const newQuery = params.toString();
+      router.replace(newQuery ? `/admin?${newQuery}` : '/admin');
+    }
+  }, [searchParams, router]);
+
   useEffect(() => {
     const filterParam = searchParams.get('filter');
     const modalParam = searchParams.get('modal');
@@ -139,6 +160,8 @@ function AdminDashboardContent() {
 
     if (modalParam === 'nodes') {
       setIsUserManagementOpen(true);
+    } else {
+      setIsUserManagementOpen(false);
     }
   }, [searchParams]);
 
@@ -202,6 +225,7 @@ function AdminDashboardContent() {
   }, [showToast]);
 
   useEffect(() => { fetchSosEvents(); }, [fetchSosEvents]);
+  useEffect(() => { fetchUsers(); }, [fetchUsers]);
   useEffect(() => { if (isUserManagementOpen) fetchUsers(userSearch); }, [isUserManagementOpen, fetchUsers, userSearch]);
 
   useEffect(() => {
@@ -281,6 +305,22 @@ function AdminDashboardContent() {
     finally { setActionLoading(false); }
   };
 
+  const handleAssignAdmin = async (id: string, adminId: string | null) => {
+    const targetEvent = sosEvents.find(s => s.id === id || s.rawId === id);
+    if (!targetEvent) return;
+    setActionLoading(true);
+    try {
+      const res = await api.put<{ sos: any }>(`/api/sos/${targetEvent.rawId || targetEvent.id}/assign`, { adminId });
+      showToast(adminId ? `SOS [${targetEvent.id}] assigned to admin.` : `SOS [${targetEvent.id}] unassigned.`);
+      await fetchSosEvents();
+      if (res && res.sos) setSelectedSosDetails(mapSosFromBackend(res.sos));
+    } catch (err: any) {
+      showToast(err.message || 'Failed to assign admin', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handlePromoteAdmin = async (userEmail: string, userName: string) => {
     try {
       await api.post('/api/admin/admins', { email: userEmail });
@@ -290,6 +330,15 @@ function AdminDashboardContent() {
   };
 
   const handleDemoteAdmin = async (userId: string, userName: string) => {
+    const targetUser = users.find(u => u.id === userId);
+    if (
+      currentUser &&
+      (userId === currentUser.id ||
+        (currentUser.email && targetUser?.email && currentUser.email.toLowerCase() === currentUser.email.toLowerCase()))
+    ) {
+      showToast('You cannot revoke your own admin status', 'error');
+      return;
+    }
     try {
       await api.del(`/api/admin/admins/${userId}`);
       showToast(`Demoted ${userName} from Admin role`, 'info');
@@ -519,11 +568,14 @@ function AdminDashboardContent() {
           isLoadingDetails={drawerLoading}
           actionLoading={actionLoading}
           noteInput={noteInput}
+          admins={users.filter(u => u.role === 'ADMIN')}
+          currentUserId={currentUser?.id}
           onSetNoteInput={setNoteInput}
           onClose={() => { setDrawerSosId(null); setSelectedSosDetails(null); }}
           onAcknowledge={handleAcknowledgeSos}
           onResolve={handleResolveSos}
           onAddNote={handleAddNote}
+          onAssignAdmin={handleAssignAdmin}
           formatTime={formatTime}
         />
       )}
@@ -533,10 +585,12 @@ function AdminDashboardContent() {
         userSearch={userSearch}
         users={users}
         isLoading={isUsersLoading}
-        onClose={() => setIsUserManagementOpen(false)}
+        onClose={handleCloseUserManagement}
         onUserSearchChange={setUserSearch}
         onPromoteAdmin={handlePromoteAdmin}
         onDemoteAdmin={handleDemoteAdmin}
+        currentUserId={currentUser?.id}
+        currentUserEmail={currentUser?.email}
       />
     </div>
   );

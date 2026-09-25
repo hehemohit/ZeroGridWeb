@@ -22,6 +22,8 @@ interface UserManagementModalProps {
   onUserSearchChange: (val: string) => void;
   onPromoteAdmin: (userEmail: string, userName: string) => void;
   onDemoteAdmin: (userId: string, userName: string) => void;
+  currentUserId?: string;
+  currentUserEmail?: string;
 }
 
 export function UserManagementModal({
@@ -33,11 +35,18 @@ export function UserManagementModal({
   onUserSearchChange,
   onPromoteAdmin,
   onDemoteAdmin,
+  currentUserId,
+  currentUserEmail,
 }: UserManagementModalProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-fade-in">
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-fade-in"
+    >
       <div className="w-full max-w-4xl h-[85vh] bg-surface rounded-16dp border border-hairlineBright shadow-2xl flex flex-col overflow-hidden">
         {/* Modal Header */}
         <div className="p-5 border-b border-hairline flex items-center justify-between bg-surfaceElevated">
@@ -111,6 +120,10 @@ export function UserManagementModal({
                 ) : (
                   users.map((u) => {
                     const isAdmin = u.role === 'ADMIN';
+                    const isSelf = Boolean(
+                      (currentUserId && u.id === currentUserId) ||
+                      (currentUserEmail && u.email && u.email.toLowerCase() === currentUserEmail.toLowerCase())
+                    );
                     return (
                       <tr key={u.id} className="hover:bg-surfaceCard/60 transition-colors">
                         {/* User Info */}
@@ -129,7 +142,14 @@ export function UserManagementModal({
                               )}
                             </div>
                             <div>
-                              <div className="font-bold text-primaryText">{u.name}</div>
+                              <div className="font-bold text-primaryText flex items-center gap-1.5">
+                                {u.name}
+                                {isSelf && (
+                                  <span className="text-[9px] font-mono px-1.5 py-0.2 bg-brandTeal/10 text-brandTeal border border-brandTeal/20 rounded font-semibold">
+                                    You
+                                  </span>
+                                )}
+                              </div>
                               <div className="text-[11px] text-mutedGray font-mono">{u.email}</div>
                             </div>
                           </div>
@@ -163,13 +183,23 @@ export function UserManagementModal({
                         {/* Actions (Strict API: POST /api/admin/admins, DELETE /api/admin/admins/:userId) */}
                         <td className="py-3.5 pr-3 text-right">
                           {isAdmin ? (
-                            <button
-                              onClick={() => onDemoteAdmin(u.id, u.name)}
-                              className="px-3 py-1.5 rounded-16dp bg-surfaceCard hover:bg-surfaceElevated border border-hairline text-mutedGray hover:text-primaryText font-medium text-xs transition-colors"
-                              title="DELETE /api/admin/admins/:userId"
-                            >
-                              Revoke Admin
-                            </button>
+                            isSelf ? (
+                              <button
+                                disabled
+                                className="px-3 py-1.5 rounded-16dp bg-surfaceCard border border-hairline text-mutedGray/50 cursor-not-allowed font-medium text-xs opacity-50"
+                                title="You cannot revoke your own admin rights"
+                              >
+                                Revoke Admin (You)
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => onDemoteAdmin(u.id, u.name)}
+                                className="px-3 py-1.5 rounded-16dp bg-surfaceCard hover:bg-surfaceElevated border border-hairline text-mutedGray hover:text-primaryText font-medium text-xs transition-colors"
+                                title="DELETE /api/admin/admins/:userId"
+                              >
+                                Revoke Admin
+                              </button>
+                            )
                           ) : (
                             <button
                               onClick={() => onPromoteAdmin(u.email, u.name)}

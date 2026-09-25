@@ -9,7 +9,8 @@ const {
   acknowledgeSos,
   getAcknowledgedSosForUser,
   resolveSos,
-  addNoteToSos
+  addNoteToSos,
+  assignAdminToSos
 } = require('../controllers/sosController');
 
 const router = express.Router();
@@ -53,6 +54,9 @@ router.put('/:id/acknowledge', verifyToken, acknowledgeSos);
 
 // PUT /api/sos/:id/resolve — admin only: mark as fully resolved
 router.put('/:id/resolve', verifyToken, verifyAdminRole, resolveSos);
+
+// PUT /api/sos/:id/assign — admin only: assign or unassign event ownership
+router.put('/:id/assign', verifyToken, verifyAdminRole, assignAdminToSos);
 
 // POST /api/sos/:id/notes — admin only: append a case note
 router.post('/:id/notes', verifyToken, verifyAdminRole, addNoteToSos);

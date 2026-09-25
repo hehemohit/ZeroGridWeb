@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const SosEvent = require('../models/SosEvent');
+const User = require('../models/User');
 const Contact = require('../models/Contact');
 const { sendSosPush } = require('../utils/fcm');
 
@@ -16,6 +17,20 @@ function buildSosPayload(sos, requestingUserId) {
       )
     : false;
 
+  let assignedAdminData = null;
+  if (sos.assignedAdmin) {
+    if (typeof sos.assignedAdmin === 'object' && (sos.assignedAdmin._id || sos.assignedAdmin.id)) {
+      assignedAdminData = {
+        id: (sos.assignedAdmin._id || sos.assignedAdmin.id).toString(),
+        displayName: sos.assignedAdmin.displayName || sos.assignedAdmin.email || 'Admin',
+        email: sos.assignedAdmin.email || '',
+        photoUrl: sos.assignedAdmin.photoUrl || ''
+      };
+    } else {
+      assignedAdminData = sos.assignedAdmin.toString();
+    }
+  }
+
   return {
     id: sos._id,
     triggeredBy: sos.triggeredBy,
@@ -30,6 +45,7 @@ function buildSosPayload(sos, requestingUserId) {
     acknowledgedByUsers: sos.acknowledgedByUsers || [],
     isAcknowledgedByMe,
     resolvedBy: sos.resolvedBy,
+    assignedAdmin: assignedAdminData,
     notes: sos.notes,
     createdAt: sos.createdAt,
     updatedAt: sos.updatedAt
@@ -193,10 +209,15 @@ async function getSosById(req, res) {
       return res.status(400).json({ message: 'Invalid SOS event ID' });
     }
 
-    const sos = await SosEvent.findById(id).populate({
-      path: 'triggeredBy',
-      select: 'displayName email phoneNumber photoUrl'
-    });
+    const sos = await SosEvent.findById(id)
+      .populate({
+        path: 'triggeredBy',
+        select: 'displayName email phoneNumber photoUrl'
+      })
+      .populate({
+        path: 'assignedAdmin',
+        select: 'displayName email photoUrl'
+      });
 
     if (!sos) {
       return res.status(404).json({ message: 'SOS event not found' });
@@ -440,6 +461,62 @@ async function getActiveSos(req, res) {
   }
 }
 
+/**
+ * PUT /api/sos/:id/assign
+ * Admin only. Assigns, reassigns, or unassigns an admin to take ownership of an SOS event.
+ * Body: { adminId: string | null }
+ */
+async function assignAdminToSos(req, res) {
+  try {
+    const { id } = req.params;
+    const { adminId } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid SOS event ID' });
+    }
+
+    let assignedAdminId = null;
+    if (adminId) {
+      if (!mongoose.Types.ObjectId.isValid(adminId)) {
+        return res.status(400).json({ message: 'Invalid Admin User ID' });
+      }
+      const targetUser = await User.findById(adminId);
+      if (!targetUser) {
+        return res.status(404).json({ message: 'Admin user not found' });
+      }
+      if (targetUser.role !== 'ADMIN') {
+        return res.status(400).json({ message: 'Assigned user must have ADMIN role' });
+      }
+      assignedAdminId = targetUser._id;
+    }
+
+    const sos = await SosEvent.findByIdAndUpdate(
+      id,
+      { $set: { assignedAdmin: assignedAdminId } },
+      { returnDocument: 'after' }
+    )
+      .populate('triggeredBy', 'displayName email phoneNumber photoUrl')
+      .populate('assignedAdmin', 'displayName email photoUrl');
+
+    if (!sos) {
+      return res.status(404).json({ message: 'SOS event not found' });
+    }
+
+    const io = getIo(req);
+    if (io) {
+      io.of('/sos').emit('sos:updated', buildSosPayload(sos));
+    }
+
+    return res.status(200).json({
+      message: assignedAdminId ? 'Admin assigned to SOS event successfully' : 'SOS event unassigned successfully',
+      sos: buildSosPayload(sos, req.user.userId)
+    });
+  } catch (error) {
+    console.error('[SOS] assignAdminToSos error:', error);
+    return res.status(500).json({ message: 'Failed to assign admin to SOS event.' });
+  }
+}
+
 module.exports = {
   triggerSos,
   getSosById,
@@ -447,5 +524,6 @@ module.exports = {
   acknowledgeSos,
   getAcknowledgedSosForUser,
   resolveSos,
-  addNoteToSos
+  addNoteToSos,
+  assignAdminToSos
 };
