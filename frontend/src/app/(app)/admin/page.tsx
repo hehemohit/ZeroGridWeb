@@ -378,184 +378,237 @@ export default function AdminDashboardPage() {
   const activeSosCount = sosEvents.filter(e => e.status === 'ACTIVE').length;
 
   return (
-    <div className="flex flex-col h-screen bg-canvas text-primaryText font-sans select-none overflow-hidden">
+    <div className="flex h-screen w-full bg-canvas text-primaryText font-sans overflow-hidden select-none">
       {/* Toast Notification Container */}
       {toast && (
-        <div className="fixed top-5 right-6 z-50 flex items-center gap-3 bg-surface border border-hairline shadow-lg px-4 py-3 rounded-16dp text-sm font-medium animate-bounce-short">
-          <span className={`w-2.5 h-2.5 rounded-full ${toast.type === 'error' ? 'bg-alertRed' : 'bg-brandTeal'}`}></span>
+        <div className="fixed top-5 right-6 z-50 flex items-center gap-3 bg-surface border border-hairlineBright shadow-2xl px-4 py-3 rounded-16dp text-sm font-medium animate-bounce-short">
+          <span className={`w-2.5 h-2.5 rounded-full ${toast.type === 'error' ? 'bg-alertRed shadow-glow-red' : 'bg-brandTeal shadow-glow-teal'}`}></span>
           <span className="text-primaryText">{toast.message}</span>
         </div>
       )}
 
-      {/* ================= 1. Top Navbar ================= */}
-      <header className="h-16 flex-shrink-0 bg-surface border-b border-hairline px-6 flex items-center justify-between z-20">
-        {/* Left: Brand & Standard Logo */}
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-surface border border-hairline flex items-center justify-center shadow-xs">
-              {/* ZeroGrid shield emblem with red stroke as brand logo */}
-              <svg className="w-5 h-5 text-alertRed" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-              </svg>
+      {/* ================= 1. Vertical Left Sidebar ================= */}
+      <aside className="w-64 flex-shrink-0 bg-surface/95 border-r border-hairline flex flex-col justify-between z-20 backdrop-blur-md">
+        {/* Top: Brand Header & Status */}
+        <div>
+          <div className="p-5 border-b border-hairline">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-surfaceCard border border-hairline flex items-center justify-center shadow-inner">
+                <svg className="w-5 h-5 text-alertRed" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
+              </div>
+              <div className="flex items-baseline gap-1.5">
+                <span className="font-bold text-lg tracking-tight text-primaryText font-display">ZeroGrid</span>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-brandTealDark text-brandTeal border border-brandTeal/30 uppercase tracking-wider font-mono">
+                  Admin
+                </span>
+              </div>
             </div>
-            <div className="flex items-baseline gap-1.5">
-              <span className="font-bold text-lg tracking-tight text-primaryText">ZeroGrid</span>
-              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-brandTealLight text-brandTeal uppercase tracking-wider">
-                Admin
-              </span>
+
+            {/* Mode indicator badge */}
+            <div className="mt-3.5 flex items-center gap-2 px-2.5 py-1.5 bg-surfaceCard rounded-lg border border-hairline text-[11px] font-medium text-mutedGray">
+              <span className="w-2 h-2 rounded-full bg-brandTeal shadow-glow-teal animate-pulse"></span>
+              <span className="truncate">Telemetry Operational</span>
             </div>
           </div>
 
-          {/* Mode indicator badge */}
-          <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-[#F5F5F5] rounded-full border border-hairline text-xs font-medium text-mutedGray">
-            <span className="w-2 h-2 rounded-full bg-brandTeal"></span>
-            <span>Telemetry Operational • Material 3 Minimalist</span>
-          </div>
+          {/* Navigation Links / Sections */}
+          <nav className="p-3 space-y-1.5">
+            <div className="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider text-dimGray font-semibold">
+              Tactical Console
+            </div>
+
+            <button
+              onClick={() => setActiveSosTab('FEED')}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium transition-all bg-surfaceElevated text-primaryText border border-hairlineBright shadow-sm"
+            >
+              <Radio className="w-4 h-4 text-brandTeal" />
+              <span className="flex-1 text-left">Dashboard / Telemetry</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-brandTeal shadow-glow-teal"></span>
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveSosTab('FEED');
+                setStatusFilter('ACTIVE');
+              }}
+              className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-medium text-mutedGray hover:text-primaryText hover:bg-surfaceCard transition-all"
+            >
+              <div className="flex items-center gap-3">
+                <Radio className="w-4 h-4 text-alertRed" />
+                <span>SOS Dispatch</span>
+              </div>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-alertRedBg text-alertRed border border-alertRedBorder font-bold">
+                {activeSosCount}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setIsUserManagementOpen(true)}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium text-mutedGray hover:text-primaryText hover:bg-surfaceCard transition-all"
+            >
+              <Users className="w-4 h-4 text-brandTeal" />
+              <span className="flex-1 text-left">Nodes & Peering</span>
+              <span className="text-[10px] font-mono text-dimGray">{users.length}</span>
+            </button>
+
+            <div className="pt-3 px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider text-dimGray font-semibold">
+              Administration
+            </div>
+
+            {/* User Management Trigger Button */}
+            <button
+              onClick={() => setIsUserManagementOpen(true)}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium text-secondaryText hover:text-primaryText bg-surfaceCard hover:bg-surfaceElevated border border-hairline hover:border-hairlineBright transition-all shadow-panel-dark text-left"
+            >
+              <Users className="w-4 h-4 text-brandTeal" />
+              <span className="flex-1">User Management</span>
+              <ChevronRight className="w-3.5 h-3.5 text-mutedGray" />
+            </button>
+          </nav>
         </div>
 
-        {/* Right: Navigation Items & User Management Button */}
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setIsUserManagementOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-surface hover:bg-[#F7F7F7] border border-hairline hover:border-mutedGray/40 text-primaryText rounded-16dp text-xs font-semibold transition-all shadow-xs"
-          >
-            <Users className="w-4 h-4 text-brandTeal" />
-            <span>User Management</span>
-          </button>
-
-          <div className="h-5 w-px bg-hairline mx-1"></div>
-
-          {/* Status / Active Node Indicator */}
-          <div className="flex items-center gap-2.5 pl-1">
-            <div className="w-8 h-8 rounded-full bg-brandTealLight text-brandTeal font-bold text-xs flex items-center justify-center border border-brandTeal/20 uppercase">
+        {/* Bottom: User Profile Info */}
+        <div className="p-4 border-t border-hairline bg-surfaceElevated/40">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-brandTealDark text-brandTeal font-bold text-xs flex items-center justify-center border border-brandTeal/30 shadow-glow-teal flex-shrink-0 uppercase">
               {currentUser?.displayName ? currentUser.displayName.slice(0, 2) : 'AD'}
             </div>
-            <div className="hidden lg:flex flex-col text-left">
-              <span className="text-xs font-bold text-primaryText leading-none">
-                {currentUser?.displayName || 'Rescue Team Lead'}
-              </span>
-              <span className="text-[10px] text-mutedGray mt-0.5 font-mono">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-primaryText truncate">
+                  {currentUser?.displayName || 'Rescue Team Lead'}
+                </span>
+                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-brandTealDark text-brandTeal border border-brandTeal/30">
+                  LEAD
+                </span>
+              </div>
+              <span className="text-[10px] text-mutedGray font-mono block truncate">
                 {currentUser?.email || 'ID: ZG-DISPATCH-01'}
               </span>
             </div>
           </div>
         </div>
-      </header>
+      </aside>
 
-      {/* ================= 2. Main Content Area (Split-Pane) ================= */}
-      <main className="flex-1 flex overflow-hidden p-4 gap-4">
-        {/* CENTER / LEFT PANE: Google Maps Canvas Placeholder */}
+      {/* ================= 2. Main Content Area (Stacked Vertical Layout) ================= */}
+      <main className="flex-1 flex flex-col min-w-0 h-full overflow-hidden p-4 gap-4 bg-canvas">
+        {/* UPPER CONTAINER: Geo-Spatial Telemetry Canvas */}
         <MapCanvas activeSosCount={activeSosCount} />
 
-        {/* RIGHT PANE (Fixed width 400px): Vertically scrolling sidebar dedicated to SOS users */}
-        <aside className="w-96 lg:w-[400px] flex-shrink-0 flex flex-col bg-surface border border-hairline rounded-16dp overflow-hidden shadow-xs">
-          {/* Sticky Header with Feed/History Switcher, Search Bar, and Sort Dropdown */}
-          <div className="p-4 border-b border-hairline bg-surface sticky top-0 z-10 flex flex-col gap-3">
-            {/* Header title & API route indicator */}
-            <div className="flex items-center justify-between">
+        {/* LOWER CONTAINER: Emergency SOS Dispatch Feed (Structured bottom console panel) */}
+        <section className="h-80 flex-shrink-0 flex flex-col bg-surface border border-hairline rounded-16dp overflow-hidden shadow-panel-dark">
+          {/* Console Header Bar */}
+          <div className="p-3.5 border-b border-hairline bg-surface flex flex-wrap items-center justify-between gap-3 flex-shrink-0">
+            {/* Title & API route */}
+            <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
-                <h2 className="font-bold text-sm text-primaryText">Emergency SOS Dispatch</h2>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#F5F5F5] text-mutedGray border border-hairline">
-                  GET /api/admin/sos
-                </span>
+                <Shield className="w-4 h-4 text-alertRed" />
+                <h2 className="font-bold text-sm text-primaryText font-display">Emergency SOS Dispatch Console</h2>
               </div>
-              <span className="text-xs font-semibold text-brandTeal bg-brandTealLight px-2 py-0.5 rounded-full">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-surfaceCard text-mutedGray border border-hairline">
+                GET /api/admin/sos
+              </span>
+              <span className="text-xs font-semibold text-brandTeal bg-brandTealDark border border-brandTeal/30 px-2.5 py-0.5 rounded-full font-mono">
                 {filteredSosList.length} Events
               </span>
             </div>
 
-            {/* Tabs: Live Feed vs History */}
-            <div className="flex rounded-lg bg-[#F5F5F5] p-0.5 border border-hairline text-xs font-medium">
-              <button
-                onClick={() => {
-                  setActiveSosTab('FEED');
-                  setStatusFilter('ALL');
-                }}
-                className={`flex-1 py-1.5 rounded-md text-center transition-all ${
-                  activeSosTab === 'FEED'
-                    ? 'bg-surface text-primaryText font-semibold shadow-xs'
-                    : 'text-mutedGray hover:text-primaryText'
-                }`}
-              >
-                Active Feed
-              </button>
-              <button
-                onClick={() => {
-                  setActiveSosTab('HISTORY');
-                }}
-                className={`flex-1 py-1.5 rounded-md text-center transition-all ${
-                  activeSosTab === 'HISTORY'
-                    ? 'bg-surface text-primaryText font-semibold shadow-xs'
-                    : 'text-mutedGray hover:text-primaryText'
-                }`}
-              >
-                History (Resolved)
-              </button>
-            </div>
-
-            {/* Search Bar (client-side filter) */}
-            <div className="relative">
-              <Search className="w-4 h-4 text-mutedGray absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Search by user, ID, or sector..."
-                className="w-full bg-[#FAFAFA] border border-hairline rounded-xl pl-9 pr-8 py-1.5 text-xs text-primaryText placeholder-mutedGray/60 focus:outline-none focus:border-brandTeal focus:bg-surface transition-colors"
-              />
-              {searchQuery && (
+            {/* Controls: Search, Sort, Tabs */}
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Tabs: Live Feed vs History */}
+              <div className="flex rounded-lg bg-canvas p-1 border border-hairline text-xs font-medium">
                 <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-mutedGray hover:text-primaryText text-xs font-bold"
+                  onClick={() => {
+                    setActiveSosTab('FEED');
+                    setStatusFilter('ALL');
+                  }}
+                  className={`px-3 py-1 rounded-md text-center transition-all ${
+                    activeSosTab === 'FEED'
+                      ? 'bg-surfaceElevated text-primaryText font-semibold shadow-xs border border-hairlineBright'
+                      : 'text-mutedGray hover:text-primaryText'
+                  }`}
                 >
-                  ×
+                  Active Feed
                 </button>
-              )}
-            </div>
+                <button
+                  onClick={() => {
+                    setActiveSosTab('HISTORY');
+                  }}
+                  className={`px-3 py-1 rounded-md text-center transition-all ${
+                    activeSosTab === 'HISTORY'
+                      ? 'bg-surfaceElevated text-primaryText font-semibold shadow-xs border border-hairlineBright'
+                      : 'text-mutedGray hover:text-primaryText'
+                  }`}
+                >
+                  History (Resolved)
+                </button>
+              </div>
 
-            {/* Sort & Status Filters */}
-            <div className="flex items-center justify-between gap-2 text-xs">
-              <div className="flex items-center gap-1.5 flex-1">
-                <span className="text-[11px] text-mutedGray whitespace-nowrap font-medium">Sort:</span>
+              {/* Search Bar */}
+              <div className="relative w-56">
+                <Search className="w-3.5 h-3.5 text-mutedGray absolute left-2.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="Search user, ID, sector..."
+                  className="w-full bg-canvas border border-hairline rounded-lg pl-8 pr-6 py-1 text-xs text-primaryText placeholder-dimGray focus:outline-none focus:border-brandTeal"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-mutedGray hover:text-primaryText text-xs font-bold"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+
+              {/* Sort Dropdown */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-mutedGray font-medium">Sort:</span>
                 <select
                   value={sortOption}
                   onChange={e => setSortOption(e.target.value as any)}
-                  className="w-full bg-[#FAFAFA] border border-hairline rounded-lg px-2 py-1 text-xs text-primaryText focus:outline-none focus:border-brandTeal font-medium"
+                  className="bg-canvas border border-hairline rounded-lg px-2 py-1 text-xs text-secondaryText focus:outline-none focus:border-brandTeal font-medium"
                 >
                   <option value="DATE_DESC">Newest First</option>
                   <option value="DATE_ASC">Oldest First</option>
-                  <option value="STATUS">By Urgency/Status</option>
+                  <option value="STATUS">Urgency/Status</option>
                 </select>
               </div>
 
+              {/* Status Pills */}
               {activeSosTab === 'FEED' && (
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => setStatusFilter('ALL')}
-                    className={`px-2 py-1 rounded text-[11px] font-medium border ${
+                    className={`px-2 py-0.5 rounded text-[11px] font-medium border transition-colors ${
                       statusFilter === 'ALL'
-                        ? 'bg-surface text-brandTeal border-brandTeal font-semibold'
-                        : 'bg-[#FAFAFA] text-mutedGray border-hairline'
+                        ? 'bg-brandTealDark text-brandTeal border-brandTeal/50 font-semibold'
+                        : 'bg-canvas text-mutedGray border-hairline hover:text-primaryText'
                     }`}
                   >
                     All
                   </button>
                   <button
                     onClick={() => setStatusFilter('ACTIVE')}
-                    className={`px-2 py-1 rounded text-[11px] font-medium border ${
+                    className={`px-2 py-0.5 rounded text-[11px] font-medium border transition-colors ${
                       statusFilter === 'ACTIVE'
-                        ? 'bg-alertRedBg text-alertRed border-alertRed/30 font-semibold'
-                        : 'bg-[#FAFAFA] text-mutedGray border-hairline'
+                        ? 'bg-alertRedBg text-alertRed border-alertRed/40 font-semibold shadow-glow-red'
+                        : 'bg-canvas text-mutedGray border-hairline hover:text-primaryText'
                     }`}
                   >
                     Active
                   </button>
                   <button
                     onClick={() => setStatusFilter('ACKNOWLEDGED')}
-                    className={`px-2 py-1 rounded text-[11px] font-medium border ${
+                    className={`px-2 py-0.5 rounded text-[11px] font-medium border transition-colors ${
                       statusFilter === 'ACKNOWLEDGED'
-                        ? 'bg-brandTealLight text-brandTeal border-brandTeal/30 font-semibold'
-                        : 'bg-[#FAFAFA] text-mutedGray border-hairline'
+                        ? 'bg-brandTealDark text-brandTeal border-brandTeal/40 font-semibold'
+                        : 'bg-canvas text-mutedGray border-hairline hover:text-primaryText'
                     }`}
                   >
                     Ack&apos;d
@@ -565,121 +618,134 @@ export default function AdminDashboardPage() {
             </div>
           </div>
 
-          {/* Scrollable SOS Cards Container */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#FAFAFA]">
+          {/* Scrollable SOS Horizontal/Grid Cards Panel */}
+          <div className="flex-1 overflow-y-auto p-3.5 bg-[#0A101D]">
             {isSosLoading ? (
-              <div className="h-64 flex flex-col items-center justify-center text-center p-6 text-mutedGray gap-2">
+              <div className="h-full flex flex-col items-center justify-center text-center p-6 text-mutedGray gap-2">
                 <Loader2 className="w-8 h-8 text-brandTeal animate-spin" />
-                <p className="text-xs font-semibold text-primaryText">Loading SOS Feed...</p>
+                <p className="text-xs font-semibold text-primaryText">Loading SOS Telemetry Feed...</p>
               </div>
             ) : filteredSosList.length === 0 ? (
-              <div className="h-64 flex flex-col items-center justify-center text-center p-6 text-mutedGray">
-                <CheckCircle className="w-10 h-10 text-brandTeal/40 mb-2" />
+              <div className="h-full flex flex-col items-center justify-center text-center p-6 text-mutedGray">
+                <CheckCircle className="w-8 h-8 text-brandTeal/30 mb-2" />
                 <p className="text-xs font-semibold text-primaryText">No SOS events found</p>
-                <p className="text-[11px] text-mutedGray mt-1">
+                <p className="text-[11px] text-mutedGray mt-0.5">
                   {searchQuery ? 'Try refining your search filter.' : 'All emergency alerts are currently quiet.'}
                 </p>
               </div>
             ) : (
-              filteredSosList.map(sos => {
-                const isSelected = selectedSosId === sos.id || selectedSosId === sos.rawId;
-                const isAuthority = sos.role === 'AUTHORITY';
-                const isEmergencyActive = sos.status === 'ACTIVE';
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                {filteredSosList.map(sos => {
+                  const isSelected = selectedSosId === sos.id || selectedSosId === sos.rawId;
+                  const isAuthority = sos.role === 'AUTHORITY';
+                  const isEmergencyActive = sos.status === 'ACTIVE';
 
-                return (
-                  <div
-                    key={sos.rawId || sos.id}
-                    onClick={() => setSelectedSosId(sos.id)}
-                    className={`p-4 rounded-16dp bg-surface border transition-all cursor-pointer text-left relative shadow-xs hover:border-brandTeal/60 ${
-                      isSelected
-                        ? 'border-brandTeal ring-2 ring-brandTeal/10'
-                        : 'border-hairline'
-                    }`}
-                  >
-                    {/* Status chip & SOS Identifier */}
-                    <div className="flex items-center justify-between mb-2.5">
-                      <div className="flex items-center gap-2">
-                        {/* Reserved Red used strictly for genuine Active SOS */}
-                        <span
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                            isEmergencyActive
-                              ? 'bg-alertRedBg text-alertRed border border-alertRedBorder animate-pulse'
-                              : sos.status === 'ACKNOWLEDGED'
-                              ? 'bg-brandTealLight text-brandTeal border border-brandTeal/20'
-                              : 'bg-[#F5F5F5] text-mutedGray border border-hairline'
-                          }`}
-                        >
-                          <span
-                            className={`w-1.5 h-1.5 rounded-full ${
-                              isEmergencyActive ? 'bg-alertRed' : sos.status === 'ACKNOWLEDGED' ? 'bg-brandTeal' : 'bg-mutedGray'
+                  return (
+                    <div
+                      key={sos.rawId || sos.id}
+                      onClick={() => setSelectedSosId(sos.id)}
+                      className={`p-3.5 rounded-16dp transition-all cursor-pointer text-left relative flex flex-col justify-between shadow-sm ${
+                        isAuthority
+                          ? 'bg-[#0B252E]/40 hover:bg-[#0B252E]/60 border border-brandTeal/30'
+                          : 'bg-surfaceCard hover:bg-surfaceElevated border border-hairline'
+                      } ${
+                        isSelected
+                          ? 'ring-2 ring-brandTeal border-brandTeal'
+                          : ''
+                      }`}
+                    >
+                      <div>
+                        {/* Status chip & SOS Identifier */}
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider font-mono ${
+                                isEmergencyActive
+                                  ? 'bg-alertRedBg text-alertRed border border-alertRedBorder shadow-glow-red animate-pulse'
+                                  : sos.status === 'ACKNOWLEDGED'
+                                  ? 'bg-brandTealDark text-brandTeal border border-brandTeal/30'
+                                  : 'bg-surfaceElevated text-mutedGray border border-hairline'
+                              }`}
+                            >
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full ${
+                                  isEmergencyActive ? 'bg-alertRed' : sos.status === 'ACKNOWLEDGED' ? 'bg-brandTeal' : 'bg-mutedGray'
+                                }`}
+                              ></span>
+                              {sos.status}
+                            </span>
+                            <span className="font-mono text-[10px] text-mutedGray font-medium">
+                              #{sos.id}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-mutedGray font-mono">
+                            {formatTime(sos.timestamp)}
+                          </span>
+                        </div>
+
+                        {/* Node Card Token styling */}
+                        <div className="flex items-start gap-2.5">
+                          {/* Avatar Badge */}
+                          <div
+                            className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold border ${
+                              isAuthority
+                                ? 'bg-brandTealDark text-brandTeal border-brandTeal/40 shadow-glow-teal'
+                                : 'bg-surfaceElevated text-secondaryText border-hairline'
                             }`}
-                          ></span>
-                          {sos.status}
-                        </span>
-                        <span className="font-mono text-[11px] text-mutedGray font-medium">
-                          #{sos.id}
-                        </span>
-                      </div>
-                      <span className="text-[11px] text-mutedGray font-mono">
-                        {formatTime(sos.timestamp)}
-                      </span>
-                    </div>
+                          >
+                            {isAuthority ? (
+                              <Shield className="w-4 h-4 text-brandTeal" />
+                            ) : (
+                              <User className="w-4 h-4 text-mutedGray" />
+                            )}
+                          </div>
 
-                    {/* Node Card Token styling */}
-                    <div className="flex items-start gap-3">
-                      {/* Avatar Badge */}
-                      <div
-                        className={`w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold border ${
-                          isAuthority
-                            ? 'bg-brandTeal text-surface border-brandTeal'
-                            : 'bg-[#F5F5F5] text-primaryText border-hairline'
-                        }`}
-                      >
-                        {isAuthority ? (
-                          <Shield className="w-5 h-5 text-white" />
-                        ) : (
-                          <User className="w-5 h-5 text-mutedGray" />
-                        )}
-                      </div>
+                          {/* Node Information */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-xs font-bold text-primaryText truncate">
+                                {sos.userName}
+                              </h4>
+                            </div>
+                            <span
+                              className={`text-[9px] uppercase tracking-wider font-semibold px-1.5 py-0.2 rounded font-mono inline-block mt-0.5 ${
+                                isAuthority
+                                  ? 'text-brandTeal bg-brandTealDark/80 border border-brandTeal/30'
+                                  : 'text-mutedGray bg-surfaceElevated border border-hairline'
+                              }`}
+                            >
+                              {isAuthority ? 'Authority Node' : 'Regular Node'}
+                            </span>
 
-                      {/* Node Information */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <h4 className="text-sm font-bold text-primaryText truncate">
-                            {sos.userName}
-                          </h4>
-                          <span className="text-[10px] uppercase tracking-wider font-semibold text-brandTeal px-1.5 py-0.5 rounded bg-brandTealLight">
-                            {isAuthority ? 'Authority Node' : 'Regular Node'}
-                          </span>
-                        </div>
-
-                        <p className="text-xs text-mutedGray truncate mt-0.5 flex items-center gap-1">
-                          <span className="truncate">{sos.location}</span>
-                        </p>
-
-                        {/* Node telemetry stats */}
-                        <div className="mt-2.5 pt-2 border-t border-hairline/60 flex items-center justify-between text-[11px] text-mutedGray">
-                          <span className="flex items-center gap-1 font-mono">
-                            <Battery className="w-3 h-3" />
-                            {sos.batteryLevel}
-                          </span>
-                          <span className="flex items-center gap-1 font-mono">
-                            <Radio className="w-3 h-3" />
-                            {sos.peerNodesInRange} Peered
-                          </span>
-                          <span className="text-brandTeal font-medium flex items-center gap-0.5">
-                            Details
-                            <ChevronRight className="w-3.5 h-3.5" />
-                          </span>
+                            <p className="text-[11px] text-mutedGray truncate mt-1 flex items-center gap-1">
+                              <span className="truncate">{sos.location}</span>
+                            </p>
+                          </div>
                         </div>
                       </div>
+
+                      {/* Node telemetry stats */}
+                      <div className="mt-2.5 pt-2 border-t border-hairline/80 flex items-center justify-between text-[10px] text-mutedGray">
+                        <span className="flex items-center gap-1 font-mono text-secondaryText">
+                          <Battery className="w-3 h-3 text-brandTeal" />
+                          {sos.batteryLevel}
+                        </span>
+                        <span className="flex items-center gap-1 font-mono text-secondaryText">
+                          <Radio className="w-3 h-3 text-brandTeal" />
+                          {sos.peerNodesInRange} Peered
+                        </span>
+                        <span className="text-brandTeal hover:text-brandTealGlow font-medium flex items-center gap-0.5">
+                          Details
+                          <ChevronRight className="w-3 h-3" />
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                );
-              })
+                  );
+                })}
+              </div>
             )}
           </div>
-        </aside>
+        </section>
       </main>
 
       {/* ================= 3. SOS Action Interface Drawer ================= */}
@@ -715,3 +781,4 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
+

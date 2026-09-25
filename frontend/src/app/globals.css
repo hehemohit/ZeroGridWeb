@@ -1,24 +1,28 @@
 @import "tailwindcss";
 
 @theme {
-  --color-canvas: #FAFAFA;
-  --color-surface: #FFFFFF;
-  --color-hairline: #E5E5E5;
-  --color-primaryText: #1A1A1A;
-  --color-primary-text: #1A1A1A;
-  --color-brandTeal: #0A6E6E;
-  --color-brand-teal: #0A6E6E;
-  --color-brandTealLight: #E8F3F3;
-  --color-brand-teal-light: #E8F3F3;
-  --color-mutedGray: #555555;
-  --color-muted-gray: #555555;
-  --color-alertRed: #DC2626;
-  --color-alert-red: #DC2626;
-  --color-alertRedBg: #FEF2F2;
-  --color-alert-red-bg: #FEF2F2;
-  --color-alertRedBorder: #FEE2E2;
-  --color-alert-red-border: #FEE2E2;
+  --color-canvas: #070B14;
+  --color-surface: #0F172A;
+  --color-surfaceElevated: #162035;
+  --color-surfaceCard: #11192C;
+  --color-hairline: #1E293B;
+  --color-hairlineBright: #29354E;
+  --color-primaryText: #F8FAFC;
+  --color-secondaryText: #CBD5E1;
+  --color-mutedGray: #94A3B8;
+  --color-dimGray: #64748B;
+  --color-brandTeal: #2DD4BF;
+  --color-brandTealGlow: #14B8A6;
+  --color-brandTealDark: #0B252E;
+  --color-brandTealLight: #132F38;
+  --color-alertRed: #EF4444;
+  --color-alertRedBg: rgba(239, 68, 68, 0.12);
+  --color-alertRedBorder: rgba(239, 68, 68, 0.35);
+  --color-alertRedGlow: rgba(239, 68, 68, 0.25);
   --radius-16dp: 16px;
+  --shadow-glow-red: 0 0 16px -2px rgba(239, 68, 68, 0.35);
+  --shadow-glow-teal: 0 0 16px -2px rgba(45, 212, 191, 0.25);
+  --shadow-panel-dark: 0 10px 30px -5px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(30, 41, 59, 0.8);
 }
 
 :root {

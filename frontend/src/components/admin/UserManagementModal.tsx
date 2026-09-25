@@ -37,18 +37,18 @@ export function UserManagementModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/30 backdrop-blur-xs animate-fade-in">
-      <div className="w-full max-w-4xl h-[85vh] bg-surface rounded-16dp border border-hairline shadow-2xl flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-fade-in">
+      <div className="w-full max-w-4xl h-[85vh] bg-surface rounded-16dp border border-hairlineBright shadow-2xl flex flex-col overflow-hidden">
         {/* Modal Header */}
-        <div className="p-5 border-b border-hairline flex items-center justify-between bg-surface">
+        <div className="p-5 border-b border-hairline flex items-center justify-between bg-surfaceElevated">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-brandTealLight flex items-center justify-center text-brandTeal">
+            <div className="w-10 h-10 rounded-full bg-brandTealDark border border-brandTeal/30 flex items-center justify-center text-brandTeal shadow-glow-teal">
               <Users className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold text-primaryText">User & Node Authority Management</h2>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#F5F5F5] text-mutedGray border border-hairline">
+                <h2 className="text-lg font-bold text-primaryText font-display">User & Node Authority Management</h2>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-surfaceCard text-mutedGray border border-hairline">
                   GET /api/admin/users
                 </span>
               </div>
@@ -60,13 +60,13 @@ export function UserManagementModal({
 
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full border border-hairline hover:bg-[#F5F5F5] flex items-center justify-center text-mutedGray hover:text-primaryText transition-colors"
+            className="w-8 h-8 rounded-full border border-hairline hover:bg-surfaceCard flex items-center justify-center text-mutedGray hover:text-primaryText transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Search Bar for Users (regex/query representation) */}
+        {/* Search Bar for Users */}
         <div className="p-4 border-b border-hairline bg-canvas flex items-center justify-between gap-4">
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-mutedGray absolute left-3 top-1/2 -translate-y-1/2" />
@@ -75,16 +75,16 @@ export function UserManagementModal({
               value={userSearch}
               onChange={(e) => onUserSearchChange(e.target.value)}
               placeholder="Search users by name, email, or mesh address (GET /api/admin/users?q=)..."
-              className="w-full bg-surface border border-hairline rounded-xl pl-9 pr-3 py-2 text-xs text-primaryText focus:outline-none focus:border-brandTeal"
+              className="w-full bg-surface border border-hairline rounded-xl pl-9 pr-3 py-2 text-xs text-primaryText placeholder-dimGray focus:outline-none focus:border-brandTeal"
             />
           </div>
           <div className="text-xs text-mutedGray font-mono">
-            Total Nodes: {users.length}
+            Total Nodes: <span className="text-brandTeal">{users.length}</span>
           </div>
         </div>
 
         {/* User Table / List */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-4 bg-canvas">
           {isLoading ? (
             <div className="h-64 flex items-center justify-center text-brandTeal gap-2">
               <Loader2 className="w-6 h-6 animate-spin" />
@@ -93,7 +93,7 @@ export function UserManagementModal({
           ) : (
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="border-b border-hairline text-mutedGray font-semibold uppercase text-[10px] tracking-wider">
+                <tr className="border-b border-hairline text-mutedGray font-semibold uppercase text-[10px] tracking-wider font-mono">
                   <th className="pb-3 pl-3">Node / User</th>
                   <th className="pb-3">Role & Token</th>
                   <th className="pb-3">Mesh Hardware</th>
@@ -112,15 +112,15 @@ export function UserManagementModal({
                   users.map((u) => {
                     const isAdmin = u.role === 'ADMIN';
                     return (
-                      <tr key={u.id} className="hover:bg-canvas/80 transition-colors">
+                      <tr key={u.id} className="hover:bg-surfaceCard/60 transition-colors">
                         {/* User Info */}
                         <td className="py-3.5 pl-3">
                           <div className="flex items-center gap-3">
                             <div
                               className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${
                                 isAdmin
-                                  ? 'bg-brandTeal text-surface'
-                                  : 'bg-[#F5F5F5] text-primaryText border border-hairline'
+                                  ? 'bg-brandTealDark text-brandTeal border border-brandTeal/30 shadow-glow-teal'
+                                  : 'bg-surfaceElevated text-secondaryText border border-hairline'
                               }`}
                             >
                               {isAdmin ? (
@@ -139,10 +139,10 @@ export function UserManagementModal({
                         {/* Role */}
                         <td className="py-3.5">
                           <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono ${
                               isAdmin
-                                ? 'bg-brandTealLight text-brandTeal border border-brandTeal/30'
-                                : 'bg-[#F5F5F5] text-mutedGray border border-hairline'
+                                ? 'bg-brandTealDark text-brandTeal border border-brandTeal/30'
+                                : 'bg-surfaceElevated text-mutedGray border border-hairline'
                             }`}
                           >
                             {isAdmin ? 'Admin / Authority' : 'Citizen Node'}
@@ -156,8 +156,8 @@ export function UserManagementModal({
 
                         {/* Status */}
                         <td className="py-3.5">
-                          <span className="inline-flex items-center gap-1.5 text-xs text-primaryText">
-                            <span className="w-1.5 h-1.5 rounded-full bg-brandTeal"></span>
+                          <span className="inline-flex items-center gap-1.5 text-xs text-secondaryText">
+                            <span className="w-1.5 h-1.5 rounded-full bg-brandTeal shadow-glow-teal"></span>
                             {u.status}
                           </span>
                         </td>
@@ -167,7 +167,7 @@ export function UserManagementModal({
                           {isAdmin ? (
                             <button
                               onClick={() => onDemoteAdmin(u.id, u.name)}
-                              className="px-3 py-1.5 rounded-16dp bg-surface hover:bg-[#F5F5F5] border border-hairline text-mutedGray hover:text-primaryText font-medium text-xs transition-colors shadow-xs"
+                              className="px-3 py-1.5 rounded-16dp bg-surfaceCard hover:bg-surfaceElevated border border-hairline text-mutedGray hover:text-primaryText font-medium text-xs transition-colors"
                               title="DELETE /api/admin/admins/:userId"
                             >
                               Revoke Admin
@@ -175,7 +175,7 @@ export function UserManagementModal({
                           ) : (
                             <button
                               onClick={() => onPromoteAdmin(u.email, u.name)}
-                              className="px-3 py-1.5 rounded-16dp bg-brandTeal hover:bg-[#085555] text-white font-medium text-xs transition-colors shadow-xs"
+                              className="px-3 py-1.5 rounded-16dp bg-brandTeal hover:bg-brandTealGlow text-canvas font-bold text-xs transition-colors shadow-glow-teal"
                               title="POST /api/admin/admins"
                             >
                               Promote to Admin
@@ -192,11 +192,11 @@ export function UserManagementModal({
         </div>
 
         {/* Modal Footer */}
-        <div className="p-4 border-t border-hairline bg-canvas flex items-center justify-between text-xs text-mutedGray">
+        <div className="p-4 border-t border-hairline bg-surface flex items-center justify-between text-xs text-mutedGray">
           <span>Backend Protocol: ZeroGrid Auth v2.1 • All queries executed on live node registry</span>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 bg-surface border border-hairline rounded-16dp text-primaryText font-semibold hover:bg-[#F5F5F5]"
+            className="px-4 py-1.5 bg-surfaceElevated border border-hairlineBright rounded-16dp text-primaryText font-semibold hover:bg-surfaceCard"
           >
             Done
           </button>

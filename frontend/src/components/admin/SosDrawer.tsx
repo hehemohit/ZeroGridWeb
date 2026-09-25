@@ -68,41 +68,41 @@ export function SosDrawer({
   const isEmergencyActive = sos.status === 'ACTIVE';
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-black/20 backdrop-blur-xs transition-opacity animate-fade-in">
-      <div className="w-full max-w-lg bg-surface h-full border-l border-hairline shadow-2xl flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-40 flex justify-end bg-black/60 backdrop-blur-sm transition-opacity animate-fade-in">
+      <div className="w-full max-w-lg bg-surface h-full border-l border-hairlineBright shadow-2xl flex flex-col overflow-hidden">
         {/* Drawer Header */}
-        <div className="p-5 border-b border-hairline flex items-center justify-between bg-surface">
+        <div className="p-5 border-b border-hairline flex items-center justify-between bg-surfaceElevated">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-mono px-2 py-0.5 rounded bg-[#F5F5F5] text-mutedGray border border-hairline">
+              <span className="text-xs font-mono px-2 py-0.5 rounded bg-surfaceCard text-mutedGray border border-hairline">
                 GET /api/sos/{sos.rawId || sos.id}
               </span>
               <span
-                className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase font-mono ${
                   isEmergencyActive
-                    ? 'bg-alertRedBg text-alertRed border border-alertRedBorder'
+                    ? 'bg-alertRedBg text-alertRed border border-alertRedBorder shadow-glow-red'
                     : sos.status === 'ACKNOWLEDGED'
-                    ? 'bg-brandTealLight text-brandTeal border border-brandTeal/30'
-                    : 'bg-[#F5F5F5] text-mutedGray border border-hairline'
+                    ? 'bg-brandTealDark text-brandTeal border border-brandTeal/30'
+                    : 'bg-surfaceElevated text-mutedGray border border-hairline'
                 }`}
               >
                 {sos.status}
               </span>
             </div>
-            <h3 className="text-lg font-bold text-primaryText mt-1">
+            <h3 className="text-lg font-bold text-primaryText mt-1 font-display">
               Emergency Event Details
             </h3>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full border border-hairline hover:bg-[#F5F5F5] flex items-center justify-center text-mutedGray hover:text-primaryText transition-colors"
+            className="w-8 h-8 rounded-full border border-hairline hover:bg-surfaceCard flex items-center justify-center text-mutedGray hover:text-primaryText transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Drawer Body - Scrollable content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-canvas">
           {isLoadingDetails ? (
             <div className="h-48 flex items-center justify-center text-brandTeal">
               <Loader2 className="w-6 h-6 animate-spin" />
@@ -110,17 +110,17 @@ export function SosDrawer({
           ) : (
             <>
               {/* Originating User Profile Card */}
-              <div className="p-4 bg-canvas rounded-16dp border border-hairline">
+              <div className="p-4 bg-surfaceCard rounded-16dp border border-hairline">
                 <div className="flex items-center gap-3">
                   <div
                     className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm ${
                       isAuthority
-                        ? 'bg-brandTeal text-surface'
-                        : 'bg-surface border border-hairline text-primaryText'
+                        ? 'bg-brandTealDark text-brandTeal border border-brandTeal/40 shadow-glow-teal'
+                        : 'bg-surfaceElevated text-secondaryText border border-hairline'
                     }`}
                   >
                     {isAuthority ? (
-                      <Shield className="w-6 h-6 text-white" />
+                      <Shield className="w-6 h-6 text-brandTeal" />
                     ) : (
                       <User className="w-6 h-6 text-mutedGray" />
                     )}
@@ -147,11 +147,11 @@ export function SosDrawer({
                   </div>
                   <div>
                     <span className="text-mutedGray block text-[11px]">Hardware Battery</span>
-                    <span className="font-semibold text-primaryText font-mono">{sos.batteryLevel}</span>
+                    <span className="font-semibold text-brandTeal font-mono">{sos.batteryLevel}</span>
                   </div>
                   <div>
                     <span className="text-mutedGray block text-[11px]">Direct LoRa Mesh Peers</span>
-                    <span className="font-semibold text-primaryText font-mono">
+                    <span className="font-semibold text-secondaryText font-mono">
                       {sos.peerNodesInRange} nodes in range
                     </span>
                   </div>
@@ -163,25 +163,25 @@ export function SosDrawer({
               </div>
 
               {/* Geolocation Specs */}
-              <div className="p-4 bg-surface rounded-16dp border border-hairline">
-                <h5 className="text-xs font-bold text-brandTeal uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <div className="p-4 bg-surfaceCard rounded-16dp border border-hairline">
+                <h5 className="text-xs font-bold text-brandTeal uppercase tracking-wider mb-2 flex items-center gap-1.5 font-display">
                   <Crosshair className="w-3.5 h-3.5" />
                   Reported Location Telemetry
                 </h5>
                 <p className="text-sm font-medium text-primaryText">{sos.location}</p>
                 {sos.message && (
-                  <p className="text-xs italic text-mutedGray mt-2 bg-canvas p-2.5 rounded-lg border border-hairline">
+                  <p className="text-xs italic text-secondaryText mt-2 bg-canvas p-2.5 rounded-lg border border-hairline">
                     &quot;{sos.message}&quot;
                   </p>
                 )}
-                <p className="text-[11px] text-mutedGray mt-2">
+                <p className="text-[11px] text-mutedGray mt-1">
                   ZeroGrid Decentralized Mesh packet received via 868MHz relay gateway.
                 </p>
               </div>
 
               {/* Action Buttons (Strict API: PUT /api/sos/:id/acknowledge, PUT /api/sos/:id/resolve) */}
-              <div className="p-4 bg-canvas rounded-16dp border border-hairline">
-                <h5 className="text-xs font-bold text-primaryText uppercase tracking-wider mb-3">
+              <div className="p-4 bg-surfaceCard rounded-16dp border border-hairline">
+                <h5 className="text-xs font-bold text-primaryText uppercase tracking-wider mb-3 font-display">
                   Dispatch Action Controls
                 </h5>
 
@@ -196,8 +196,8 @@ export function SosDrawer({
                     onClick={() => onAcknowledge(sos.id)}
                     className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-16dp text-xs font-semibold border transition-all ${
                       sos.status === 'ACKNOWLEDGED'
-                        ? 'bg-brandTealLight text-brandTeal border-brandTeal/30 cursor-not-allowed'
-                        : 'bg-surface hover:bg-[#F5F5F5] text-brandTeal border-brandTeal hover:border-brandTeal/80 shadow-xs'
+                        ? 'bg-brandTealDark text-brandTeal/60 border-brandTeal/20 cursor-not-allowed'
+                        : 'bg-surfaceElevated hover:bg-brandTealDark text-brandTeal border-brandTeal/40 hover:border-brandTeal shadow-panel-dark'
                     }`}
                   >
                     {actionLoading ? (
@@ -216,8 +216,8 @@ export function SosDrawer({
                     onClick={() => onResolve(sos.id)}
                     className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-16dp text-xs font-semibold transition-all ${
                       sos.status === 'RESOLVED'
-                        ? 'bg-[#F5F5F5] text-mutedGray border border-hairline cursor-not-allowed'
-                        : 'bg-alertRed hover:bg-[#B91C1C] text-white shadow-xs'
+                        ? 'bg-surfaceElevated text-dimGray border border-hairline cursor-not-allowed'
+                        : 'bg-alertRed hover:bg-red-600 text-white shadow-glow-red'
                     }`}
                   >
                     {actionLoading ? (
@@ -236,9 +236,9 @@ export function SosDrawer({
               </div>
 
               {/* Operational Notes Section (POST /api/sos/:id/notes) */}
-              <div className="p-4 bg-surface rounded-16dp border border-hairline">
+              <div className="p-4 bg-surfaceCard rounded-16dp border border-hairline">
                 <div className="flex items-center justify-between mb-3">
-                  <h5 className="text-xs font-bold text-primaryText uppercase tracking-wider flex items-center gap-1.5">
+                  <h5 className="text-xs font-bold text-primaryText uppercase tracking-wider flex items-center gap-1.5 font-display">
                     <FileText className="w-3.5 h-3.5 text-brandTeal" />
                     Incident Log Notes
                   </h5>
@@ -258,9 +258,9 @@ export function SosDrawer({
                       <div key={n.id} className="p-2.5 rounded-lg bg-canvas border border-hairline text-xs">
                         <div className="flex items-center justify-between text-[11px] text-mutedGray mb-1">
                           <span className="font-semibold text-brandTeal">{n.author}</span>
-                          <span className="font-mono">{formatTime(n.createdAt)}</span>
+                          <span className="font-mono text-dimGray">{formatTime(n.createdAt)}</span>
                         </div>
-                        <p className="text-primaryText">{n.text}</p>
+                        <p className="text-secondaryText">{n.text}</p>
                       </div>
                     ))
                   )}
@@ -273,12 +273,12 @@ export function SosDrawer({
                     value={noteInput}
                     onChange={(e) => onSetNoteInput(e.target.value)}
                     placeholder="Append dispatch telemetry notes..."
-                    className="flex-1 bg-canvas border border-hairline rounded-xl px-3 py-1.5 text-xs text-primaryText focus:outline-none focus:border-brandTeal focus:bg-surface"
+                    className="flex-1 bg-canvas border border-hairline rounded-xl px-3 py-1.5 text-xs text-primaryText placeholder-dimGray focus:outline-none focus:border-brandTeal focus:ring-1 focus:ring-brandTeal"
                   />
                   <button
                     type="submit"
                     disabled={!noteInput.trim() || actionLoading}
-                    className="px-3 py-1.5 bg-brandTeal hover:bg-[#085555] text-white rounded-xl text-xs font-semibold transition-colors disabled:opacity-50"
+                    className="px-3 py-1.5 bg-brandTeal hover:bg-brandTealGlow text-canvas font-bold rounded-xl text-xs transition-colors disabled:opacity-50"
                   >
                     Add
                   </button>
@@ -289,11 +289,11 @@ export function SosDrawer({
         </div>
 
         {/* Drawer Footer */}
-        <div className="p-4 border-t border-hairline bg-canvas flex items-center justify-between text-xs text-mutedGray">
+        <div className="p-4 border-t border-hairline bg-surface flex items-center justify-between text-xs text-mutedGray">
           <span>Emergency Record Active</span>
           <button
             onClick={onClose}
-            className="font-medium text-primaryText hover:text-brandTeal"
+            className="font-medium text-secondaryText hover:text-brandTeal"
           >
             Close Drawer
           </button>
@@ -302,3 +302,4 @@ export function SosDrawer({
     </div>
   );
 }
+
