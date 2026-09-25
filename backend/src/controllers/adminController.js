@@ -318,7 +318,7 @@ async function autoAssignNearestAdmin(req, res) {
       return res.status(400).json({ message: 'No approved admins available for assignment.' });
     }
 
-    // 3. Fetch Headquarters to resolve admin locations via HQ assignment if needed
+    // 3. Fetch Headquarters to resolve admin locations via HQ assignment
     const hqs = await Headquarters.find().populate('assignedAdmins');
 
     // Build map of admin ID -> location coordinates
@@ -327,32 +327,58 @@ async function autoAssignNearestAdmin(req, res) {
     admins.forEach((admin, idx) => {
       const adminIdStr = admin._id.toString();
 
-      // Check admin's lastKnownLocation
-      let coords = extractCoords(admin.lastKnownLocation);
+      let coords = null;
+      let assignedHqName = null;
 
       // Check assigned HQs for location
-      if (!coords) {
-        const assignedHq = hqs.find(hq =>
-          (hq.assignedAdmins || []).some(a => (a._id || a).toString() === adminIdStr)
-        );
-        if (assignedHq) {
-          coords = extractCoords(assignedHq.location);
-        }
+      const assignedHq = hqs.find(hq =>
+        (hq.assignedAdmins || []).some(a => {
+          const aId = typeof a === 'object' && a !== null ? (a._id || a.id) : a;
+          return aId && aId.toString() === adminIdStr;
+        })
+      );
+
+      if (assignedHq) {
+        coords = extractCoords(assignedHq.location);
+        assignedHqName = assignedHq.name;
       }
 
-      // Default fallback coordinates if none found
+      // If admin has live lastKnownLocation, use that
       if (!coords) {
-        if (hqs.length > 0 && hqs[0].location) {
-          coords = extractCoords(hqs[0].location);
-        }
+        coords = extractCoords(admin.lastKnownLocation);
+      }
+
+      // If admin is unassigned to any HQ yet, map them across registered HQs
+      if (!coords && hqs.length > 0) {
+        const fallbackHq = hqs[idx % hqs.length];
+        coords = extractCoords(fallbackHq.location);
+        assignedHqName = fallbackHq.name;
       }
 
       if (!coords) {
-        // Fallback grid offset
         coords = { lat: 28.6139 + idx * 0.02, lng: 77.2090 + idx * 0.02 };
       }
 
-      adminLocationMap.set(adminIdStr, { admin, coords });
+      adminLocationMap.set(adminIdStr, { admin, coords, hqName: assignedHqName });
+    });
+
+    // 4. Pre-calculate active workload for each admin to balance assignments equally
+    const adminWorkload = new Map();
+    admins.forEach(a => adminWorkload.set(a._id.toString(), 0));
+
+    // Count existing active SOS assignments per admin
+    const existingActiveEvents = await SosEvent.find({
+      status: { $in: ['ACTIVE', 'ACKNOWLEDGED'] },
+      assignedAdmin: { $ne: null }
+    });
+
+    existingActiveEvents.forEach(e => {
+      if (e.assignedAdmin) {
+        const aId = e.assignedAdmin.toString();
+        if (adminWorkload.has(aId)) {
+          adminWorkload.set(aId, (adminWorkload.get(aId) || 0) + 1);
+        }
+      }
     });
 
     const adminEntries = Array.from(adminLocationMap.values());
@@ -360,23 +386,40 @@ async function autoAssignNearestAdmin(req, res) {
     const updatedEvents = [];
     const io = getIo(req);
 
-    // 4. Perform distance calculations & assignments
+    // 5. Perform distance & equal workload-balanced assignments
     for (const sos of activeSosList) {
       const sosCoords = extractCoords(sos.location);
       if (!sosCoords) continue;
 
       let closestAdmin = null;
       let minDistance = Infinity;
+      let minWorkload = Infinity;
 
       adminEntries.forEach(({ admin, coords }) => {
+        const adminIdStr = admin._id.toString();
         const dist = getHaversineDistance(sosCoords.lat, sosCoords.lng, coords.lat, coords.lng);
-        if (dist < minDistance) {
+        const workload = adminWorkload.get(adminIdStr) || 0;
+
+        // 1. If strictly closer HQ/location
+        if (dist < minDistance - 0.05) {
           minDistance = dist;
+          minWorkload = workload;
           closestAdmin = admin;
+        }
+        // 2. If same HQ / equal distance (within 0.05 km), select admin with LEAST active workload to balance equally!
+        else if (Math.abs(dist - minDistance) <= 0.05) {
+          if (workload < minWorkload) {
+            minDistance = dist;
+            minWorkload = workload;
+            closestAdmin = admin;
+          }
         }
       });
 
       if (closestAdmin) {
+        const closestIdStr = closestAdmin._id.toString();
+        adminWorkload.set(closestIdStr, (adminWorkload.get(closestIdStr) || 0) + 1);
+
         sos.assignedAdmin = closestAdmin._id;
         await sos.save();
 
@@ -421,11 +464,36 @@ async function autoAssignNearestAdmin(req, res) {
   }
 }
 
+/**
+ * DELETE /api/admin/sos/clear-all
+ * Temporary endpoint. Deletes all existing SOS events from MongoDB.
+ */
+async function clearAllSosEvents(req, res) {
+  try {
+    const result = await SosEvent.deleteMany({});
+
+    const io = getIo(req);
+    if (io) {
+      io.of('/sos').emit('sos:cleared', { deletedCount: result.deletedCount });
+      io.of('/sos').emit('sos:updated', null);
+    }
+
+    return res.status(200).json({
+      message: `Successfully cleared ${result.deletedCount} SOS events.`,
+      deletedCount: result.deletedCount
+    });
+  } catch (error) {
+    console.error('[Admin] clearAllSosEvents error:', error);
+    return res.status(500).json({ message: 'Failed to clear SOS events.' });
+  }
+}
+
 module.exports = {
   getActiveSosEvents,
   getSosHistory,
   getUsers,
   addAdmin,
   removeAdmin,
-  autoAssignNearestAdmin
+  autoAssignNearestAdmin,
+  clearAllSosEvents
 };

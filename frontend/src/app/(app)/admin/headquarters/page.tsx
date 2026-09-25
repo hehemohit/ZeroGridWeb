@@ -146,6 +146,17 @@ export default function HeadquartersPage() {
     }
   };
 
+  const handleClearAllSos = async () => {
+    if (!window.confirm('Are you sure you want to delete all existing SOS signals from the database?')) return;
+    try {
+      const res = await api.del<{ message: string; deletedCount: number }>('/api/admin/sos/clear-all');
+      showToast(res.message || 'All SOS signals cleared!', 'info');
+      await fetchSosEvents();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to clear SOS signals', 'error');
+    }
+  };
+
   useEffect(() => {
     fetchHqs();
     fetchAdmins();
@@ -292,6 +303,14 @@ export default function HeadquartersPage() {
               <AlertTriangle className="w-4 h-4 text-red-500" />
             )}
             <span>Simulate SOS (&le; 15km)</span>
+          </button>
+          <button
+            onClick={handleClearAllSos}
+            title="Temporary action: Clear all existing SOS signals from database"
+            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500/20 font-bold text-xs sm:text-sm transition-all shadow-sm"
+          >
+            <Trash2 className="w-4 h-4 text-red-500" />
+            <span>Clear All (Temp)</span>
           </button>
           <button
             onClick={() => {

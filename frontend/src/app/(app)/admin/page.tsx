@@ -16,7 +16,8 @@ import {
   ChevronRight,
   Loader2,
   Building2,
-  Compass
+  Compass,
+  Trash2
 } from 'lucide-react';
 import { MapCanvas } from '@/components/admin/MapCanvas';
 import { SosDrawer, SosEventUI, NoteItem } from '@/components/admin/SosDrawer';
@@ -335,6 +336,22 @@ function AdminDashboardContent() {
     }
   };
 
+  const handleClearAllSos = async () => {
+    if (!window.confirm('Are you sure you want to delete all existing SOS signals from the database?')) return;
+    setActionLoading(true);
+    try {
+      const res = await api.del<{ message: string; deletedCount: number }>('/api/admin/sos/clear-all');
+      showToast(res.message || 'All SOS signals cleared!', 'info');
+      setSelectedSosId(null);
+      setDrawerSosId(null);
+      await fetchSosEvents();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to clear SOS signals', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleAssignAdmin = async (id: string, adminId: string | null) => {
     const targetEvent = sosEvents.find(s => s.id === id || s.rawId === id);
     if (!targetEvent) return;
@@ -493,6 +510,17 @@ function AdminDashboardContent() {
                 )}
                 <span className="hidden sm:inline">Auto-Assign Nearest</span>
                 <span className="sm:hidden">Auto-Assign</span>
+              </button>
+
+              <button
+                onClick={handleClearAllSos}
+                disabled={actionLoading}
+                title="Temporary action: Delete all existing SOS signals from database"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 transition-colors shadow-sm disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                <span className="hidden sm:inline">Clear All SOS (Temp)</span>
+                <span className="sm:hidden">Clear All</span>
               </button>
 
               <button

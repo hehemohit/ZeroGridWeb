@@ -266,27 +266,21 @@ async function deleteHq(req, res) {
  */
 async function generateMockSos(req, res) {
   try {
-    const { id } = req.params;
-    const countParam = parseInt(req.body.count || req.query.count) || 5;
-    const count = Math.min(20, Math.max(1, countParam));
+    const targetHqId = req.params.id || req.body.hqId;
+    const countParam = parseInt(req.body.count || req.query.count) || 6;
+    const count = Math.min(30, Math.max(1, countParam));
 
-    let targetHq = null;
-    if (id && mongoose.Types.ObjectId.isValid(id)) {
-      targetHq = await Headquarters.findById(id);
-    }
-
-    if (!targetHq) {
-      // Pick the most recent Headquarters if no specific ID passed or found
-      targetHq = await Headquarters.findOne().sort({ createdAt: -1 });
-    }
-
-    if (!targetHq) {
+    const allHqs = await Headquarters.find();
+    if (allHqs.length === 0) {
       return res.status(404).json({
         message: 'No Headquarters registered yet. Please create a Headquarters first.'
       });
     }
 
-    const centerCoords = extractHqCoords(targetHq.location);
+    let specificHq = null;
+    if (targetHqId && mongoose.Types.ObjectId.isValid(targetHqId)) {
+      specificHq = allHqs.find(h => h._id.toString() === targetHqId.toString());
+    }
 
     const CATEGORIES = ['MEDICAL', 'DISASTER', 'TRAPPED', 'SECURITY', 'OTHER'];
     const TRANSPORTS = ['ONLINE', 'MESH', 'BOTH'];
@@ -296,8 +290,11 @@ async function generateMockSos(req, res) {
     const io = getIo(req);
 
     for (let i = 0; i < count; i++) {
+      // Cycle through ALL registered Headquarters when no specific HQ is targeted!
+      const activeHq = specificHq || allHqs[i % allHqs.length];
+      const centerCoords = extractHqCoords(activeHq.location);
+
       const targetDistKm = DISTANCES_SERIES[i % DISTANCES_SERIES.length];
-      // Generate coordinates with maximum 15km radius constraint
       const generated = generatePointWithinRadius(
         centerCoords.lat,
         centerCoords.lng,
@@ -318,7 +315,7 @@ async function generateMockSos(req, res) {
         },
         accuracyMeters: accuracy,
         category,
-        message: `Simulated Emergency Ping #${i + 1} (${generated.distanceKm} km from ${targetHq.name})`,
+        message: `Simulated Emergency Ping #${i + 1} (${generated.distanceKm} km from ${activeHq.name})`,
         transport,
         batteryPercentage: battery,
         status: 'ACTIVE'
@@ -332,21 +329,20 @@ async function generateMockSos(req, res) {
       const payload = buildSosPayload(populatedSos);
       createdSosEvents.push({
         ...payload,
-        distanceFromHqKm: generated.distanceKm
+        distanceFromHqKm: generated.distanceKm,
+        hqName: activeHq.name
       });
 
-      // Real-time broadcast to admin Socket.io namespace
       if (io) {
         io.of('/sos').emit('sos:new', payload);
       }
     }
 
     return res.status(201).json({
-      message: `Generated ${count} mock SOS signals within 15km radius of ${targetHq.name}`,
-      hqName: targetHq.name,
-      hqLocation: targetHq.location,
-      centerCoordinates: centerCoords,
-      maxRadiusKm: 15,
+      message: specificHq
+        ? `Generated ${count} mock SOS signals within 15km radius of ${specificHq.name}`
+        : `Generated ${count} mock SOS signals distributed across all ${allHqs.length} Headquarters (within 15km radius)`,
+      hqCount: allHqs.length,
       events: createdSosEvents
     });
   } catch (error) {

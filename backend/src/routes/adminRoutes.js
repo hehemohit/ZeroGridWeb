@@ -7,7 +7,8 @@ const {
   getUsers,
   addAdmin,
   removeAdmin,
-  autoAssignNearestAdmin
+  autoAssignNearestAdmin,
+  clearAllSosEvents
 } = require('../controllers/adminController');
 
 const router = express.Router();
@@ -16,12 +17,14 @@ const router = express.Router();
 router.use(verifyToken, verifyAdminRole);
 
 // GET /api/admin/sos?status=ACTIVE — live SOS event list for the map
-// Must be BEFORE /sos/:id style routes to avoid "history" being treated as an ID
 router.get('/sos/history', getSosHistory);
 router.get('/sos', getActiveSosEvents);
 
 // POST /api/admin/sos/auto-assign — Auto-assign active SOS events to nearest admin responder
 router.post('/sos/auto-assign', autoAssignNearestAdmin);
+
+// DELETE /api/admin/sos/clear-all — Temporary route to clear/delete all existing SOS signals
+router.delete('/sos/clear-all', clearAllSosEvents);
 
 // GET /api/admin/users?q=search — user directory search (any approved admin)
 router.get('/users', getUsers);
