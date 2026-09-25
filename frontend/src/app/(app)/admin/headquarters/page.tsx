@@ -18,6 +18,7 @@ import {
   Loader2,
   RefreshCw
 } from 'lucide-react';
+import { MapCanvas } from '@/components/admin/MapCanvas';
 import { HqModal, HeadquartersUI, AdminUserOption } from '@/components/admin/HqModal';
 
 interface ToastNotification {
@@ -35,6 +36,7 @@ export default function HeadquartersPage() {
   const [isLoadingAdmins, setIsLoadingAdmins] = useState(false);
   const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
 
+  const [selectedHqId, setSelectedHqId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
 
@@ -74,7 +76,6 @@ export default function HeadquartersPage() {
     try {
       const data = await api.get<{ users: any[] }>('/api/admin/users?limit=100');
       const allUsers = data.users || [];
-      // Filter for users with role === 'ADMIN'
       const adminsOnly = allUsers
         .filter((u: any) => u.role === 'ADMIN')
         .map((u: any) => ({
@@ -187,7 +188,7 @@ export default function HeadquartersPage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 h-full overflow-y-auto p-4 sm:p-6 bg-canvas text-primaryText font-sans">
+    <div className="flex-1 flex flex-col min-w-0 h-full overflow-y-auto p-3 sm:p-6 gap-4 bg-canvas text-primaryText font-sans">
       {/* Toast Notification Container */}
       {toast && (
         <div className="fixed top-5 right-6 z-50 flex items-center gap-3 bg-surface border border-hairline shadow-2xl px-4 py-3 rounded-2xl text-xs sm:text-sm font-medium animate-fade-in text-primaryText">
@@ -201,7 +202,7 @@ export default function HeadquartersPage() {
       )}
 
       {/* Header Area */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 text-xs font-mono text-mutedGray uppercase tracking-wider mb-1">
             <span>Tactical Console</span>
@@ -238,8 +239,17 @@ export default function HeadquartersPage() {
         </div>
       </div>
 
+      {/* Geo-Spatial Telemetry Map Canvas for Headquarters */}
+      <MapCanvas
+        activeSosCount={0}
+        headquarters={hqs}
+        selectedHqId={selectedHqId}
+        onHqMarkerClick={(id) => setSelectedHqId(id)}
+        onClosePreview={() => setSelectedHqId(null)}
+      />
+
       {/* Control Filter Bar */}
-      <div className="bg-surface border border-hairline rounded-2xl p-3.5 mb-6 shadow-sm flex flex-col md:flex-row items-center justify-between gap-3">
+      <div className="bg-surface border border-hairline rounded-2xl p-3.5 shadow-sm flex flex-col md:flex-row items-center justify-between gap-3">
         <div className="relative flex-1 w-full">
           <Search className="w-4 h-4 text-mutedGray absolute left-3 top-1/2 -translate-y-1/2" />
           <input
@@ -289,12 +299,12 @@ export default function HeadquartersPage() {
 
       {/* Main Grid Content */}
       {isLoadingHqs ? (
-        <div className="flex-1 min-h-[300px] flex flex-col items-center justify-center gap-3 bg-surface border border-hairline rounded-2xl p-12 text-center">
+        <div className="flex-1 min-h-[250px] flex flex-col items-center justify-center gap-3 bg-surface border border-hairline rounded-2xl p-12 text-center">
           <Loader2 className="w-8 h-8 text-brandTeal animate-spin" />
           <p className="text-xs font-bold text-primaryText">Loading Headquarters Telemetry...</p>
         </div>
       ) : filteredHqs.length === 0 ? (
-        <div className="flex-1 min-h-[300px] flex flex-col items-center justify-center p-8 bg-surface border border-hairline rounded-2xl text-center">
+        <div className="flex-1 min-h-[250px] flex flex-col items-center justify-center p-8 bg-surface border border-hairline rounded-2xl text-center">
           <div className="w-12 h-12 rounded-full bg-surfaceElevated border border-hairline flex items-center justify-center text-mutedGray mb-3">
             <Building2 className="w-6 h-6" />
           </div>
@@ -320,11 +330,15 @@ export default function HeadquartersPage() {
             const isActive = hq.status === 'ACTIVE';
             const admins = hq.assignedAdmins || [];
             const isDeleting = isDeletingId === hq.id;
+            const isSelectedOnMap = selectedHqId === hq.id;
 
             return (
               <div
                 key={hq.id}
-                className="bg-surface border border-hairline rounded-2xl p-5 shadow-sm hover:border-hairlineBright transition-all flex flex-col justify-between"
+                onClick={() => setSelectedHqId(hq.id)}
+                className={`bg-surface border rounded-2xl p-5 shadow-sm transition-all flex flex-col justify-between cursor-pointer ${
+                  isSelectedOnMap ? 'border-brandTeal ring-2 ring-brandTeal/40' : 'border-hairline hover:border-hairlineBright'
+                }`}
               >
                 {/* Top Section */}
                 <div>
@@ -417,7 +431,10 @@ export default function HeadquartersPage() {
 
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => openEditModal(hq)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openEditModal(hq);
+                      }}
                       className="px-3 py-1.5 rounded-lg bg-surfaceElevated border border-hairline text-secondaryText hover:text-primaryText hover:bg-surfaceCard transition-colors flex items-center gap-1.5 text-xs font-semibold"
                     >
                       <Edit2 className="w-3.5 h-3.5 text-brandTeal" />
@@ -425,7 +442,10 @@ export default function HeadquartersPage() {
                     </button>
 
                     <button
-                      onClick={() => handleDeleteHq(hq.id, hq.name)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteHq(hq.id, hq.name);
+                      }}
                       disabled={isDeleting}
                       className="px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500/20 transition-colors flex items-center gap-1.5 text-xs font-semibold disabled:opacity-50"
                     >

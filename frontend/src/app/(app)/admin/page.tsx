@@ -106,8 +106,10 @@ function AdminDashboardContent() {
   const searchParams = useSearchParams();
 
   const [sosEvents, setSosEvents] = useState<SosEventUI[]>([]);
+  const [hqs, setHqs] = useState<any[]>([]);
   const [users, setUsers] = useState<AdminUserUI[]>([]);
   const [selectedSosId, setSelectedSosId] = useState<string | null>(null);
+  const [selectedHqId, setSelectedHqId] = useState<string | null>(null);
   const [drawerSosId, setDrawerSosId] = useState<string | null>(null);
   const [selectedSosDetails, setSelectedSosDetails] = useState<SosEventUI | null>(null);
   const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
@@ -225,7 +227,17 @@ function AdminDashboardContent() {
     }
   }, [showToast]);
 
+  const fetchHqs = useCallback(async () => {
+    try {
+      const res = await api.get<{ hqs: any[] }>('/api/admin/hq');
+      setHqs(res.hqs || []);
+    } catch {
+      // Ignore HQ fetch error on main dash
+    }
+  }, []);
+
   useEffect(() => { fetchSosEvents(); }, [fetchSosEvents]);
+  useEffect(() => { fetchHqs(); }, [fetchHqs]);
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
   useEffect(() => { if (isUserManagementOpen) fetchUsers(userSearch); }, [isUserManagementOpen, fetchUsers, userSearch]);
 
@@ -374,11 +386,14 @@ function AdminDashboardContent() {
         <MapCanvas
           activeSosCount={activeSosCount}
           sosEvents={sosEvents.filter(e => e.status === 'ACTIVE' || e.status === 'ACKNOWLEDGED')}
+          headquarters={hqs}
           selectedSosId={selectedSosId}
-          onMarkerClick={(id) => setSelectedSosId(id)}
+          selectedHqId={selectedHqId}
+          onMarkerClick={(id) => { setSelectedSosId(id); setSelectedHqId(null); }}
+          onHqMarkerClick={(id) => { setSelectedHqId(id); setSelectedSosId(null); }}
           onMarkerDoubleClick={(id) => { setSelectedSosId(id); setDrawerSosId(id); }}
           onOpenDetails={(id) => { setSelectedSosId(id); setDrawerSosId(id); }}
-          onClosePreview={() => setSelectedSosId(null)}
+          onClosePreview={() => { setSelectedSosId(null); setSelectedHqId(null); }}
         />
 
         {/* LOWER: Emergency SOS Feed Console */}

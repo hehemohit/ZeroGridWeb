@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Building2, X, Search, Shield, Check, Loader2, MapPin, AlertCircle } from 'lucide-react';
+import { Building2, X, Search, Shield, Check, Loader2, MapPin, AlertCircle, Navigation } from 'lucide-react';
 
 export interface AdminUserOption {
   id: string;
@@ -188,22 +188,42 @@ export function HqModal({
 
           {/* Location */}
           <div>
-            <label className="block text-xs font-bold text-primaryText mb-1.5 font-mono uppercase tracking-wider">
-              Location / Physical Coordinates <span className="text-red-500">*</span>
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-bold text-primaryText font-mono uppercase tracking-wider">
+                Location / Physical Coordinates <span className="text-red-500">*</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                      (pos) => {
+                        const coordsStr = `${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`;
+                        setLocationStr((prev) => (prev.trim() ? `${prev} (${coordsStr})` : `GPS Coordinates: ${coordsStr}`));
+                      },
+                      () => setErrorMsg('Unable to retrieve current GPS location')
+                    );
+                  }
+                }}
+                className="text-[10px] font-mono text-brandTeal hover:underline flex items-center gap-1 font-semibold"
+              >
+                <Navigation className="w-3 h-3" />
+                <span>Use Current GPS</span>
+              </button>
+            </div>
             <div className="relative">
               <MapPin className="w-4 h-4 text-mutedGray absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 value={locationStr}
                 onChange={(e) => setLocationStr(e.target.value)}
-                placeholder="e.g. 742 Sector 4 Tactical Plaza, New Delhi (Coordinates: 28.6139, 77.2090)"
+                placeholder="e.g. Sector 4 Command Base, New Delhi (28.6139, 77.2090)"
                 className="w-full bg-surface border border-hairline rounded-xl pl-9 pr-3.5 py-2.5 text-xs text-primaryText placeholder-mutedGray focus:outline-none focus:border-brandTeal focus:ring-1 focus:ring-brandTeal/30"
                 required
               />
             </div>
             <p className="text-[11px] text-mutedGray mt-1">
-              Provide physical address or geo-coordinates for dispatch routing.
+              Tip: Include latitude and longitude numbers (e.g. <code className="text-brandTeal">28.6139, 77.2090</code>) to render a precise marker on Google Maps.
             </p>
           </div>
 

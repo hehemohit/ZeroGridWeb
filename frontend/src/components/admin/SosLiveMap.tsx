@@ -7,20 +7,35 @@ import {
   useMap,
   useMapsLibrary,
 } from '@vis.gl/react-google-maps';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Building2 } from 'lucide-react';
 import type { SosEventUI } from './SosDrawer';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
+export interface HqMarkerItem {
+  id: string;
+  name: string;
+  location: any;
+  coordinates?: [number, number]; // [lat, lng]
+  status: 'ACTIVE' | 'INACTIVE';
+  assignedAdmins?: any[];
+}
+
 export interface SosLiveMapProps {
   /** All SOS events from the parent (ACTIVE + ACKNOWLEDGED) */
-  sosEvents: SosEventUI[];
+  sosEvents?: SosEventUI[];
+  /** Registered Headquarters list */
+  headquarters?: HqMarkerItem[];
   /** The currently selected SOS id (display id or rawId) */
-  selectedSosId: string | null;
-  /** Called when the user single-clicks a map marker */
-  onMarkerClick: (id: string) => void;
-  /** Called when the user double-clicks a map marker */
+  selectedSosId?: string | null;
+  /** The currently selected HQ id */
+  selectedHqId?: string | null;
+  /** Called when the user single-clicks an SOS map marker */
+  onMarkerClick?: (id: string) => void;
+  /** Called when the user double-clicks an SOS map marker */
   onMarkerDoubleClick?: (id: string) => void;
+  /** Called when user clicks an HQ map marker */
+  onHqMarkerClick?: (hqId: string) => void;
 }
 
 // ─── Dark / Tactical Map Style ───────────────────────────────────────────────
@@ -46,7 +61,7 @@ const DARK_MAP_STYLE: google.maps.MapTypeStyle[] = [
   { featureType: 'water', elementType: 'labels.text.stroke', stylers: [{ color: '#071016' }] },
 ];
 
-// ─── SVG Marker Factory ───────────────────────────────────────────────────────
+// ─── SVG Marker Factories ──────────────────────────────────────────────────────
 
 function buildMarkerSvg(status: 'ACTIVE' | 'ACKNOWLEDGED', isSelected: boolean): string {
   const isActive = status === 'ACTIVE';
@@ -63,13 +78,70 @@ function buildMarkerSvg(status: 'ACTIVE' | 'ACKNOWLEDGED', isSelected: boolean):
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
+function buildHqMarkerSvg(status: 'ACTIVE' | 'INACTIVE', isSelected: boolean): string {
+  const isActive = status === 'ACTIVE';
+  const outerColor = isActive ? '#0A6E6E' : '#475569';
+  const innerColor = isActive ? '#2DD4BF' : '#94A3B8';
+  const ringOpacity = isSelected ? '0.5' : '0.25';
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="52" height="52" viewBox="0 0 52 52">
+  <circle cx="26" cy="26" r="24" fill="${outerColor}" opacity="${ringOpacity}" />
+  <circle cx="26" cy="26" r="16" fill="${outerColor}" stroke="${innerColor}" stroke-width="2.5" />
+  <path d="M20 33V21a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v12M17 33h18M24 24h4M24 27h4M24 30h4" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  ${isSelected ? `<circle cx="26" cy="26" r="23" fill="none" stroke="${innerColor}" stroke-width="2.5" opacity="0.9"/>` : ''}
+</svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+export function parseHqCoords(location: any, index: number = 0): [number, number] {
+  if (typeof location === 'object' && location !== null) {
+    if (Array.isArray(location.coordinates) && location.coordinates.length === 2) {
+      const lng = Number(location.coordinates[0]);
+      const lat = Number(location.coordinates[1]);
+      if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) return [lat, lng];
+    }
+    const lat = Number(location.lat ?? location.latitude);
+    const lng = Number(location.lng ?? location.longitude);
+    if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) return [lat, lng];
+  }
+
+  if (typeof location === 'string' && location.trim()) {
+    const match = location.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+    if (match) {
+      const p1 = parseFloat(match[1]);
+      const p2 = parseFloat(match[2]);
+      if (!isNaN(p1) && !isNaN(p2)) {
+        if (Math.abs(p1) <= 90 && Math.abs(p2) <= 180) {
+          return [p1, p2]; // [lat, lng]
+        }
+      }
+    }
+  }
+
+  // Fallback coords around default base (28.6139, 77.2090)
+  const baseLat = 28.6139;
+  const baseLng = 77.2090;
+  const offsetLat = ((index % 5) - 2) * 0.04;
+  const offsetLng = ((Math.floor(index / 5) % 5) - 2) * 0.04;
+  return [baseLat + offsetLat, baseLng + offsetLng];
+}
+
 // ─── Inner Map Controller ─────────────────────────────────────────────────────
 
 interface MapControllerProps extends SosLiveMapProps {
   onMapReady: () => void;
 }
 
-function MapController({ sosEvents, selectedSosId, onMarkerClick, onMarkerDoubleClick, onMapReady }: MapControllerProps) {
+function MapController({
+  sosEvents = [],
+  headquarters = [],
+  selectedSosId,
+  selectedHqId,
+  onMarkerClick,
+  onMarkerDoubleClick,
+  onHqMarkerClick,
+  onMapReady
+}: MapControllerProps) {
   const map = useMap();
   const markerLib = useMapsLibrary('marker');
 
@@ -80,7 +152,7 @@ function MapController({ sosEvents, selectedSosId, onMarkerClick, onMarkerDouble
   const hasAutoFit = useRef(false);
   const [isReady, setIsReady] = useState(false);
 
-  // Signal ready once all pieces are available
+  // Signal ready once map & markerLib are loaded
   useEffect(() => {
     if (map && markerLib) {
       setIsReady(true);
@@ -91,17 +163,16 @@ function MapController({ sosEvents, selectedSosId, onMarkerClick, onMarkerDouble
   // ── Auto-fit bounds on first meaningful data load ──────────────────────────
   useEffect(() => {
     if (!map || !isReady || hasAutoFit.current) return;
+
     const validEvents = sosEvents.filter(
       e => e.coordinates && e.status !== 'RESOLVED'
     );
-    if (validEvents.length === 0) return;
+    const validHqs = headquarters.map((hq, idx) => ({
+      ...hq,
+      coords: hq.coordinates || parseHqCoords(hq.location, idx)
+    }));
 
-    if (validEvents.length === 1 && validEvents[0].coordinates) {
-      map.setCenter({ lat: validEvents[0].coordinates[0], lng: validEvents[0].coordinates[1] });
-      map.setZoom(14);
-      hasAutoFit.current = true;
-      return;
-    }
+    if (validEvents.length === 0 && validHqs.length === 0) return;
 
     const bounds = new google.maps.LatLngBounds();
     validEvents.forEach(e => {
@@ -109,9 +180,22 @@ function MapController({ sosEvents, selectedSosId, onMarkerClick, onMarkerDouble
         bounds.extend({ lat: e.coordinates[0], lng: e.coordinates[1] });
       }
     });
-    map.fitBounds(bounds, { top: 60, right: 40, bottom: 60, left: 40 });
+
+    validHqs.forEach(hq => {
+      bounds.extend({ lat: hq.coords[0], lng: hq.coords[1] });
+    });
+
+    if (validEvents.length === 1 && validHqs.length === 0 && validEvents[0].coordinates) {
+      map.setCenter({ lat: validEvents[0].coordinates[0], lng: validEvents[0].coordinates[1] });
+      map.setZoom(14);
+    } else if (validHqs.length === 1 && validEvents.length === 0) {
+      map.setCenter({ lat: validHqs[0].coords[0], lng: validHqs[0].coords[1] });
+      map.setZoom(14);
+    } else {
+      map.fitBounds(bounds, { top: 60, right: 40, bottom: 60, left: 40 });
+    }
     hasAutoFit.current = true;
-  }, [map, isReady, sosEvents]);
+  }, [map, isReady, sosEvents, headquarters]);
 
   // ── Smooth Zoom Animation Helper ───────────────────────────────────────────
   const animateSmoothZoom = useCallback(
@@ -140,13 +224,13 @@ function MapController({ sosEvents, selectedSosId, onMarkerClick, onMarkerDouble
         clickTimerRef.current = null;
         if (onMarkerDoubleClick) {
           onMarkerDoubleClick(id);
-        } else {
+        } else if (onMarkerClick) {
           onMarkerClick(id);
         }
       } else {
         clickTimerRef.current = setTimeout(() => {
           clickTimerRef.current = null;
-          onMarkerClick(id);
+          if (onMarkerClick) onMarkerClick(id);
           if (coords) {
             animateSmoothZoom(coords[0], coords[1], 16);
           }
@@ -158,30 +242,42 @@ function MapController({ sosEvents, selectedSosId, onMarkerClick, onMarkerDouble
 
   // ── Pan + smooth zoom when a list item or marker is selected ─────────────
   useEffect(() => {
-    if (!map || !selectedSosId) return;
-    const target = sosEvents.find(
-      e => e.id === selectedSosId || e.rawId === selectedSosId
-    );
-    if (target?.coordinates) {
-      animateSmoothZoom(target.coordinates[0], target.coordinates[1], 16);
+    if (!map) return;
+    if (selectedSosId) {
+      const target = sosEvents.find(
+        e => e.id === selectedSosId || e.rawId === selectedSosId
+      );
+      if (target?.coordinates) {
+        animateSmoothZoom(target.coordinates[0], target.coordinates[1], 16);
+        return;
+      }
     }
-  }, [map, selectedSosId, sosEvents, animateSmoothZoom]);
+    if (selectedHqId) {
+      const targetHqIdx = headquarters.findIndex(h => h.id === selectedHqId);
+      if (targetHqIdx !== -1) {
+        const targetHq = headquarters[targetHqIdx];
+        const coords = targetHq.coordinates || parseHqCoords(targetHq.location, targetHqIdx);
+        animateSmoothZoom(coords[0], coords[1], 15);
+      }
+    }
+  }, [map, selectedSosId, selectedHqId, sosEvents, headquarters, animateSmoothZoom]);
 
   // ── Create / update / remove markers ─────────────────────────────────────
   useEffect(() => {
     if (!map || !markerLib || !isReady) return;
 
     const currentKeys = new Set(markersRef.current.keys());
+
+    // 1. Render SOS Markers
     const validEvents = sosEvents.filter(
       e => e.coordinates && (e.status === 'ACTIVE' || e.status === 'ACKNOWLEDGED')
     );
 
     validEvents.forEach(sos => {
-      const key = sos.rawId || sos.id;
+      const key = `sos-${sos.rawId || sos.id}`;
       const isSelected = selectedSosId === sos.id || selectedSosId === sos.rawId;
 
       if (markersRef.current.has(key)) {
-        // Update existing marker
         const existing = markersRef.current.get(key)!;
         const img = existing.content as HTMLImageElement;
         img.src = buildMarkerSvg(sos.status as 'ACTIVE' | 'ACKNOWLEDGED', isSelected);
@@ -199,7 +295,6 @@ function MapController({ sosEvents, selectedSosId, onMarkerClick, onMarkerDouble
         }
         currentKeys.delete(key);
       } else {
-        // Create new marker
         const img = document.createElement('img');
         img.src = buildMarkerSvg(sos.status as 'ACTIVE' | 'ACKNOWLEDGED', isSelected);
         img.style.width = '48px';
@@ -243,12 +338,87 @@ function MapController({ sosEvents, selectedSosId, onMarkerClick, onMarkerDouble
       }
     });
 
-    // Remove stale markers
+    // 2. Render HQ Markers
+    headquarters.forEach((hq, idx) => {
+      const key = `hq-${hq.id}`;
+      const isSelected = selectedHqId === hq.id;
+      const coords = hq.coordinates || parseHqCoords(hq.location, idx);
+
+      if (markersRef.current.has(key)) {
+        const existing = markersRef.current.get(key)!;
+        const img = existing.content as HTMLImageElement;
+        img.src = buildHqMarkerSvg(hq.status, isSelected);
+        existing.zIndex = isSelected ? 999 : 8;
+
+        if (isSelected) {
+          img.style.animation = 'markerSpringBounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+          img.style.transform = 'scale(1.25)';
+        } else {
+          img.style.animation = 'none';
+          img.style.transform = 'scale(1)';
+        }
+        currentKeys.delete(key);
+      } else {
+        const img = document.createElement('img');
+        img.src = buildHqMarkerSvg(hq.status, isSelected);
+        img.style.width = '52px';
+        img.style.height = '52px';
+        img.style.cursor = 'pointer';
+        img.style.transition = 'transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)';
+        img.draggable = false;
+
+        if (isSelected) {
+          img.style.animation = 'markerSpringBounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+          img.style.transform = 'scale(1.25)';
+        }
+
+        const marker = new markerLib.AdvancedMarkerElement({
+          map,
+          position: { lat: coords[0], lng: coords[1] },
+          content: img,
+          title: `[Headquarters] ${hq.name} (${hq.status})`,
+          zIndex: isSelected ? 999 : 8,
+        });
+
+        marker.addListener('click', () => {
+          if (onHqMarkerClick) {
+            onHqMarkerClick(hq.id);
+          } else if (onMarkerClick) {
+            onMarkerClick(hq.id);
+          }
+          animateSmoothZoom(coords[0], coords[1], 15);
+        });
+
+        img.addEventListener('mouseenter', () => {
+          if (selectedHqId !== hq.id) img.style.transform = 'scale(1.25)';
+        });
+        img.addEventListener('mouseleave', () => {
+          if (selectedHqId !== hq.id) img.style.transform = 'scale(1)';
+        });
+
+        markersRef.current.set(key, marker);
+        currentKeys.delete(key);
+      }
+    });
+
+    // 3. Remove stale markers
     currentKeys.forEach(key => {
       const stale = markersRef.current.get(key);
       if (stale) { stale.map = null; markersRef.current.delete(key); }
     });
-  }, [map, markerLib, sosEvents, selectedSosId, onMarkerClick, handleMarkerClick, isReady, animateSmoothZoom]);
+  }, [
+    map,
+    markerLib,
+    sosEvents,
+    headquarters,
+    selectedSosId,
+    selectedHqId,
+    onMarkerClick,
+    onHqMarkerClick,
+    handleMarkerClick,
+    isReady,
+    animateSmoothZoom
+  ]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -286,17 +456,31 @@ function MapSkeleton() {
 
 // ─── HUD Overlays ─────────────────────────────────────────────────────────────
 
-function MapHUD({ sosEvents }: { sosEvents: SosEventUI[] }) {
+function MapHUD({
+  sosEvents = [],
+  headquarters = []
+}: {
+  sosEvents?: SosEventUI[];
+  headquarters?: HqMarkerItem[];
+}) {
   const activeCount = sosEvents.filter(e => e.status === 'ACTIVE').length;
   const ackCount = sosEvents.filter(e => e.status === 'ACKNOWLEDGED').length;
+  const hqActiveCount = headquarters.filter(h => h.status === 'ACTIVE').length;
 
   return (
     <div className="absolute top-3 left-3 z-20 flex flex-col gap-1.5 pointer-events-none">
+      {hqActiveCount > 0 && (
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-surfaceCard/90 backdrop-blur-md border border-brandTeal/30 rounded-full text-[11px] shadow-glow-teal">
+          <Building2 className="w-3.5 h-3.5 text-brandTeal" />
+          <span className="font-bold text-brandTeal font-mono">{hqActiveCount}</span>
+          <span className="text-secondaryText">ACTIVE HQs</span>
+        </div>
+      )}
       {activeCount > 0 && (
         <div className="flex items-center gap-2 px-3 py-1.5 bg-surfaceCard/90 backdrop-blur-md border border-alertRedBorder rounded-full text-[11px] shadow-glow-red">
           <span className="w-2 h-2 rounded-full bg-alertRed animate-ping" />
           <span className="font-bold text-alertRed font-mono">{activeCount}</span>
-          <span className="text-secondaryText">ACTIVE</span>
+          <span className="text-secondaryText">ACTIVE SOS</span>
         </div>
       )}
       {ackCount > 0 && (
@@ -306,10 +490,10 @@ function MapHUD({ sosEvents }: { sosEvents: SosEventUI[] }) {
           <span className="text-secondaryText">ACK&apos;D</span>
         </div>
       )}
-      {activeCount === 0 && ackCount === 0 && (
+      {activeCount === 0 && ackCount === 0 && hqActiveCount === 0 && (
         <div className="flex items-center gap-2 px-3 py-1.5 bg-surfaceCard/90 backdrop-blur-md border border-hairline rounded-full text-[11px]">
           <span className="w-2 h-2 rounded-full bg-brandTeal/40 animate-pulse" />
-          <span className="text-mutedGray">No active SOS pings</span>
+          <span className="text-mutedGray">Telemetry Ready</span>
         </div>
       )}
     </div>
@@ -349,7 +533,15 @@ function NoApiKeyFallback() {
 
 const DEFAULT_CENTER = { lat: 20.5937, lng: 78.9629 }; // India center fallback
 
-export function SosLiveMap({ sosEvents, selectedSosId, onMarkerClick }: SosLiveMapProps) {
+export function SosLiveMap({
+  sosEvents = [],
+  headquarters = [],
+  selectedSosId,
+  selectedHqId,
+  onMarkerClick,
+  onMarkerDoubleClick,
+  onHqMarkerClick
+}: SosLiveMapProps) {
   const [mapReady, setMapReady] = useState(false);
   const handleMapReady = useCallback(() => setMapReady(true), []);
 
@@ -391,13 +583,17 @@ export function SosLiveMap({ sosEvents, selectedSosId, onMarkerClick }: SosLiveM
         >
           <MapController
             sosEvents={sosEvents}
+            headquarters={headquarters}
             selectedSosId={selectedSosId}
+            selectedHqId={selectedHqId}
             onMarkerClick={onMarkerClick}
+            onMarkerDoubleClick={onMarkerDoubleClick}
+            onHqMarkerClick={onHqMarkerClick}
             onMapReady={handleMapReady}
           />
         </Map>
 
-        {mapReady && <MapHUD sosEvents={sosEvents} />}
+        {mapReady && <MapHUD sosEvents={sosEvents} headquarters={headquarters} />}
       </APIProvider>
     </>
   );
