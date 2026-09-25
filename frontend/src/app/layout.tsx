@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
+import { ThemeProvider } from "@/context/ThemeContext";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist" });
 
@@ -24,8 +25,14 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={geist.variable}>
-      <body className="bg-gray-950 text-gray-100 antialiased">
-        <AuthProvider>{children}</AuthProvider>
+      {/*
+        bg-canvas / text-primaryText use CSS variables defined in globals.css.
+        When ThemeProvider adds .light to <html>, those variables switch automatically.
+      */}
+      <body className="bg-canvas text-primaryText antialiased transition-colors duration-300">
+        <ThemeProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

@@ -31,12 +31,37 @@
   --orange-accent: #f97316;
 }
 
+/* ── Light Theme Overrides ────────────────────────────────────────────────── */
+html.light {
+  --color-canvas: #F1F5F9;
+  --color-surface: #FFFFFF;
+  --color-surfaceElevated: #F8FAFC;
+  --color-surfaceCard: #FFFFFF;
+  --color-hairline: #E2E8F0;
+  --color-hairlineBright: #CBD5E1;
+  --color-primaryText: #0F172A;
+  --color-secondaryText: #334155;
+  --color-mutedGray: #64748B;
+  --color-dimGray: #94A3B8;
+  --color-brandTeal: #0D9488;
+  --color-brandTealGlow: #0F766E;
+  --color-brandTealDark: #CCFBF1;
+  --color-brandTealLight: #E0FDF4;
+  --color-alertRed: #DC2626;
+  --color-alertRedBg: rgba(220, 38, 38, 0.08);
+  --color-alertRedBorder: rgba(220, 38, 38, 0.3);
+  --color-alertRedGlow: rgba(220, 38, 38, 0.15);
+  --shadow-glow-red: 0 0 16px -2px rgba(220, 38, 38, 0.2);
+  --shadow-glow-teal: 0 0 16px -2px rgba(13, 148, 136, 0.2);
+  --shadow-panel-dark: 0 4px 24px -4px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(226, 232, 240, 0.8);
+}
+
 /* Smooth scrolling */
 html {
   scroll-behavior: smooth;
 }
 
-/* Custom scrollbar */
+/* Custom scrollbar — dark */
 ::-webkit-scrollbar {
   width: 6px;
 }
@@ -49,6 +74,17 @@ html {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #4b5563;
+}
+
+/* Custom scrollbar — light */
+html.light ::-webkit-scrollbar-track {
+  background: #F1F5F9;
+}
+html.light ::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+}
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
 }
 
 /* Glow animation for SOS pulse */
@@ -73,12 +109,16 @@ html {
   background-clip: text;
 }
 
-/* Glassmorphism card */
+/* Glassmorphism card — adapts to theme */
 .glass-card {
   background: rgba(17, 24, 39, 0.7);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.08);
+}
+html.light .glass-card {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 /* Shimmer loading skeleton */
@@ -107,3 +147,7 @@ html {
 .status-active      { @apply bg-red-500/20 text-red-400 border border-red-500/30; }
 .status-acknowledged { @apply bg-yellow-500/20 text-yellow-400 border border-yellow-500/30; }
 .status-resolved    { @apply bg-green-500/20 text-green-400 border border-green-500/30; }
+
+html.light .status-active      { @apply bg-red-100 text-red-600 border-red-300; }
+html.light .status-acknowledged { @apply bg-amber-100 text-amber-700 border-amber-300; }
+html.light .status-resolved    { @apply bg-emerald-100 text-emerald-700 border-emerald-300; }

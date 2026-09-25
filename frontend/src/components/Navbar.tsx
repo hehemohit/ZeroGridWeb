@@ -4,6 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Shield, Menu, X, LogOut, User, AlertTriangle, Users, Home } from 'lucide-react';
 import { useState } from 'react';
 import { usePathname } from 'next/navigation';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 const navLinks = [
   { href: '/dashboard', label: 'Dashboard', icon: Home },
@@ -64,7 +65,10 @@ export default function Navbar() {
           )}
 
           {/* Right side */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            {/* Theme toggle — always visible */}
+            <ThemeToggle />
+
             {user ? (
               <>
                 <div className="hidden md:flex items-center gap-2">
@@ -141,6 +145,10 @@ export default function Navbar() {
               <Link href="/auth/register" onClick={() => setOpen(false)} className="block px-3 py-2 text-sm bg-red-500 text-white rounded-lg text-center font-medium">Get Started</Link>
             </>
           )}
+          {/* Theme toggle in mobile drawer */}
+          <div className="pt-2 border-t border-white/5">
+            <ThemeToggle variant="pill" />
+          </div>
         </div>
       )}
     </nav>
