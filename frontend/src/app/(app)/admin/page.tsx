@@ -381,7 +381,7 @@ function AdminDashboardContent() {
     if (
       currentUser &&
       (userId === currentUser.id ||
-        (currentUser.email && targetUser?.email && currentUser.email.toLowerCase() === currentUser.email.toLowerCase()))
+        (currentUser.email && targetUser?.email && targetUser.email.toLowerCase() === currentUser.email.toLowerCase()))
     ) {
       showToast('You cannot revoke your own admin status', 'error');
       return;

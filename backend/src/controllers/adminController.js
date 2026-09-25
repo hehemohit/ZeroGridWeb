@@ -276,6 +276,11 @@ async function removeAdmin(req, res) {
     targetUser.adminApproved = null;
     await targetUser.save();
 
+    await Headquarters.updateMany(
+      { assignedAdmins: targetUser._id },
+      { $pull: { assignedAdmins: targetUser._id } }
+    );
+
     return res.status(200).json({
       message: `${targetUser.displayName} has been demoted to CITIZEN`,
       userId
