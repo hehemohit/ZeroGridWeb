@@ -110,18 +110,36 @@ function MapController({ sosEvents, selectedSosId, onMarkerClick, onMapReady }: 
     hasAutoFit.current = true;
   }, [map, isReady, sosEvents]);
 
-  // ── Pan + zoom when a list item is selected ───────────────────────────────
+  // ── Smooth Zoom Animation Helper ───────────────────────────────────────────
+  const animateSmoothZoom = useCallback(
+    (targetLat: number, targetLng: number, targetZoom = 16) => {
+      if (!map) return;
+      map.panTo({ lat: targetLat, lng: targetLng });
+
+      let currentZoom = map.getZoom() ?? 6;
+      if (currentZoom >= targetZoom) return;
+
+      const zoomTimer = setInterval(() => {
+        currentZoom += 1;
+        map.setZoom(currentZoom);
+        if (currentZoom >= targetZoom) {
+          clearInterval(zoomTimer);
+        }
+      }, 95);
+    },
+    [map]
+  );
+
+  // ── Pan + smooth zoom when a list item or marker is selected ─────────────
   useEffect(() => {
     if (!map || !selectedSosId) return;
     const target = sosEvents.find(
       e => e.id === selectedSosId || e.rawId === selectedSosId
     );
     if (target?.coordinates) {
-      map.panTo({ lat: target.coordinates[0], lng: target.coordinates[1] });
-      const zoom = map.getZoom() ?? 0;
-      if (zoom < 14) map.setZoom(14);
+      animateSmoothZoom(target.coordinates[0], target.coordinates[1], 16);
     }
-  }, [map, selectedSosId, sosEvents]);
+  }, [map, selectedSosId, sosEvents, animateSmoothZoom]);
 
   // ── Create / update / remove markers ─────────────────────────────────────
   useEffect(() => {
@@ -142,6 +160,17 @@ function MapController({ sosEvents, selectedSosId, onMarkerClick, onMapReady }: 
         const img = existing.content as HTMLImageElement;
         img.src = buildMarkerSvg(sos.status as 'ACTIVE' | 'ACKNOWLEDGED', isSelected);
         existing.zIndex = isSelected ? 999 : sos.status === 'ACTIVE' ? 10 : 5;
+
+        if (isSelected) {
+          img.style.animation = 'markerSpringBounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+          img.style.transform = 'scale(1.25)';
+        } else if (sos.status === 'ACTIVE') {
+          img.style.animation = 'sosMarkerPulse 1.8s ease-in-out infinite';
+          img.style.transform = 'scale(1)';
+        } else {
+          img.style.animation = 'none';
+          img.style.transform = 'scale(1)';
+        }
         currentKeys.delete(key);
       } else {
         // Create new marker
@@ -150,10 +179,13 @@ function MapController({ sosEvents, selectedSosId, onMarkerClick, onMapReady }: 
         img.style.width = '48px';
         img.style.height = '48px';
         img.style.cursor = 'pointer';
-        img.style.transition = 'transform 0.15s ease';
+        img.style.transition = 'transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)';
         img.draggable = false;
 
-        if (sos.status === 'ACTIVE') {
+        if (isSelected) {
+          img.style.animation = 'markerSpringBounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+          img.style.transform = 'scale(1.25)';
+        } else if (sos.status === 'ACTIVE') {
           img.style.animation = 'sosMarkerPulse 1.8s ease-in-out infinite';
         }
 
@@ -165,10 +197,23 @@ function MapController({ sosEvents, selectedSosId, onMarkerClick, onMapReady }: 
           zIndex: isSelected ? 999 : sos.status === 'ACTIVE' ? 10 : 5,
         });
 
-        marker.addListener('click', () => onMarkerClick(sos.id));
+        marker.addListener('click', () => {
+          onMarkerClick(sos.id);
+          if (sos.coordinates) {
+            animateSmoothZoom(sos.coordinates[0], sos.coordinates[1], 16);
+          }
+        });
 
-        img.addEventListener('mouseenter', () => { img.style.transform = 'scale(1.2)'; });
-        img.addEventListener('mouseleave', () => { img.style.transform = 'scale(1)'; });
+        img.addEventListener('mouseenter', () => {
+          if (selectedSosId !== sos.id && selectedSosId !== sos.rawId) {
+            img.style.transform = 'scale(1.25)';
+          }
+        });
+        img.addEventListener('mouseleave', () => {
+          if (selectedSosId !== sos.id && selectedSosId !== sos.rawId) {
+            img.style.transform = 'scale(1)';
+          }
+        });
 
         markersRef.current.set(key, marker);
         currentKeys.delete(key);
@@ -180,7 +225,7 @@ function MapController({ sosEvents, selectedSosId, onMarkerClick, onMapReady }: 
       const stale = markersRef.current.get(key);
       if (stale) { stale.map = null; markersRef.current.delete(key); }
     });
-  }, [map, markerLib, sosEvents, selectedSosId, onMarkerClick, isReady]);
+  }, [map, markerLib, sosEvents, selectedSosId, onMarkerClick, isReady, animateSmoothZoom]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -297,6 +342,12 @@ export function SosLiveMap({ sosEvents, selectedSosId, onMarkerClick }: SosLiveM
         @keyframes sosMarkerPulse {
           0%, 100% { transform: scale(1); opacity: 1; }
           50% { transform: scale(1.18); opacity: 0.85; }
+        }
+        @keyframes markerSpringBounce {
+          0% { transform: scale(1); }
+          45% { transform: scale(1.4); }
+          75% { transform: scale(1.1); }
+          100% { transform: scale(1.25); }
         }
       `}</style>
 

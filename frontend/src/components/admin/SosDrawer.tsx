@@ -140,27 +140,27 @@ export function SosDrawer({
                   </div>
                 </div>
 
-                {/* Specs Grid: 1 column on mobile, 2 on laptop */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 mt-4 pt-3 border-t border-hairline text-xs">
-                  <div className="flex sm:block justify-between items-center sm:items-start">
+                {/* Specs Grid: 2 columns with clear vertical spacing */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 pt-3 border-t border-hairline text-xs">
+                  <div className="flex flex-col gap-0.5">
                     <span className="text-mutedGray text-[11px]">Reported Time</span>
-                    <span className="font-semibold text-primaryText text-right sm:text-left">
+                    <span className="font-semibold text-primaryText text-xs">
                       {new Date(sos.timestamp).toLocaleString()}
                     </span>
                   </div>
-                  <div className="flex sm:block justify-between items-center sm:items-start">
+                  <div className="flex flex-col gap-0.5">
                     <span className="text-mutedGray text-[11px]">Hardware Battery</span>
-                    <span className="font-semibold text-brandTeal font-mono">{sos.batteryLevel}</span>
+                    <span className="font-semibold text-brandTeal font-mono text-xs">{sos.batteryLevel}</span>
                   </div>
-                  <div className="flex sm:block justify-between items-center sm:items-start">
+                  <div className="flex flex-col gap-0.5">
                     <span className="text-mutedGray text-[11px]">Direct Mesh Peers</span>
-                    <span className="font-semibold text-secondaryText font-mono">
+                    <span className="font-semibold text-secondaryText font-mono text-xs">
                       {sos.peerNodesInRange} nodes
                     </span>
                   </div>
-                  <div className="flex sm:block justify-between items-center sm:items-start">
+                  <div className="flex flex-col gap-0.5">
                     <span className="text-mutedGray text-[11px]">Urgency Class</span>
-                    <span className="font-semibold text-alertRed font-mono">{sos.severity}</span>
+                    <span className="font-semibold text-alertRed font-mono text-xs">{sos.severity}</span>
                   </div>
                 </div>
               </div>
