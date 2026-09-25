@@ -74,6 +74,24 @@ async function triggerSos(req, res) {
     const VALID_TRANSPORTS = ['ONLINE', 'MESH', 'BOTH'];
     const sosTransport = transport && VALID_TRANSPORTS.includes(transport) ? transport : 'ONLINE';
 
+    // Deduplication check: if this user created an ACTIVE SOS within the last 15 seconds,
+    // return the existing event instead of creating a duplicate document & duplicate admin notification.
+    const recentDuplicate = await SosEvent.findOne({
+      triggeredBy: req.user.userId,
+      status: 'ACTIVE',
+      createdAt: { $gte: new Date(Date.now() - 15000) }
+    }).populate({
+      path: 'triggeredBy',
+      select: 'displayName email phoneNumber photoUrl'
+    });
+
+    if (recentDuplicate) {
+      return res.status(200).json({
+        message: 'SOS already dispatched recently (deduplicated)',
+        sos: buildSosPayload(recentDuplicate, req.user.userId)
+      });
+    }
+
     // Create the SOS event document
     const sosEvent = await SosEvent.create({
       triggeredBy: req.user.userId,
