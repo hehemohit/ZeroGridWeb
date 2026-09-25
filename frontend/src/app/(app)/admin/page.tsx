@@ -495,7 +495,12 @@ export default function AdminDashboardPage() {
       {/* ================= 2. Main Content Area (Stacked Vertical Layout) ================= */}
       <main className="flex-1 flex flex-col min-w-0 h-full overflow-hidden p-4 gap-4 bg-canvas">
         {/* UPPER CONTAINER: Geo-Spatial Telemetry Canvas */}
-        <MapCanvas activeSosCount={activeSosCount} />
+        <MapCanvas
+          activeSosCount={activeSosCount}
+          sosEvents={sosEvents.filter(e => e.status === 'ACTIVE' || e.status === 'ACKNOWLEDGED')}
+          selectedSosId={selectedSosId}
+          onMarkerClick={(id) => setSelectedSosId(id)}
+        />
 
         {/* LOWER CONTAINER: Emergency SOS Dispatch Feed (Structured bottom console panel) */}
         <section className="h-80 flex-shrink-0 flex flex-col bg-surface border border-hairline rounded-16dp overflow-hidden shadow-panel-dark">
