@@ -27,6 +27,33 @@ const sosNoteSchema = new mongoose.Schema(
   { _id: false }
 );
 
+/**
+ * Per-user acknowledgment entry.
+ * Tracks who acknowledged the SOS, when, and whether they confirmed safety.
+ */
+const sosAckSchema = new mongoose.Schema(
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    },
+    displayName: {
+      type: String,
+      default: ''
+    },
+    confirmedSafe: {
+      type: Boolean,
+      default: true
+    },
+    acknowledgedAt: {
+      type: Date,
+      default: Date.now
+    }
+  },
+  { _id: false }
+);
+
 const sosEventSchema = new mongoose.Schema(
   {
     triggeredBy: {
@@ -71,10 +98,16 @@ const sosEventSchema = new mongoose.Schema(
       default: 'ACTIVE',
       index: true
     },
+    // Legacy single-acknowledger field (kept for backward compat)
     acknowledgedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       default: null
+    },
+    // Per-user acknowledgment list - tracks each individual who confirmed safety
+    acknowledgedByUsers: {
+      type: [sosAckSchema],
+      default: []
     },
     resolvedBy: {
       type: mongoose.Schema.Types.ObjectId,

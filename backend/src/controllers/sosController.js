@@ -9,7 +9,13 @@ function getIo(req) {
 }
 
 /** Safe SOS payload to send over Socket.io / API responses */
-function buildSosPayload(sos) {
+function buildSosPayload(sos, requestingUserId) {
+  const isAcknowledgedByMe = requestingUserId
+    ? (sos.acknowledgedByUsers || []).some(
+        (a) => a.userId && a.userId.toString() === requestingUserId.toString()
+      )
+    : false;
+
   return {
     id: sos._id,
     triggeredBy: sos.triggeredBy,
@@ -20,6 +26,8 @@ function buildSosPayload(sos) {
     transport: sos.transport,
     status: sos.status,
     acknowledgedBy: sos.acknowledgedBy,
+    acknowledgedByUsers: sos.acknowledgedByUsers || [],
+    isAcknowledgedByMe,
     resolvedBy: sos.resolvedBy,
     notes: sos.notes,
     createdAt: sos.createdAt,
@@ -95,7 +103,7 @@ async function triggerSos(req, res) {
     // 1. Prepare and send the HTTP response first so the SOS creator's request does not wait on push delivery
     res.status(201).json({
       message: 'SOS dispatched successfully',
-      sos: buildSosPayload(populatedSos)
+      sos: buildSosPayload(populatedSos, req.user.userId)
     });
 
     // 2. Fire FCM push to all linked emergency contacts asynchronously (non-blocking)
@@ -137,7 +145,10 @@ async function triggerSos(req, res) {
         }
       } catch (pushErr) {
         // Push failures must never crash the server
-        console.error(`[SOS ${sosEvent._id}]: FCM push dispatch failed (non-fatal):`, pushErr.message);
+        console.error(
+          `[SOS ${sosEvent._id}]: FCM push dispatch failed (non-fatal):`,
+          pushErr.message
+        );
       }
     });
 
@@ -150,7 +161,7 @@ async function triggerSos(req, res) {
 
 /**
  * GET /api/sos/:id
- * Returns a single SOS event. Only the event creator can access this route.
+ * Returns a single SOS event. Only the event creator or an admin can access this route.
  */
 async function getSosById(req, res) {
   try {
@@ -177,7 +188,7 @@ async function getSosById(req, res) {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    return res.status(200).json({ sos: buildSosPayload(sos) });
+    return res.status(200).json({ sos: buildSosPayload(sos, req.user.userId) });
   } catch (error) {
     console.error('[SOS] getSosById error:', error);
     return res.status(500).json({ message: 'Failed to fetch SOS event.' });
@@ -186,31 +197,66 @@ async function getSosById(req, res) {
 
 /**
  * PUT /api/sos/:id/acknowledge
- * Admin only. Transitions status from ACTIVE -> ACKNOWLEDGED.
+ * Any authenticated user (relative, contact, local responder) can acknowledge an SOS.
+ * Tracks per-user acknowledgments in acknowledgedByUsers[].
+ * Body: { confirmedSafe?: boolean }
+ *   - Relative/Family SOS: confirmedSafe = true  ("Are you sure he is safe?")
+ *   - Local Area SOS:      confirmedSafe = false ("Are you sure the situation is attended to?")
  */
 async function acknowledgeSos(req, res) {
   try {
     const { id } = req.params;
+    const confirmedSafe =
+      req.body.confirmedSafe !== undefined ? Boolean(req.body.confirmedSafe) : true;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ message: 'Invalid SOS event ID' });
     }
 
-    const sos = await SosEvent.findOneAndUpdate(
-      { _id: id, status: 'ACTIVE' },
-      {
-        $set: {
-          status: 'ACKNOWLEDGED',
-          acknowledgedBy: req.user.userId
-        }
-      },
-      { returnDocument: 'after' }
-    ).populate('triggeredBy', 'displayName email phoneNumber photoUrl');
+    const existing = await SosEvent.findById(id).select('acknowledgedByUsers status');
+    if (!existing) {
+      return res.status(404).json({ message: 'SOS event not found' });
+    }
+    if (existing.status === 'RESOLVED') {
+      return res.status(400).json({ message: 'SOS event is already resolved' });
+    }
+
+    const alreadyAcked = (existing.acknowledgedByUsers || []).some(
+      (a) => a.userId && a.userId.toString() === req.user.userId
+    );
+
+    if (alreadyAcked) {
+      const sos = await SosEvent.findById(id).populate(
+        'triggeredBy',
+        'displayName email phoneNumber photoUrl'
+      );
+      return res.status(200).json({
+        message: 'Already acknowledged by you',
+        sos: buildSosPayload(sos, req.user.userId)
+      });
+    }
+
+    const ackEntry = {
+      userId: req.user.userId,
+      displayName: req.user.displayName || req.user.email || 'Unknown',
+      confirmedSafe,
+      acknowledgedAt: new Date()
+    };
+
+    const updateOp = {
+      $push: { acknowledgedByUsers: ackEntry },
+      $set: { status: 'ACKNOWLEDGED' }
+    };
+    if (!existing.acknowledgedByUsers || existing.acknowledgedByUsers.length === 0) {
+      updateOp.$set.acknowledgedBy = req.user.userId;
+    }
+
+    const sos = await SosEvent.findByIdAndUpdate(id, updateOp, {
+      returnDocument: 'after'
+    }).populate('triggeredBy', 'displayName email phoneNumber photoUrl');
 
     if (!sos) {
-      return res.status(404).json({
-        message: 'SOS event not found or is already acknowledged/resolved'
-      });
+      return res.status(404).json({ message: 'SOS event not found or failed to update' });
     }
 
     // Notify admin panel of the status update
@@ -220,12 +266,37 @@ async function acknowledgeSos(req, res) {
     }
 
     return res.status(200).json({
-      message: 'SOS event acknowledged',
-      sos: buildSosPayload(sos)
+      message: confirmedSafe
+        ? 'SOS acknowledged - person confirmed safe'
+        : 'SOS acknowledged - situation attended to',
+      sos: buildSosPayload(sos, req.user.userId)
     });
   } catch (error) {
     console.error('[SOS] acknowledgeSos error:', error);
     return res.status(500).json({ message: 'Failed to acknowledge SOS event.' });
+  }
+}
+
+/**
+ * GET /api/sos/acknowledged
+ * Returns SOS events that the requesting user has personally acknowledged.
+ * Populates the "Acknowledged SOS History" section in the Android app.
+ */
+async function getAcknowledgedSosForUser(req, res) {
+  try {
+    const acknowledgedEvents = await SosEvent.find({
+      'acknowledgedByUsers.userId': req.user.userId
+    })
+      .sort({ updatedAt: -1 })
+      .limit(50)
+      .populate({ path: 'triggeredBy', select: 'displayName email phoneNumber photoUrl' });
+
+    return res.status(200).json({
+      events: acknowledgedEvents.map((e) => buildSosPayload(e, req.user.userId))
+    });
+  } catch (error) {
+    console.error('[SOS] getAcknowledgedSosForUser error:', error);
+    return res.status(500).json({ message: 'Failed to fetch acknowledged SOS events.' });
   }
 }
 
@@ -265,7 +336,7 @@ async function resolveSos(req, res) {
 
     return res.status(200).json({
       message: 'SOS event resolved',
-      sos: buildSosPayload(sos)
+      sos: buildSosPayload(sos, req.user.userId)
     });
   } catch (error) {
     console.error('[SOS] resolveSos error:', error);
@@ -314,14 +385,13 @@ async function addNoteToSos(req, res) {
 
     return res.status(201).json({
       message: 'Note added successfully',
-      sos: buildSosPayload(sos)
+      sos: buildSosPayload(sos, req.user.userId)
     });
   } catch (error) {
     console.error('[SOS] addNoteToSos error:', error);
     return res.status(500).json({ message: 'Failed to add note.' });
   }
 }
-
 
 /**
  * GET /api/sos/active
@@ -339,8 +409,9 @@ async function getActiveSos(req, res) {
         select: 'displayName email phoneNumber photoUrl'
       });
 
-    const payload = activeEvents.map(buildSosPayload);
-    return res.status(200).json({ events: payload });
+    return res.status(200).json({
+      events: activeEvents.map((e) => buildSosPayload(e, req.user.userId))
+    });
   } catch (error) {
     console.error('[SOS] getActiveSos error:', error);
     return res.status(500).json({ message: 'Failed to fetch active SOS events.' });
@@ -352,6 +423,7 @@ module.exports = {
   getSosById,
   getActiveSos,
   acknowledgeSos,
+  getAcknowledgedSosForUser,
   resolveSos,
   addNoteToSos
 };
