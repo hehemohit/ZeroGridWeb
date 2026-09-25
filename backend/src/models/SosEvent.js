@@ -1,10 +1,10 @@
 const mongoose = require('mongoose');
 
 /**
- * SosEvent - persisted record of every SOS dispatch.
+ * SosEvent — persisted record of every SOS dispatch.
  *
  * location uses GeoJSON Point so MongoDB can do geospatial queries
- * (e.g. find active SOS within 10 km of rescue base).
+ * (e.g. "find active SOS within 10 km of rescue base").
  * The 2dsphere index below enables that immediately.
  */
 const sosNoteSchema = new mongoose.Schema(
@@ -138,7 +138,8 @@ const sosEventSchema = new mongoose.Schema(
   }
 );
 
-// 2dsphere index - enables geospatial queries on the location field.
+// 2dsphere index — enables geospatial queries on the location field.
+// Equivalent to: db.sosEvents.createIndex({ location: "2dsphere" })
 sosEventSchema.index({ location: '2dsphere' });
 
 const SosEvent = mongoose.model('SosEvent', sosEventSchema);
