@@ -7,9 +7,6 @@ import { api } from '@/lib/api';
 import { io, Socket } from 'socket.io-client';
 import {
   Users,
-  MapPin,
-  Compass,
-  Info,
   Search,
   CheckCircle,
   Shield,
@@ -17,49 +14,11 @@ import {
   Battery,
   Radio,
   ChevronRight,
-  X,
-  Crosshair,
-  Check,
-  CheckCheck,
-  FileText,
   Loader2,
 } from 'lucide-react';
-
-// --- Types conforming strictly to backend data model ---
-interface NoteItem {
-  id: string;
-  author: string;
-  text: string;
-  createdAt: string;
-}
-
-interface SosEventUI {
-  id: string;        // Display ID e.g. "sos-8921"
-  rawId: string;     // Backend Mongo ObjectId
-  userId: string;
-  userName: string;
-  userEmail: string;
-  role: 'AUTHORITY' | 'REGULAR';
-  status: 'ACTIVE' | 'ACKNOWLEDGED' | 'RESOLVED';
-  severity: string;
-  location: string;
-  coordinates?: [number, number];
-  timestamp: string;
-  batteryLevel: string;
-  peerNodesInRange: number;
-  message?: string;
-  notes: NoteItem[];
-}
-
-interface AdminUserUI {
-  id: string;
-  name: string;
-  email: string;
-  role: 'ADMIN' | 'USER';
-  nodeType: 'AUTHORITY' | 'REGULAR';
-  nodeAddress: string;
-  status: 'Active' | 'Standby';
-}
+import { MapCanvas } from '@/components/admin/MapCanvas';
+import { SosDrawer, SosEventUI, NoteItem } from '@/components/admin/SosDrawer';
+import { UserManagementModal, AdminUserUI } from '@/components/admin/UserManagementModal';
 
 interface Toast {
   message: string;
@@ -218,7 +177,7 @@ export default function AdminDashboardPage() {
         setSelectedSosDetails(sosItem);
       }
     } catch {
-      // Fallback to local item if fetch by ID requires creator permission
+      // Fallback to local item if fetch by ID requires creator permission or fails
       setSelectedSosDetails(sosItem);
     } finally {
       setDrawerLoading(false);
@@ -271,7 +230,7 @@ export default function AdminDashboardPage() {
     };
   }, [fetchSosEvents]);
 
-  // When selected SOS ID changes, fetch details
+  // Selected SOS ID change watcher
   const selectedSos = useMemo(() => {
     return sosEvents.find(s => s.id === selectedSosId || s.rawId === selectedSosId) || null;
   }, [sosEvents, selectedSosId]);
@@ -416,6 +375,7 @@ export default function AdminDashboardPage() {
   };
 
   const activeDrawerSos = selectedSosDetails || selectedSos;
+  const activeSosCount = sosEvents.filter(e => e.status === 'ACTIVE').length;
 
   return (
     <div className="flex flex-col h-screen bg-canvas text-primaryText font-sans select-none overflow-hidden">
@@ -484,77 +444,8 @@ export default function AdminDashboardPage() {
 
       {/* ================= 2. Main Content Area (Split-Pane) ================= */}
       <main className="flex-1 flex overflow-hidden p-4 gap-4">
-        {/* CENTER / LEFT PANE: Large empty container reserved for Google Maps integration */}
-        <section className="flex-1 flex flex-col min-w-0 bg-surface border border-hairline rounded-16dp overflow-hidden relative shadow-xs">
-          {/* Card Header Toolbar with tactical coordinate metadata */}
-          <div className="h-12 border-b border-hairline px-5 flex items-center justify-between bg-surface/80 backdrop-blur-sm z-10">
-            <div className="flex items-center gap-2">
-              <MapPin className="w-4 h-4 text-brandTeal" />
-              <span className="text-xs font-semibold uppercase tracking-wider text-brandTeal">
-                Geo-Spatial Telemetry Canvas
-              </span>
-            </div>
-            <div className="flex items-center gap-3 text-xs text-mutedGray">
-              <span className="font-mono bg-[#F7F7F7] px-2.5 py-1 rounded-md border border-hairline text-[11px]">
-                Coverage: 14.8 km² Mesh
-              </span>
-              <span className="hidden sm:inline-block font-mono text-[11px]">
-                Active Events: {sosEvents.filter(e => e.status === 'ACTIVE').length}
-              </span>
-            </div>
-          </div>
-
-          {/* Map Placeholder Body */}
-          <div className="flex-1 relative flex flex-col items-center justify-center p-8 bg-[#FAFAFA]">
-            {/* Subtle tactical grid lines background pattern */}
-            <div
-              className="absolute inset-0 opacity-40 pointer-events-none"
-              style={{
-                backgroundImage: `linear-gradient(to right, #E5E5E5 1px, transparent 1px), linear-gradient(to bottom, #E5E5E5 1px, transparent 1px)`,
-                backgroundSize: '40px 40px',
-              }}
-            ></div>
-
-            {/* Central Card with strict requested label: "Map Integration Pending" */}
-            <div className="relative z-10 flex flex-col items-center text-center max-w-sm px-6 py-8 bg-surface rounded-16dp border border-hairline shadow-sm">
-              <div className="w-14 h-14 rounded-full bg-brandTealLight flex items-center justify-center mb-4 text-brandTeal">
-                <Compass className="w-7 h-7" />
-              </div>
-              <h3 className="text-base font-bold text-primaryText mb-1">
-                Map Integration Pending
-              </h3>
-              <p className="text-xs text-mutedGray leading-relaxed mb-4">
-                Container reserved for future Google Maps API integration. Real-time peer-to-peer LoRa beacon telemetry will project active SOS coordinates onto this canvas.
-              </p>
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#F5F5F5] border border-hairline text-[11px] font-medium text-mutedGray">
-                <span className="w-1.5 h-1.5 rounded-full bg-brandTeal animate-pulse"></span>
-                <span>Awaiting Google Maps SDK key binding</span>
-              </div>
-            </div>
-
-            {/* Decorative mock node markers to simulate live feed spatial presence */}
-            <div className="absolute top-16 left-20 hidden md:flex items-center gap-2 px-3 py-1.5 bg-surface/90 border border-hairline rounded-full shadow-xs text-[11px] text-primaryText">
-              <span className="w-2 h-2 rounded-full bg-alertRed"></span>
-              <span className="font-semibold">Sector 4B</span>
-              <span className="text-mutedGray font-mono">#sos-active</span>
-            </div>
-
-            <div className="absolute bottom-16 right-28 hidden md:flex items-center gap-2 px-3 py-1.5 bg-surface/90 border border-hairline rounded-full shadow-xs text-[11px] text-primaryText">
-              <span className="w-2 h-2 rounded-full bg-brandTeal"></span>
-              <span className="font-semibold">Relay Point 03</span>
-              <span className="text-mutedGray font-mono">LoRa Connected</span>
-            </div>
-          </div>
-
-          {/* Sub-bar / Mode Notice Footer */}
-          <div className="border-t border-hairline px-5 py-2.5 bg-surface flex items-center justify-between text-xs text-mutedGray">
-            <span className="flex items-center gap-1.5">
-              <Info className="w-3.5 h-3.5 text-brandTeal" />
-              <span>Operational roles and dispatch modes can be switched at any time.</span>
-            </span>
-            <span className="font-mono text-[10px] text-mutedGray/80">ZeroGrid UI • v3.2.0-clean</span>
-          </div>
-        </section>
+        {/* CENTER / LEFT PANE: Google Maps Canvas Placeholder */}
+        <MapCanvas activeSosCount={activeSosCount} />
 
         {/* RIGHT PANE (Fixed width 400px): Vertically scrolling sidebar dedicated to SOS users */}
         <aside className="w-96 lg:w-[400px] flex-shrink-0 flex flex-col bg-surface border border-hairline rounded-16dp overflow-hidden shadow-xs">
@@ -734,7 +625,7 @@ export default function AdminDashboardPage() {
                       </span>
                     </div>
 
-                    {/* Node Card Token styling (Authority & Rescue Card vs Regular Node Card) */}
+                    {/* Node Card Token styling */}
                     <div className="flex items-start gap-3">
                       {/* Avatar Badge */}
                       <div
@@ -763,7 +654,6 @@ export default function AdminDashboardPage() {
                         </div>
 
                         <p className="text-xs text-mutedGray truncate mt-0.5 flex items-center gap-1">
-                          <MapPin className="w-3 h-3 text-brandTeal flex-shrink-0" />
                           <span className="truncate">{sos.location}</span>
                         </p>
 
@@ -792,411 +682,36 @@ export default function AdminDashboardPage() {
         </aside>
       </main>
 
-      {/* ================= 3. SOS Action Interface (Slide-out Drawer / Modal) ================= */}
-      {selectedSosId && activeDrawerSos && (
-        <div className="fixed inset-0 z-40 flex justify-end bg-black/20 backdrop-blur-xs transition-opacity animate-fade-in">
-          <div className="w-full max-w-lg bg-surface h-full border-l border-hairline shadow-2xl flex flex-col overflow-hidden">
-            {/* Drawer Header */}
-            <div className="p-5 border-b border-hairline flex items-center justify-between bg-surface">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-mono px-2 py-0.5 rounded bg-[#F5F5F5] text-mutedGray border border-hairline">
-                    GET /api/sos/{activeDrawerSos.rawId || activeDrawerSos.id}
-                  </span>
-                  <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
-                      activeDrawerSos.status === 'ACTIVE'
-                        ? 'bg-alertRedBg text-alertRed border border-alertRedBorder'
-                        : 'bg-brandTealLight text-brandTeal border border-brandTeal/30'
-                    }`}
-                  >
-                    {activeDrawerSos.status}
-                  </span>
-                </div>
-                <h3 className="text-lg font-bold text-primaryText mt-1">
-                  Emergency Event Details
-                </h3>
-              </div>
-              <button
-                onClick={() => {
-                  setSelectedSosId(null);
-                  setSelectedSosDetails(null);
-                }}
-                className="w-8 h-8 rounded-full border border-hairline hover:bg-[#F5F5F5] flex items-center justify-center text-mutedGray hover:text-primaryText transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Drawer Body - Scrollable content */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {drawerLoading ? (
-                <div className="h-48 flex items-center justify-center text-brandTeal">
-                  <Loader2 className="w-6 h-6 animate-spin" />
-                </div>
-              ) : (
-                <>
-                  {/* Originating User Profile Card */}
-                  <div className="p-4 bg-canvas rounded-16dp border border-hairline">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm ${
-                          activeDrawerSos.role === 'AUTHORITY'
-                            ? 'bg-brandTeal text-surface'
-                            : 'bg-surface border border-hairline text-primaryText'
-                        }`}
-                      >
-                        {activeDrawerSos.role === 'AUTHORITY' ? (
-                          <Shield className="w-6 h-6 text-white" />
-                        ) : (
-                          <User className="w-6 h-6 text-mutedGray" />
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between">
-                          <h4 className="text-base font-bold text-primaryText">{activeDrawerSos.userName}</h4>
-                          <span className="text-[11px] font-mono text-mutedGray">
-                            User: {activeDrawerSos.userId}
-                          </span>
-                        </div>
-                        <p className="text-xs text-brandTeal font-medium mt-0.5">
-                          {activeDrawerSos.role === 'AUTHORITY'
-                            ? 'Authority & Rescue Node Operator'
-                            : 'Civilian Regular Node (Citizen Telemetry)'}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t border-hairline text-xs">
-                      <div>
-                        <span className="text-mutedGray block text-[11px]">Reported Time</span>
-                        <span className="font-semibold text-primaryText">
-                          {new Date(activeDrawerSos.timestamp).toLocaleString()}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-mutedGray block text-[11px]">Hardware Battery</span>
-                        <span className="font-semibold text-primaryText font-mono">{activeDrawerSos.batteryLevel}</span>
-                      </div>
-                      <div>
-                        <span className="text-mutedGray block text-[11px]">Direct LoRa Mesh Peers</span>
-                        <span className="font-semibold text-primaryText font-mono">
-                          {activeDrawerSos.peerNodesInRange} nodes in range
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-mutedGray block text-[11px]">Urgency Classification</span>
-                        <span className="font-semibold text-alertRed font-mono">{activeDrawerSos.severity}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Geolocation Specs */}
-                  <div className="p-4 bg-surface rounded-16dp border border-hairline">
-                    <h5 className="text-xs font-bold text-brandTeal uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                      <Crosshair className="w-3.5 h-3.5" />
-                      Reported Location Telemetry
-                    </h5>
-                    <p className="text-sm font-medium text-primaryText">{activeDrawerSos.location}</p>
-                    {activeDrawerSos.message && (
-                      <p className="text-xs italic text-mutedGray mt-2 bg-canvas p-2.5 rounded-lg border border-hairline">
-                        &quot;{activeDrawerSos.message}&quot;
-                      </p>
-                    )}
-                    <p className="text-[11px] text-mutedGray mt-2">
-                      ZeroGrid Decentralized Mesh packet received via 868MHz relay gateway.
-                    </p>
-                  </div>
-
-                  {/* Action Buttons (Strict API: PUT /api/sos/:id/acknowledge, PUT /api/sos/:id/resolve) */}
-                  <div className="p-4 bg-canvas rounded-16dp border border-hairline">
-                    <h5 className="text-xs font-bold text-primaryText uppercase tracking-wider mb-3">
-                      Dispatch Action Controls
-                    </h5>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      {/* Acknowledge Action Button */}
-                      <button
-                        disabled={
-                          actionLoading ||
-                          activeDrawerSos.status === 'ACKNOWLEDGED' ||
-                          activeDrawerSos.status === 'RESOLVED'
-                        }
-                        onClick={() => handleAcknowledgeSos(activeDrawerSos.id)}
-                        className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-16dp text-xs font-semibold border transition-all ${
-                          activeDrawerSos.status === 'ACKNOWLEDGED'
-                            ? 'bg-brandTealLight text-brandTeal border-brandTeal/30 cursor-not-allowed'
-                            : 'bg-surface hover:bg-[#F5F5F5] text-brandTeal border-brandTeal hover:border-brandTeal/80 shadow-xs'
-                        }`}
-                      >
-                        <Check className="w-4 h-4" />
-                        <span>
-                          {activeDrawerSos.status === 'ACKNOWLEDGED'
-                            ? 'Acknowledged'
-                            : 'PUT /api/sos/acknowledge'}
-                        </span>
-                      </button>
-
-                      {/* Resolve Action Button (Strictly Reserved Red Rule applied here for active emergency resolution) */}
-                      <button
-                        disabled={actionLoading || activeDrawerSos.status === 'RESOLVED'}
-                        onClick={() => handleResolveSos(activeDrawerSos.id)}
-                        className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-16dp text-xs font-semibold transition-all ${
-                          activeDrawerSos.status === 'RESOLVED'
-                            ? 'bg-[#F5F5F5] text-mutedGray border border-hairline cursor-not-allowed'
-                            : 'bg-alertRed hover:bg-[#B91C1C] text-white shadow-xs'
-                        }`}
-                      >
-                        <CheckCheck className="w-4 h-4" />
-                        <span>
-                          {activeDrawerSos.status === 'RESOLVED' ? 'Resolved' : 'PUT /api/sos/resolve'}
-                        </span>
-                      </button>
-                    </div>
-                    <p className="text-[10px] text-mutedGray mt-2 text-center">
-                      *Red action button strictly reserved for resolving genuine live SOS incidents.
-                    </p>
-                  </div>
-
-                  {/* Operational Notes Section (POST /api/sos/:id/notes) */}
-                  <div className="p-4 bg-surface rounded-16dp border border-hairline">
-                    <div className="flex items-center justify-between mb-3">
-                      <h5 className="text-xs font-bold text-primaryText uppercase tracking-wider flex items-center gap-1.5">
-                        <FileText className="w-3.5 h-3.5 text-brandTeal" />
-                        Incident Log Notes
-                      </h5>
-                      <span className="text-[10px] font-mono text-mutedGray">
-                        POST /api/sos/{activeDrawerSos.rawId || activeDrawerSos.id}/notes
-                      </span>
-                    </div>
-
-                    {/* Existing notes list */}
-                    <div className="space-y-2.5 mb-3 max-h-48 overflow-y-auto">
-                      {activeDrawerSos.notes.length === 0 ? (
-                        <p className="text-xs text-mutedGray italic py-2 text-center bg-canvas rounded-lg border border-hairline">
-                          No dispatch notes recorded yet.
-                        </p>
-                      ) : (
-                        activeDrawerSos.notes.map(n => (
-                          <div key={n.id} className="p-2.5 rounded-lg bg-canvas border border-hairline text-xs">
-                            <div className="flex items-center justify-between text-[11px] text-mutedGray mb-1">
-                              <span className="font-semibold text-brandTeal">{n.author}</span>
-                              <span className="font-mono">{formatTime(n.createdAt)}</span>
-                            </div>
-                            <p className="text-primaryText">{n.text}</p>
-                          </div>
-                        ))
-                      )}
-                    </div>
-
-                    {/* Add note form */}
-                    <form onSubmit={handleAddNote} className="flex gap-2">
-                      <input
-                        type="text"
-                        value={noteInput}
-                        onChange={e => setNoteInput(e.target.value)}
-                        placeholder="Append dispatch telemetry notes..."
-                        className="flex-1 bg-canvas border border-hairline rounded-xl px-3 py-1.5 text-xs text-primaryText focus:outline-none focus:border-brandTeal focus:bg-surface"
-                      />
-                      <button
-                        type="submit"
-                        disabled={!noteInput.trim() || actionLoading}
-                        className="px-3 py-1.5 bg-brandTeal hover:bg-[#085555] text-white rounded-xl text-xs font-semibold transition-colors disabled:opacity-50"
-                      >
-                        Add
-                      </button>
-                    </form>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Drawer Footer */}
-            <div className="p-4 border-t border-hairline bg-canvas flex items-center justify-between text-xs text-mutedGray">
-              <span>Emergency Record Active</span>
-              <button
-                onClick={() => {
-                  setSelectedSosId(null);
-                  setSelectedSosDetails(null);
-                }}
-                className="font-medium text-primaryText hover:text-brandTeal"
-              >
-                Close Drawer
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* ================= 3. SOS Action Interface Drawer ================= */}
+      {selectedSosId && (
+        <SosDrawer
+          sos={activeDrawerSos}
+          isLoadingDetails={drawerLoading}
+          actionLoading={actionLoading}
+          noteInput={noteInput}
+          onSetNoteInput={setNoteInput}
+          onClose={() => {
+            setSelectedSosId(null);
+            setSelectedSosDetails(null);
+          }}
+          onAcknowledge={handleAcknowledgeSos}
+          onResolve={handleResolveSos}
+          onAddNote={handleAddNote}
+          formatTime={formatTime}
+        />
       )}
 
-      {/* ================= 4. User Management Full-Screen Overlay / Modal ================= */}
-      {isUserManagementOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/30 backdrop-blur-xs animate-fade-in">
-          <div className="w-full max-w-4xl h-[85vh] bg-surface rounded-16dp border border-hairline shadow-2xl flex flex-col overflow-hidden">
-            {/* Modal Header */}
-            <div className="p-5 border-b border-hairline flex items-center justify-between bg-surface">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-brandTealLight flex items-center justify-center text-brandTeal">
-                  <Users className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-lg font-bold text-primaryText">User & Node Authority Management</h2>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#F5F5F5] text-mutedGray border border-hairline">
-                      GET /api/admin/users
-                    </span>
-                  </div>
-                  <p className="text-xs text-mutedGray mt-0.5">
-                    Manage ZeroGrid peer nodes, promote field dispatchers, and revoke admin privileges.
-                  </p>
-                </div>
-              </div>
-
-              <button
-                onClick={() => setIsUserManagementOpen(false)}
-                className="w-8 h-8 rounded-full border border-hairline hover:bg-[#F5F5F5] flex items-center justify-center text-mutedGray hover:text-primaryText transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Search Bar for Users (regex/query representation) */}
-            <div className="p-4 border-b border-hairline bg-canvas flex items-center justify-between gap-4">
-              <div className="relative flex-1">
-                <Search className="w-4 h-4 text-mutedGray absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={userSearch}
-                  onChange={e => setUserSearch(e.target.value)}
-                  placeholder="Search users by name, email, or mesh address (GET /api/admin/users?q=)..."
-                  className="w-full bg-surface border border-hairline rounded-xl pl-9 pr-3 py-2 text-xs text-primaryText focus:outline-none focus:border-brandTeal"
-                />
-              </div>
-              <div className="text-xs text-mutedGray font-mono">
-                Total Nodes: {users.length}
-              </div>
-            </div>
-
-            {/* User Table / List */}
-            <div className="flex-1 overflow-y-auto p-4">
-              {isUsersLoading ? (
-                <div className="h-64 flex items-center justify-center text-brandTeal gap-2">
-                  <Loader2 className="w-6 h-6 animate-spin" />
-                  <span className="text-xs font-semibold text-primaryText">Querying User Directory...</span>
-                </div>
-              ) : (
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="border-b border-hairline text-mutedGray font-semibold uppercase text-[10px] tracking-wider">
-                      <th className="pb-3 pl-3">Node / User</th>
-                      <th className="pb-3">Role & Token</th>
-                      <th className="pb-3">Mesh Hardware</th>
-                      <th className="pb-3">Status</th>
-                      <th className="pb-3 pr-3 text-right">Authority Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-hairline">
-                    {users.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="py-12 text-center text-mutedGray">
-                          No users found matching query.
-                        </td>
-                      </tr>
-                    ) : (
-                      users.map(u => {
-                        const isAdmin = u.role === 'ADMIN';
-                        return (
-                          <tr key={u.id} className="hover:bg-canvas/80 transition-colors">
-                            {/* User Info */}
-                            <td className="py-3.5 pl-3">
-                              <div className="flex items-center gap-3">
-                                <div
-                                  className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${
-                                    isAdmin
-                                      ? 'bg-brandTeal text-surface'
-                                      : 'bg-[#F5F5F5] text-primaryText border border-hairline'
-                                  }`}
-                                >
-                                  {isAdmin ? (
-                                    <Shield className="w-4 h-4" />
-                                  ) : (
-                                    <User className="w-4 h-4" />
-                                  )}
-                                </div>
-                                <div>
-                                  <div className="font-bold text-primaryText">{u.name}</div>
-                                  <div className="text-[11px] text-mutedGray font-mono">{u.email}</div>
-                                </div>
-                              </div>
-                            </td>
-
-                            {/* Role */}
-                            <td className="py-3.5">
-                              <span
-                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                                  isAdmin
-                                    ? 'bg-brandTealLight text-brandTeal border border-brandTeal/30'
-                                    : 'bg-[#F5F5F5] text-mutedGray border border-hairline'
-                                }`}
-                              >
-                                {isAdmin ? 'Admin / Authority' : 'Citizen Node'}
-                              </span>
-                            </td>
-
-                            {/* Mesh Hardware */}
-                            <td className="py-3.5 font-mono text-mutedGray text-[11px]">
-                              {u.nodeAddress}
-                            </td>
-
-                            {/* Status */}
-                            <td className="py-3.5">
-                              <span className="inline-flex items-center gap-1.5 text-xs text-primaryText">
-                                <span className="w-1.5 h-1.5 rounded-full bg-brandTeal"></span>
-                                {u.status}
-                              </span>
-                            </td>
-
-                            {/* Actions (Strict API: POST /api/admin/admins, DELETE /api/admin/admins/:userId) */}
-                            <td className="py-3.5 pr-3 text-right">
-                              {isAdmin ? (
-                                <button
-                                  onClick={() => handleDemoteAdmin(u.id, u.name)}
-                                  className="px-3 py-1.5 rounded-16dp bg-surface hover:bg-[#F5F5F5] border border-hairline text-mutedGray hover:text-primaryText font-medium text-xs transition-colors shadow-xs"
-                                  title="DELETE /api/admin/admins/:userId"
-                                >
-                                  Revoke Admin
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => handlePromoteAdmin(u.email, u.name)}
-                                  className="px-3 py-1.5 rounded-16dp bg-brandTeal hover:bg-[#085555] text-white font-medium text-xs transition-colors shadow-xs"
-                                  title="POST /api/admin/admins"
-                                >
-                                  Promote to Admin
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              )}
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-4 border-t border-hairline bg-canvas flex items-center justify-between text-xs text-mutedGray">
-              <span>Backend Protocol: ZeroGrid Auth v2.1 • All queries executed on live node registry</span>
-              <button
-                onClick={() => setIsUserManagementOpen(false)}
-                className="px-4 py-1.5 bg-surface border border-hairline rounded-16dp text-primaryText font-semibold hover:bg-[#F5F5F5]"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ================= 4. User Management Modal Overlay ================= */}
+      <UserManagementModal
+        isOpen={isUserManagementOpen}
+        userSearch={userSearch}
+        users={users}
+        isLoading={isUsersLoading}
+        onClose={() => setIsUserManagementOpen(false)}
+        onUserSearchChange={setUserSearch}
+        onPromoteAdmin={handlePromoteAdmin}
+        onDemoteAdmin={handleDemoteAdmin}
+      />
     </div>
   );
 }
