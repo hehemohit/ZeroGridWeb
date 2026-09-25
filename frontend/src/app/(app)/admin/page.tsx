@@ -49,7 +49,7 @@ function mapSosFromBackend(raw: any): SosEventUI {
     : [];
 
   const accuracy = typeof raw.accuracyMeters === 'number' ? raw.accuracyMeters : 15;
-  const battery = `${Math.min(99, Math.max(12, Math.round(100 - accuracy * 1.5)))}%`;
+  const battery = typeof raw.batteryPercentage === 'number' && !isNaN(raw.batteryPercentage) ? `${Math.round(raw.batteryPercentage)}%` : 'Not Found';
   const peerCount = Math.max(2, Math.round(20 - accuracy / 3));
 
   const displayId = rawId.length >= 6 ? `sos-${rawId.slice(-4)}` : (rawId || `sos-${Math.floor(1000 + Math.random() * 9000)}`);
