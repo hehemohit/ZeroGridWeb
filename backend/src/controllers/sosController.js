@@ -24,6 +24,7 @@ function buildSosPayload(sos, requestingUserId) {
     category: sos.category,
     message: sos.message,
     transport: sos.transport,
+    batteryPercentage: sos.batteryPercentage !== undefined ? sos.batteryPercentage : null,
     status: sos.status,
     acknowledgedBy: sos.acknowledgedBy,
     acknowledgedByUsers: sos.acknowledgedByUsers || [],
@@ -44,7 +45,7 @@ function buildSosPayload(sos, requestingUserId) {
  */
 async function triggerSos(req, res) {
   try {
-    const { lat, lng, accuracy, category, message, transport } = req.body;
+    const { lat, lng, accuracy, category, message, transport, batteryPercentage } = req.body;
 
     // Validate coordinates
     if (lat === undefined || lng === undefined) {
@@ -103,6 +104,9 @@ async function triggerSos(req, res) {
       category: sosCategory,
       message: message ? String(message).trim() : '',
       transport: sosTransport,
+      batteryPercentage: (batteryPercentage !== undefined && batteryPercentage !== null && !isNaN(parseInt(batteryPercentage)))
+        ? Math.min(100, Math.max(0, parseInt(batteryPercentage)))
+        : null,
       status: 'ACTIVE'
     });
 

@@ -92,6 +92,12 @@ const sosEventSchema = new mongoose.Schema(
       enum: ['ONLINE', 'MESH', 'BOTH'],
       default: 'ONLINE'
     },
+    batteryPercentage: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: null
+    },
     status: {
       type: String,
       enum: ['ACTIVE', 'ACKNOWLEDGED', 'RESOLVED'],
