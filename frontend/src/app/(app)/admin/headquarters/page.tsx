@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { api } from '@/lib/api';
+import { io, Socket } from 'socket.io-client';
 import {
   Building2,
   Plus,
@@ -16,7 +17,9 @@ import {
   CheckCircle2,
   XCircle,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  Radio,
+  AlertTriangle
 } from 'lucide-react';
 import { MapCanvas } from '@/components/admin/MapCanvas';
 import { HqModal, HeadquartersUI, AdminUserOption } from '@/components/admin/HqModal';
@@ -31,10 +34,12 @@ export default function HeadquartersPage() {
   const router = useRouter();
 
   const [hqs, setHqs] = useState<HeadquartersUI[]>([]);
+  const [sosEvents, setSosEvents] = useState<any[]>([]);
   const [adminUsers, setAdminUsers] = useState<AdminUserOption[]>([]);
   const [isLoadingHqs, setIsLoadingHqs] = useState(true);
   const [isLoadingAdmins, setIsLoadingAdmins] = useState(false);
   const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
+  const [isGeneratingMock, setIsGeneratingMock] = useState(false);
 
   const [selectedHqId, setSelectedHqId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -94,10 +99,66 @@ export default function HeadquartersPage() {
     }
   }, [showToast]);
 
+  // Fetch Active SOS Events for Map Display
+  const fetchSosEvents = useCallback(async () => {
+    try {
+      const data = await api.get<{ events?: any[] }>('/api/admin/sos?status=ACTIVE&limit=50');
+      const list = data.events || [];
+      const mapped = list.map((raw: any) => {
+        const coords = raw.location?.coordinates;
+        return {
+          id: String(raw.id || raw._id),
+          rawId: String(raw.id || raw._id),
+          userName: raw.triggeredBy?.displayName || raw.triggeredBy?.email || 'Citizen Node',
+          userEmail: raw.triggeredBy?.email || '',
+          role: raw.triggeredBy?.role === 'ADMIN' ? 'AUTHORITY' : 'REGULAR',
+          status: raw.status || 'ACTIVE',
+          severity: raw.category || 'HIGH',
+          location: typeof raw.location === 'string' ? raw.location : `Coordinates: ${coords?.[1]}, ${coords?.[0]}`,
+          coordinates: Array.isArray(coords) ? [coords[1], coords[0]] : undefined,
+          timestamp: raw.createdAt || new Date().toISOString(),
+          batteryLevel: raw.batteryPercentage ? `${raw.batteryPercentage}%` : '85%'
+        };
+      });
+      setSosEvents(mapped);
+    } catch {
+      // Ignore SOS fetch error on HQ page
+    }
+  }, []);
+
+  // Generate Mock SOS signals <= 15km from HQ
+  const handleGenerateMockSos = async (targetHqId?: string) => {
+    setIsGeneratingMock(true);
+    try {
+      const endpoint = targetHqId
+        ? `/api/admin/hq/${targetHqId}/mock-sos`
+        : '/api/admin/hq/mock-sos';
+      const res = await api.post<{ message: string; count: number; hqName: string }>(
+        endpoint,
+        { count: 5 }
+      );
+      showToast(res.message || 'Generated 5 mock SOS signals within 15km radius of Headquarters!');
+      await fetchSosEvents();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to generate mock SOS signals', 'error');
+    } finally {
+      setIsGeneratingMock(false);
+    }
+  };
+
   useEffect(() => {
     fetchHqs();
     fetchAdmins();
-  }, [fetchHqs, fetchAdmins]);
+    fetchSosEvents();
+  }, [fetchHqs, fetchAdmins, fetchSosEvents]);
+
+  useEffect(() => {
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+    const socket = io(`${backendUrl}/sos`, { transports: ['polling', 'websocket'] });
+    socket.on('sos:new', fetchSosEvents);
+    socket.on('sos:updated', fetchSosEvents);
+    return () => { socket.disconnect(); };
+  }, [fetchSosEvents]);
 
   // Handle Save (Create / Update)
   const handleSaveHq = async (hqData: {
@@ -218,11 +279,25 @@ export default function HeadquartersPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          <button
+            onClick={() => handleGenerateMockSos()}
+            disabled={isGeneratingMock || hqs.length === 0}
+            title="Generate mock SOS signals within 15km of Headquarters"
+            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500/20 font-bold text-xs sm:text-sm transition-all shadow-sm disabled:opacity-50"
+          >
+            {isGeneratingMock ? (
+              <Loader2 className="w-4 h-4 animate-spin text-red-500" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 text-red-500" />
+            )}
+            <span>Simulate SOS (&le; 15km)</span>
+          </button>
           <button
             onClick={() => {
               fetchHqs();
               fetchAdmins();
+              fetchSosEvents();
             }}
             title="Refresh list"
             className="p-2.5 rounded-xl bg-surfaceElevated border border-hairline text-secondaryText hover:text-primaryText hover:bg-surfaceCard transition-colors"
@@ -430,6 +505,19 @@ export default function HeadquartersPage() {
                   </span>
 
                   <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleGenerateMockSos(hq.id);
+                      }}
+                      disabled={isGeneratingMock}
+                      title="Simulate mock SOS signals within 15km of this HQ"
+                      className="px-2.5 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500/20 transition-colors flex items-center gap-1.5 text-xs font-semibold disabled:opacity-50"
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
+                      <span>Simulate SOS</span>
+                    </button>
+
                     <button
                       onClick={(e) => {
                         e.stopPropagation();

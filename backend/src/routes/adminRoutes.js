@@ -6,7 +6,8 @@ const {
   getSosHistory,
   getUsers,
   addAdmin,
-  removeAdmin
+  removeAdmin,
+  autoAssignNearestAdmin
 } = require('../controllers/adminController');
 
 const router = express.Router();
@@ -18,6 +19,9 @@ router.use(verifyToken, verifyAdminRole);
 // Must be BEFORE /sos/:id style routes to avoid "history" being treated as an ID
 router.get('/sos/history', getSosHistory);
 router.get('/sos', getActiveSosEvents);
+
+// POST /api/admin/sos/auto-assign — Auto-assign active SOS events to nearest admin responder
+router.post('/sos/auto-assign', autoAssignNearestAdmin);
 
 // GET /api/admin/users?q=search — user directory search (any approved admin)
 router.get('/users', getUsers);

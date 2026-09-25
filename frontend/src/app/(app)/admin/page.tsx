@@ -15,7 +15,8 @@ import {
   Radio,
   ChevronRight,
   Loader2,
-  Building2
+  Building2,
+  Compass
 } from 'lucide-react';
 import { MapCanvas } from '@/components/admin/MapCanvas';
 import { SosDrawer, SosEventUI, NoteItem } from '@/components/admin/SosDrawer';
@@ -318,6 +319,22 @@ function AdminDashboardContent() {
     finally { setActionLoading(false); }
   };
 
+  const handleAutoAssignNearestAdmin = async () => {
+    setActionLoading(true);
+    try {
+      const res = await api.post<{ message: string; assignedCount: number }>(
+        '/api/admin/sos/auto-assign',
+        { forceReassign: true }
+      );
+      showToast(res.message || 'Auto-assigned active SOS events to nearest admins!');
+      await fetchSosEvents();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to auto-assign nearest admin', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleAssignAdmin = async (id: string, adminId: string | null) => {
     const targetEvent = sosEvents.find(s => s.id === id || s.rawId === id);
     if (!targetEvent) return;
@@ -464,6 +481,21 @@ function AdminDashboardContent() {
               )}
 
               <button
+                onClick={handleAutoAssignNearestAdmin}
+                disabled={actionLoading}
+                title="Calculate proximity and assign active SOS events to nearest admin responders"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-brandTeal/10 text-brandTeal border border-brandTeal/20 hover:bg-brandTeal/20 transition-colors shadow-sm disabled:opacity-50"
+              >
+                {actionLoading ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-brandTeal" />
+                ) : (
+                  <Compass className="w-3.5 h-3.5 text-brandTeal" />
+                )}
+                <span className="hidden sm:inline">Auto-Assign Nearest</span>
+                <span className="sm:hidden">Auto-Assign</span>
+              </button>
+
+              <button
                 onClick={() => router.push('/admin/headquarters')}
                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-surfaceElevated text-primaryText border border-hairline hover:bg-surfaceCard transition-colors shadow-sm ml-auto sm:ml-0"
               >
@@ -601,6 +633,7 @@ function AdminDashboardContent() {
           onResolve={handleResolveSos}
           onAddNote={handleAddNote}
           onAssignAdmin={handleAssignAdmin}
+          onAutoAssignNearest={handleAutoAssignNearestAdmin}
           formatTime={formatTime}
         />
       )}

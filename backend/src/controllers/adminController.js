@@ -1,12 +1,58 @@
 const mongoose = require('mongoose');
 const SosEvent = require('../models/SosEvent');
 const User = require('../models/User');
+const Headquarters = require('../models/Headquarters');
+
+/** Helper to get io instance from app (set in server.js) */
+function getIo(req) {
+  return req.app.get('io');
+}
+
+/** Haversine formula to compute exact distance in km */
+function getHaversineDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Earth radius in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+/** Extract Lat/Lng from Location string or object */
+function extractCoords(loc) {
+  if (typeof loc === 'object' && loc !== null) {
+    if (Array.isArray(loc.coordinates) && loc.coordinates.length === 2) {
+      const lng = Number(loc.coordinates[0]);
+      const lat = Number(loc.coordinates[1]);
+      if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) return { lat, lng };
+    }
+    const lat = Number(loc.lat ?? loc.latitude);
+    const lng = Number(loc.lng ?? loc.longitude);
+    if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) return { lat, lng };
+  }
+
+  if (typeof loc === 'string' && loc.trim()) {
+    const match = loc.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+    if (match) {
+      const p1 = parseFloat(match[1]);
+      const p2 = parseFloat(match[2]);
+      if (!isNaN(p1) && !isNaN(p2) && Math.abs(p1) <= 90 && Math.abs(p2) <= 180) {
+        return { lat: p1, lng: p2 };
+      }
+    }
+  }
+
+  return null;
+}
 
 /**
  * GET /api/admin/sos
  * Returns SOS events filtered by status (default: ACTIVE).
- * Supports ?status=ACTIVE|ACKNOWLEDGED|RESOLVED and ?page, ?limit for pagination.
- * Admin only.
  */
 async function getActiveSosEvents(req, res) {
   try {
@@ -53,9 +99,6 @@ async function getActiveSosEvents(req, res) {
 
 /**
  * GET /api/admin/sos/history
- * Returns RESOLVED SOS events, paginated, with optional date range filters.
- * Query: ?page, ?limit, ?from (ISO date), ?to (ISO date)
- * Admin only.
  */
 async function getSosHistory(req, res) {
   try {
@@ -112,12 +155,9 @@ async function getSosHistory(req, res) {
 
 /**
  * GET /api/admin/users
- * User directory search. Super-admin only.
- * Query: ?q (search by name/email), ?page, ?limit
  */
 async function getUsers(req, res) {
   try {
-    // Super-admin check (re-verified from DB in verifyAdminRole, but check role value)
     if (req.dbUser && req.dbUser.role !== 'ADMIN') {
       return res.status(403).json({ message: 'Forbidden: Super-admin access required' });
     }
@@ -168,9 +208,6 @@ async function getUsers(req, res) {
 
 /**
  * POST /api/admin/admins
- * Promotes an existing user to ADMIN + sets adminApproved: true.
- * Super-admin only.
- * Body: { email } — the email of the user to promote
  */
 async function addAdmin(req, res) {
   try {
@@ -212,8 +249,6 @@ async function addAdmin(req, res) {
 
 /**
  * DELETE /api/admin/admins/:userId
- * Revokes admin status, demotes back to CITIZEN.
- * Super-admin only. Cannot self-demote.
  */
 async function removeAdmin(req, res) {
   try {
@@ -223,7 +258,6 @@ async function removeAdmin(req, res) {
       return res.status(400).json({ message: 'Invalid user ID' });
     }
 
-    // Prevent self-demotion
     if (userId === req.user.userId) {
       return res.status(400).json({ message: 'You cannot revoke your own admin status' });
     }
@@ -252,10 +286,146 @@ async function removeAdmin(req, res) {
   }
 }
 
+/**
+ * POST /api/admin/sos/auto-assign
+ * Automatically calculates geographical proximity between active SOS events and available Admins/HQs,
+ * then assigns each active SOS event to its closest administrative responder.
+ * Body: { forceReassign?: boolean }
+ */
+async function autoAssignNearestAdmin(req, res) {
+  try {
+    const { forceReassign = false } = req.body;
+
+    // 1. Fetch active/acknowledged SOS events
+    const filter = forceReassign
+      ? { status: { $in: ['ACTIVE', 'ACKNOWLEDGED'] } }
+      : { status: { $in: ['ACTIVE', 'ACKNOWLEDGED'] }, assignedAdmin: null };
+
+    const activeSosList = await SosEvent.find(filter);
+
+    if (activeSosList.length === 0) {
+      return res.status(200).json({
+        message: forceReassign
+          ? 'No active SOS events to assign.'
+          : 'All active SOS events are already assigned.',
+        assignedCount: 0
+      });
+    }
+
+    // 2. Fetch approved admins
+    const admins = await User.find({ role: 'ADMIN', adminApproved: true });
+    if (admins.length === 0) {
+      return res.status(400).json({ message: 'No approved admins available for assignment.' });
+    }
+
+    // 3. Fetch Headquarters to resolve admin locations via HQ assignment if needed
+    const hqs = await Headquarters.find().populate('assignedAdmins');
+
+    // Build map of admin ID -> location coordinates
+    const adminLocationMap = new Map();
+
+    admins.forEach((admin, idx) => {
+      const adminIdStr = admin._id.toString();
+
+      // Check admin's lastKnownLocation
+      let coords = extractCoords(admin.lastKnownLocation);
+
+      // Check assigned HQs for location
+      if (!coords) {
+        const assignedHq = hqs.find(hq =>
+          (hq.assignedAdmins || []).some(a => (a._id || a).toString() === adminIdStr)
+        );
+        if (assignedHq) {
+          coords = extractCoords(assignedHq.location);
+        }
+      }
+
+      // Default fallback coordinates if none found
+      if (!coords) {
+        if (hqs.length > 0 && hqs[0].location) {
+          coords = extractCoords(hqs[0].location);
+        }
+      }
+
+      if (!coords) {
+        // Fallback grid offset
+        coords = { lat: 28.6139 + idx * 0.02, lng: 77.2090 + idx * 0.02 };
+      }
+
+      adminLocationMap.set(adminIdStr, { admin, coords });
+    });
+
+    const adminEntries = Array.from(adminLocationMap.values());
+    let assignedCount = 0;
+    const updatedEvents = [];
+    const io = getIo(req);
+
+    // 4. Perform distance calculations & assignments
+    for (const sos of activeSosList) {
+      const sosCoords = extractCoords(sos.location);
+      if (!sosCoords) continue;
+
+      let closestAdmin = null;
+      let minDistance = Infinity;
+
+      adminEntries.forEach(({ admin, coords }) => {
+        const dist = getHaversineDistance(sosCoords.lat, sosCoords.lng, coords.lat, coords.lng);
+        if (dist < minDistance) {
+          minDistance = dist;
+          closestAdmin = admin;
+        }
+      });
+
+      if (closestAdmin) {
+        sos.assignedAdmin = closestAdmin._id;
+        await sos.save();
+
+        const populatedSos = await SosEvent.findById(sos._id)
+          .populate('triggeredBy', 'displayName email phoneNumber photoUrl')
+          .populate('assignedAdmin', 'displayName email photoUrl');
+
+        assignedCount++;
+        updatedEvents.push({
+          id: sos._id.toString(),
+          assignedAdmin: {
+            id: closestAdmin._id.toString(),
+            displayName: closestAdmin.displayName,
+            email: closestAdmin.email
+          },
+          distanceKm: Number(minDistance.toFixed(2))
+        });
+
+        // Broadcast real-time update
+        if (io) {
+          io.of('/sos').emit('sos:updated', {
+            id: sos._id,
+            assignedAdmin: {
+              id: closestAdmin._id.toString(),
+              displayName: closestAdmin.displayName,
+              email: closestAdmin.email
+            },
+            status: sos.status
+          });
+        }
+      }
+    }
+
+    return res.status(200).json({
+      message: `Successfully auto-assigned ${assignedCount} SOS events to their nearest administrative responders.`,
+      assignedCount,
+      events: updatedEvents
+    });
+  } catch (error) {
+    console.error('[Admin] autoAssignNearestAdmin error:', error);
+    return res.status(500).json({ message: 'Failed to auto-assign nearest admin.' });
+  }
+}
+
 module.exports = {
   getActiveSosEvents,
   getSosHistory,
   getUsers,
   addAdmin,
-  removeAdmin
+  removeAdmin,
+  autoAssignNearestAdmin
 };

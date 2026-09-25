@@ -5,7 +5,8 @@ const {
   getHqs,
   createHq,
   updateHq,
-  deleteHq
+  deleteHq,
+  generateMockSos
 } = require('../controllers/hqController');
 
 const router = express.Router();
@@ -18,6 +19,12 @@ router.get('/', getHqs);
 
 // POST /api/admin/hq - Create new HQ
 router.post('/', createHq);
+
+// POST /api/admin/hq/mock-sos - Generate mock SOS signals <= 15km from default/latest HQ
+router.post('/mock-sos', generateMockSos);
+
+// POST /api/admin/hq/:id/mock-sos - Generate mock SOS signals <= 15km from specific HQ
+router.post('/:id/mock-sos', generateMockSos);
 
 // PUT /api/admin/hq/:id - Update HQ or modify assigned admins
 router.put('/:id', updateHq);

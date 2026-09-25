@@ -11,6 +11,7 @@ import {
   FileText,
   Loader2,
   UserCheck,
+  Compass
 } from 'lucide-react';
 import { AdminUserUI } from './UserManagementModal';
 
@@ -60,6 +61,7 @@ interface SosDrawerProps {
   onResolve: (id: string) => void;
   onAddNote: (e: React.FormEvent) => void;
   onAssignAdmin?: (sosId: string, adminId: string | null) => void;
+  onAutoAssignNearest?: () => void;
   formatTime: (isoString: string) => string;
 }
 
@@ -76,6 +78,7 @@ export function SosDrawer({
   onResolve,
   onAddNote,
   onAssignAdmin,
+  onAutoAssignNearest,
   formatTime,
 }: SosDrawerProps) {
   if (!sos) return null;
@@ -285,6 +288,18 @@ export function SosDrawer({
                           {isAssignedToMe ? 'Assigned to You' : 'Assign to Me'}
                         </span>
                       </button>
+
+                      {onAutoAssignNearest && (
+                        <button
+                          disabled={actionLoading}
+                          onClick={onAutoAssignNearest}
+                          className="px-2.5 py-2 bg-brandTeal/10 hover:bg-brandTeal/20 text-brandTeal border border-brandTeal/20 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1 shrink-0"
+                          title="Auto-assign nearest admin responder by distance"
+                        >
+                          <Compass className="w-3.5 h-3.5" />
+                          <span>Auto-Assign</span>
+                        </button>
+                      )}
 
                       {assignedAdminObj && (
                         <button
