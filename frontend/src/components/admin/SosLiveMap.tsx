@@ -17,8 +17,10 @@ export interface SosLiveMapProps {
   sosEvents: SosEventUI[];
   /** The currently selected SOS id (display id or rawId) */
   selectedSosId: string | null;
-  /** Called when the user clicks a map marker */
+  /** Called when the user single-clicks a map marker */
   onMarkerClick: (id: string) => void;
+  /** Called when the user double-clicks a map marker */
+  onMarkerDoubleClick?: (id: string) => void;
 }
 
 // ─── Dark / Tactical Map Style ───────────────────────────────────────────────
@@ -67,13 +69,14 @@ interface MapControllerProps extends SosLiveMapProps {
   onMapReady: () => void;
 }
 
-function MapController({ sosEvents, selectedSosId, onMarkerClick, onMapReady }: MapControllerProps) {
+function MapController({ sosEvents, selectedSosId, onMarkerClick, onMarkerDoubleClick, onMapReady }: MapControllerProps) {
   const map = useMap();
   const markerLib = useMapsLibrary('marker');
 
   const markersRef = useRef<Map<string, google.maps.marker.AdvancedMarkerElement>>(
     new globalThis.Map()
   );
+  const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
   const hasAutoFit = useRef(false);
   const [isReady, setIsReady] = useState(false);
 
@@ -128,6 +131,29 @@ function MapController({ sosEvents, selectedSosId, onMarkerClick, onMapReady }: 
       }, 95);
     },
     [map]
+  );
+
+  const handleMarkerClick = useCallback(
+    (id: string, coords?: [number, number]) => {
+      if (clickTimerRef.current) {
+        clearTimeout(clickTimerRef.current);
+        clickTimerRef.current = null;
+        if (onMarkerDoubleClick) {
+          onMarkerDoubleClick(id);
+        } else {
+          onMarkerClick(id);
+        }
+      } else {
+        clickTimerRef.current = setTimeout(() => {
+          clickTimerRef.current = null;
+          onMarkerClick(id);
+          if (coords) {
+            animateSmoothZoom(coords[0], coords[1], 16);
+          }
+        }, 280);
+      }
+    },
+    [onMarkerClick, onMarkerDoubleClick, animateSmoothZoom]
   );
 
   // ── Pan + smooth zoom when a list item or marker is selected ─────────────
@@ -198,10 +224,7 @@ function MapController({ sosEvents, selectedSosId, onMarkerClick, onMapReady }: 
         });
 
         marker.addListener('click', () => {
-          onMarkerClick(sos.id);
-          if (sos.coordinates) {
-            animateSmoothZoom(sos.coordinates[0], sos.coordinates[1], 16);
-          }
+          handleMarkerClick(sos.id, sos.coordinates);
         });
 
         img.addEventListener('mouseenter', () => {
@@ -225,7 +248,7 @@ function MapController({ sosEvents, selectedSosId, onMarkerClick, onMapReady }: 
       const stale = markersRef.current.get(key);
       if (stale) { stale.map = null; markersRef.current.delete(key); }
     });
-  }, [map, markerLib, sosEvents, selectedSosId, onMarkerClick, isReady, animateSmoothZoom]);
+  }, [map, markerLib, sosEvents, selectedSosId, onMarkerClick, handleMarkerClick, isReady, animateSmoothZoom]);
 
   // Cleanup on unmount
   useEffect(() => {

@@ -96,6 +96,7 @@ function AdminDashboardContent() {
   const [sosEvents, setSosEvents] = useState<SosEventUI[]>([]);
   const [users, setUsers] = useState<AdminUserUI[]>([]);
   const [selectedSosId, setSelectedSosId] = useState<string | null>(null);
+  const [drawerSosId, setDrawerSosId] = useState<string | null>(null);
   const [selectedSosDetails, setSelectedSosDetails] = useState<SosEventUI | null>(null);
   const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
   const [activeSosTab, setActiveSosTab] = useState<'FEED' | 'HISTORY'>('FEED');
@@ -213,11 +214,12 @@ function AdminDashboardContent() {
   }, [fetchSosEvents]);
 
   const selectedSos = useMemo(() => sosEvents.find(s => s.id === selectedSosId || s.rawId === selectedSosId) || null, [sosEvents, selectedSosId]);
+  const drawerSos = useMemo(() => sosEvents.find(s => s.id === drawerSosId || s.rawId === drawerSosId) || null, [sosEvents, drawerSosId]);
 
   useEffect(() => {
-    if (selectedSos) fetchSosDetails(selectedSos);
+    if (drawerSos) fetchSosDetails(drawerSos);
     else setSelectedSosDetails(null);
-  }, [selectedSosId, selectedSos, fetchSosDetails]);
+  }, [drawerSosId, drawerSos, fetchSosDetails]);
 
   const filteredSosList = useMemo(() => {
     return sosEvents
@@ -301,7 +303,10 @@ function AdminDashboardContent() {
     } catch { return '--:--'; }
   };
 
-  const activeDrawerSos = selectedSosDetails || selectedSos;
+  const activeDrawerSos = useMemo(
+    () => drawerSos || selectedSosDetails || selectedSos,
+    [drawerSos, selectedSosDetails, selectedSos]
+  );
   const activeSosCount = sosEvents.filter(e => e.status === 'ACTIVE').length;
 
   return (
@@ -321,6 +326,9 @@ function AdminDashboardContent() {
           sosEvents={sosEvents.filter(e => e.status === 'ACTIVE' || e.status === 'ACKNOWLEDGED')}
           selectedSosId={selectedSosId}
           onMarkerClick={(id) => setSelectedSosId(id)}
+          onMarkerDoubleClick={(id) => { setSelectedSosId(id); setDrawerSosId(id); }}
+          onOpenDetails={(id) => { setSelectedSosId(id); setDrawerSosId(id); }}
+          onClosePreview={() => setSelectedSosId(null)}
         />
 
         {/* LOWER: Emergency SOS Feed Console */}
@@ -427,6 +435,7 @@ function AdminDashboardContent() {
                     <div
                       key={sos.rawId || sos.id}
                       onClick={() => setSelectedSosId(sos.id)}
+                      onDoubleClick={() => { setSelectedSosId(sos.id); setDrawerSosId(sos.id); }}
                       className={`p-3 sm:p-3.5 rounded-xl sm:rounded-2xl transition-all cursor-pointer text-left relative flex flex-col justify-between shadow-sm ${isAuthority
                         ? 'bg-brandTeal/5 hover:bg-brandTeal/10 border border-brandTeal/20'
                         : 'bg-surfaceCard hover:bg-surfaceElevated border border-hairline'
@@ -488,9 +497,12 @@ function AdminDashboardContent() {
                           <Radio className="w-3 h-3 text-brandTeal" />
                           {sos.peerNodesInRange} Peered
                         </span>
-                        <span className="text-brandTeal font-medium flex items-center gap-0.5">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setSelectedSosId(sos.id); setDrawerSosId(sos.id); }}
+                          className="text-brandTeal font-medium flex items-center gap-0.5 hover:underline"
+                        >
                           Details <ChevronRight className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-                        </span>
+                        </button>
                       </div>
                     </div>
                   );
@@ -501,14 +513,14 @@ function AdminDashboardContent() {
         </section>
 
       {/* ================= 3 & 4. Action Drawers & Modals ================= */}
-      {selectedSosId && (
+      {drawerSosId && (
         <SosDrawer
           sos={activeDrawerSos}
           isLoadingDetails={drawerLoading}
           actionLoading={actionLoading}
           noteInput={noteInput}
           onSetNoteInput={setNoteInput}
-          onClose={() => { setSelectedSosId(null); setSelectedSosDetails(null); }}
+          onClose={() => { setDrawerSosId(null); setSelectedSosDetails(null); }}
           onAcknowledge={handleAcknowledgeSos}
           onResolve={handleResolveSos}
           onAddNote={handleAddNote}
