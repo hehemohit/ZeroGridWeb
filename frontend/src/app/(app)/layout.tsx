@@ -2,7 +2,7 @@
 import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import Navbar from '@/components/Navbar';
+import AppSidebar from '@/components/AppSidebar';
 import { PageSpinner } from '@/components/ui';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -22,9 +22,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (!user) return null;
 
   return (
-    <div className={`min-h-screen ${isAdminPage ? 'bg-canvas' : 'bg-gray-950'}`}>
-      {!isAdminPage && <Navbar />}
-      <main className={isAdminPage ? 'h-screen' : 'pt-16'}>{children}</main>
+    <div className="flex flex-col md:flex-row h-screen w-full bg-canvas text-primaryText transition-colors duration-200 overflow-hidden select-none">
+      <AppSidebar />
+      <main
+        className={`flex-1 min-w-0 h-full ${
+          isAdminPage
+            ? 'overflow-hidden flex flex-col'
+            : 'overflow-y-auto'
+        }`}
+      >
+        {children}
+      </main>
     </div>
   );
 }

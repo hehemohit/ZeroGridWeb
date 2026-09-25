@@ -117,11 +117,10 @@ export function UserManagementModal({
                         <td className="py-3.5 pl-3">
                           <div className="flex items-center gap-3">
                             <div
-                              className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${
-                                isAdmin
+                              className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${isAdmin
                                   ? 'bg-brandTealDark text-brandTeal border border-brandTeal/30 shadow-glow-teal'
                                   : 'bg-surfaceElevated text-secondaryText border border-hairline'
-                              }`}
+                                }`}
                             >
                               {isAdmin ? (
                                 <Shield className="w-4 h-4" />
@@ -139,11 +138,10 @@ export function UserManagementModal({
                         {/* Role */}
                         <td className="py-3.5">
                           <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono ${
-                              isAdmin
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider font-mono ${isAdmin
                                 ? 'bg-brandTealDark text-brandTeal border border-brandTeal/30'
                                 : 'bg-surfaceElevated text-mutedGray border border-hairline'
-                            }`}
+                              }`}
                           >
                             {isAdmin ? 'Admin / Authority' : 'Citizen Node'}
                           </span>
