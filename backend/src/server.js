@@ -14,6 +14,7 @@ const adminRoutes = require('./routes/adminRoutes');
 const familyRoutes = require('./routes/familyRoutes');
 const hqRoutes = require('./routes/hqRoutes');
 const zoneRoutes = require('./routes/zoneRoutes');
+const publicRoutes = require('./routes/publicRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -89,6 +90,7 @@ app.use('/api/admin/hq', hqRoutes);
 app.use('/api/admin/zones', zoneRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/family', familyRoutes);
+app.use('/api/v1/public', publicRoutes);
 
 // ─── Global Error Handler ─────────────────────────────────────────────────────
 
