@@ -332,14 +332,28 @@ async function autoAssignNearestAdmin(req, res) {
       });
     });
 
-    // 3. Fetch approved admins who belong to at least one Headquarters
-    const allApprovedAdmins = await User.find({ role: 'ADMIN', adminApproved: true });
-    const admins = allApprovedAdmins.filter(admin => hqAdminIds.has(admin._id.toString()));
+    if (hqAdminIds.size === 0) {
+      return res.status(400).json({
+        message: 'No admins are currently assigned to any Headquarters. Please assign admins to a Headquarters in HQ Management first.'
+      });
+    }
+
+    // 3. Fetch all users assigned to any Headquarters and ensure their admin status is active
+    const admins = await User.find({ _id: { $in: Array.from(hqAdminIds) } });
 
     if (admins.length === 0) {
       return res.status(400).json({
-        message: 'No approved admins are assigned to any Headquarters. Please assign admins to a Headquarters in HQ Management first.'
+        message: 'Assigned admins were not found in user database. Please re-assign admins to Headquarters.'
       });
+    }
+
+    // Auto-heal admin role & approved status for HQ assigned admins
+    for (const admin of admins) {
+      if (admin.role !== 'ADMIN' || admin.adminApproved !== true) {
+        admin.role = 'ADMIN';
+        admin.adminApproved = true;
+        await admin.save();
+      }
     }
 
     // Build map of admin ID -> location coordinates (strictly from assigned HQ)
