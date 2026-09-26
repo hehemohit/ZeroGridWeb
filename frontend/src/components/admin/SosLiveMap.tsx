@@ -471,7 +471,7 @@ function MapController({
 
         const strokeColor = hasSos ? '#EF4444' : '#2DD4BF';
         const fillColor = hasSos ? '#EF4444' : '#0A6E6E';
-        const fillOpacity = hasSos ? 0.35 : 0.12;
+        const fillOpacity = hasSos ? 0.45 : 0.30; // 30% visible (70% transparent)
 
         if (hexPolygonsRef.current.has(key)) {
           const polygon = hexPolygonsRef.current.get(key)!;
@@ -487,7 +487,7 @@ function MapController({
             const polygon = new PolygonClass({
               paths: cell.path,
               strokeColor,
-              strokeOpacity: 0.75,
+              strokeOpacity: 0.80,
               strokeWeight: hasSos ? 2.5 : 1.5,
               fillColor,
               fillOpacity,
