@@ -159,12 +159,14 @@ function MapController({
   const markerLib = useMapsLibrary('marker');
   const routesLib = useMapsLibrary('routes');
   const mapsLib = useMapsLibrary('maps');
+  const geometryLib = useMapsLibrary('geometry');
 
   const markersRef = useRef<Map<string, google.maps.marker.AdvancedMarkerElement>>(
     new globalThis.Map()
   );
   const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
   const polylineRef = useRef<google.maps.Polyline | null>(null);
+  const originMarkerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
   const stepMarkersRef = useRef<Map<string, google.maps.marker.AdvancedMarkerElement>>(
     new globalThis.Map()
   );
@@ -456,7 +458,13 @@ function MapController({
       polylineRef.current = null;
     }
 
-    // 3. Clean up previous step markers
+    // 3. Clean up previous origin marker
+    if (originMarkerRef.current) {
+      originMarkerRef.current.map = null;
+      originMarkerRef.current = null;
+    }
+
+    // 4. Clean up previous step markers
     stepMarkersRef.current.forEach(m => { m.map = null; });
     stepMarkersRef.current.clear();
 
@@ -501,63 +509,100 @@ function MapController({
 
     if (pathPoints.length < 2) return;
 
-    function drawDirectPolyline(pts: google.maps.LatLngLiteral[]) {
-      const PolylineClass = mapsLib?.Polyline || (typeof google !== 'undefined' && google.maps?.Polyline);
-      if (PolylineClass) {
-        const polyline = new PolylineClass({
-          path: pts,
-          geodesic: true,
-          strokeColor: '#10B981',
-          strokeOpacity: 0.95,
-          strokeWeight: 6,
-          map
-        });
-        polylineRef.current = polyline;
-      }
+    // ── Build route path: decode road-snapped polyline if available, else raw coords ──
+    let routePath: google.maps.LatLng[] | google.maps.LatLngLiteral[] = [];
+    let isRealRoad = false;
+
+    if (
+      optimizedRouteData.encodedPolyline &&
+      typeof optimizedRouteData.encodedPolyline === 'string' &&
+      geometryLib?.encoding
+    ) {
+      // ✅ Real road-following path from Google Directions API
+      routePath = geometryLib.encoding.decodePath(optimizedRouteData.encodedPolyline);
+      isRealRoad = true;
+    } else {
+      // ⚠️ Fallback: straight-line between waypoint coords
+      routePath = pathPoints;
     }
 
-    // Try Google Maps DirectionsService (Real Road Directions)
-    if (routesLib && routesLib.DirectionsService && routesLib.DirectionsRenderer) {
-      try {
-        const directionsService = new routesLib.DirectionsService();
-        const directionsRenderer = new routesLib.DirectionsRenderer({
-          map,
-          suppressMarkers: true, // We render custom step badges
-          polylineOptions: {
-            strokeColor: '#10B981',
-            strokeOpacity: 0.95,
-            strokeWeight: 6
-          }
-        });
-        directionsRendererRef.current = directionsRenderer;
+    if (routePath.length < 2) return;
 
-        const origin = pathPoints[0];
-        const destination = pathPoints[pathPoints.length - 1];
-        const waypoints = pathPoints.slice(1, -1).map(pt => ({
-          location: pt,
-          stopover: true
-        }));
+    // Render the tactical polyline
+    const PolylineClass = mapsLib?.Polyline || (typeof google !== 'undefined' && google.maps?.Polyline);
+    if (PolylineClass) {
+      const arrowSymbol = typeof google !== 'undefined' && google.maps?.SymbolPath ? {
+        path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+        strokeColor: '#10B981',
+        fillColor: '#10B981',
+        fillOpacity: 1,
+        scale: 3
+      } : undefined;
 
-        directionsService.route(
-          {
-            origin,
-            destination,
-            waypoints,
-            travelMode: routesLib.TravelMode.DRIVING
-          },
-          (result, status) => {
-            if (status === 'OK' && result) {
-              directionsRenderer.setDirections(result);
-            } else {
-              drawDirectPolyline(pathPoints);
-            }
-          }
-        );
-      } catch (e) {
-        drawDirectPolyline(pathPoints);
-      }
-    } else {
-      drawDirectPolyline(pathPoints);
+      const polyline = new PolylineClass({
+        path: routePath,
+        geodesic: !isRealRoad,   // false when road-snapped (follow decoded path exactly)
+        strokeColor: '#10B981',
+        strokeOpacity: 0.95,
+        strokeWeight: 6,
+        icons: arrowSymbol ? [{
+          icon: arrowSymbol,
+          offset: '30%',
+          repeat: '120px'
+        }] : undefined,
+        map
+      });
+      polylineRef.current = polyline;
+    }
+
+    // ── Origin (HQ) marker ────────────────────────────────────────────────────
+    const origPt = getPt(optimizedRouteData.origin?.location);
+    if (origPt && markerLib) {
+      const originName = optimizedRouteData.origin?.name || 'Headquarters';
+
+      const hqSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="60" height="68" viewBox="0 0 60 68">
+        <defs>
+          <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.5"/>
+          </filter>
+        </defs>
+        <!-- Pin body -->
+        <path d="M30 4 C16 4 5 15 5 29 C5 46 30 64 30 64 C30 64 55 46 55 29 C55 15 44 4 30 4 Z"
+          fill="#0E7490" stroke="#2DD4BF" stroke-width="2.5" filter="url(#shadow)"/>
+        <!-- Building icon -->
+        <path d="M22 41V25a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v16M18 41h24M27 31h6M27 35h6M27 39h6"
+          fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>`;
+
+      const hqEl = document.createElement('div');
+      hqEl.style.cssText = 'cursor:default; filter: drop-shadow(0 0 8px #2DD4BF88);';
+      hqEl.innerHTML = hqSvg;
+
+      // Tooltip label below pin
+      const label = document.createElement('div');
+      label.style.cssText = [
+        'position:absolute', 'bottom:-22px', 'left:50%', 'transform:translateX(-50%)',
+        'white-space:nowrap', 'font-size:10px', 'font-weight:700',
+        'color:#2DD4BF', 'font-family:monospace',
+        'background:rgba(13,20,36,0.85)', 'padding:2px 6px',
+        'border-radius:4px', 'border:1px solid #2DD4BF44',
+        'letter-spacing:0.05em', 'pointer-events:none'
+      ].join(';');
+      label.textContent = originName.toUpperCase();
+
+      const wrapper = document.createElement('div');
+      wrapper.style.cssText = 'position:relative; display:inline-block;';
+      wrapper.appendChild(hqEl);
+      wrapper.appendChild(label);
+
+      const originMarker = new markerLib.AdvancedMarkerElement({
+        map,
+        position: origPt,
+        content: wrapper,
+        title: `Route Origin: ${originName}`,
+        zIndex: 3000
+      });
+      originMarkerRef.current = originMarker;
     }
 
     // Render Step Number Badges (1, 2, 3...)
@@ -587,7 +632,7 @@ function MapController({
     const bounds = new google.maps.LatLngBounds();
     pathPoints.forEach(pt => bounds.extend(pt));
     map.fitBounds(bounds, { top: 80, right: 80, bottom: 80, left: 80 });
-  }, [map, markerLib, routesLib, mapsLib, isReady, optimizedRouteData]);
+  }, [map, markerLib, routesLib, mapsLib, geometryLib, isReady, optimizedRouteData]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -599,6 +644,10 @@ function MapController({
       if (polylineRef.current) {
         polylineRef.current.setMap(null);
         polylineRef.current = null;
+      }
+      if (originMarkerRef.current) {
+        originMarkerRef.current.map = null;
+        originMarkerRef.current = null;
       }
       stepMarkersRef.current.forEach(m => { m.map = null; });
       stepMarkersRef.current.clear();
@@ -717,6 +766,7 @@ export function SosLiveMap({
   headquarters = [],
   selectedSosId,
   selectedHqId,
+  optimizedRouteData,
   onMarkerClick,
   onMarkerDoubleClick,
   onHqMarkerClick
@@ -745,7 +795,7 @@ export function SosLiveMap({
         }
       `}</style>
 
-      <APIProvider apiKey={apiKey} libraries={['marker']}>
+      <APIProvider apiKey={apiKey} libraries={['marker', 'routes', 'maps', 'geometry']}>
         {!mapReady && <MapSkeleton />}
 
         <Map
@@ -765,6 +815,7 @@ export function SosLiveMap({
             headquarters={headquarters}
             selectedSosId={selectedSosId}
             selectedHqId={selectedHqId}
+            optimizedRouteData={optimizedRouteData}
             onMarkerClick={onMarkerClick}
             onMarkerDoubleClick={onMarkerDoubleClick}
             onHqMarkerClick={onHqMarkerClick}

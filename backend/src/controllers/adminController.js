@@ -520,6 +520,61 @@ async function clearAllSosEvents(req, res) {
   }
 }
 
+/**
+ * Calls Google Maps Directions API to get a real road-snapped encoded polyline
+ * and actual road distances/travel times for the given ordered waypoint sequence.
+ * Returns null gracefully if the API key is missing or the call fails.
+ */
+async function fetchGoogleDirections(origin, orderedWaypoints, apiKey) {
+  if (!apiKey || orderedWaypoints.length === 0) return null;
+
+  try {
+    const destination = orderedWaypoints[orderedWaypoints.length - 1];
+    const intermediates = orderedWaypoints.slice(0, -1);
+
+    const originStr = `${origin.lat},${origin.lng}`;
+    const destStr = `${destination.lat},${destination.lng}`;
+
+    const url = new URL('https://maps.googleapis.com/maps/api/directions/json');
+    url.searchParams.set('origin', originStr);
+    url.searchParams.set('destination', destStr);
+    url.searchParams.set('mode', 'driving');
+    url.searchParams.set('key', apiKey);
+
+    if (intermediates.length > 0) {
+      // optimize:false preserves our already-computed optimal order
+      const waypointStr = 'optimize:false|' + intermediates
+        .map(w => `${w.lat},${w.lng}`)
+        .join('|');
+      url.searchParams.set('waypoints', waypointStr);
+    }
+
+    const response = await fetch(url.toString(), { signal: AbortSignal.timeout(8000) });
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    if (data.status !== 'OK' || !data.routes || data.routes.length === 0) {
+      console.warn('[Directions API] Non-OK status:', data.status, data.error_message || '');
+      return null;
+    }
+
+    const route = data.routes[0];
+    const encodedPolyline = route.overview_polyline?.points || null;
+
+    // Extract real road distances & durations per leg
+    // Leg 0 = origin → waypoint[0], leg 1 = waypoint[0] → waypoint[1], ...
+    const legs = (route.legs || []).map(leg => ({
+      distanceKm: Number((leg.distance.value / 1000).toFixed(2)),
+      durationMin: Math.max(1, Math.round(leg.duration.value / 60))
+    }));
+
+    return { encodedPolyline, legs };
+  } catch (err) {
+    console.warn('[Directions API] fetch failed, falling back to Haversine:', err.message);
+    return null;
+  }
+}
+
 /** Helper to calculate composite priority score P_i for an SOS event */
 function computeSosPriorityScore(sos) {
   // 1. Category Score
@@ -608,10 +663,20 @@ async function optimizeAdminRoute(req, res) {
     }
 
     if (!origin) {
-      const hqs = await Headquarters.find({ assignedAdmins: targetAdminId });
-      if (hqs.length > 0) {
-        origin = extractCoords(hqs[0].location);
-        originName = hqs[0].name;
+      // Prefer ACTIVE HQs; fall back to any assigned HQ
+      const hqs = await Headquarters.find({
+        assignedAdmins: targetAdminId,
+        status: 'ACTIVE'
+      }).sort({ updatedAt: -1 });
+
+      const hqFallback = hqs.length === 0
+        ? await Headquarters.findOne({ assignedAdmins: targetAdminId }).sort({ updatedAt: -1 })
+        : null;
+
+      const resolvedHq = hqs[0] || hqFallback;
+      if (resolvedHq) {
+        origin = extractCoords(resolvedHq.location);
+        originName = resolvedHq.name;
       }
     }
 
@@ -688,17 +753,31 @@ async function optimizeAdminRoute(req, res) {
       }
     }
 
-    // Build finalized ordered route response
+    // ── Phase 2: Fetch real road-snapped polyline from Google Directions API ───
+    const mapsApiKey =
+      process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
+      process.env.GOOGLE_MAPS_API_KEY ||
+      '';
+
+    const orderedCoords = bestOrder.map(item => item.coords);
+    const directionsResult = await fetchGoogleDirections(origin, orderedCoords, mapsApiKey);
+
+    // ── Build finalized ordered route response ───────────────────────────────
     let totalDistanceKm = 0;
     let prevPoint = origin;
 
     const formattedRoute = bestOrder.map((item, index) => {
-      const stepDist = getHaversineDistance(prevPoint.lat, prevPoint.lng, item.coords.lat, item.coords.lng);
+      // Use real road distance from Directions API legs; fall back to Haversine
+      const realLeg = directionsResult?.legs?.[index];
+      const stepDist = realLeg
+        ? realLeg.distanceKm
+        : Number(getHaversineDistance(prevPoint.lat, prevPoint.lng, item.coords.lat, item.coords.lng).toFixed(2));
+      const estTravelMinutes = realLeg
+        ? realLeg.durationMin
+        : Math.max(2, Math.round((stepDist / 35) * 60));
+
       totalDistanceKm += stepDist;
       prevPoint = item.coords;
-
-      // Estimate travel time assuming 35 km/h avg rescue vehicle speed in city/mesh domain
-      const estTravelMinutes = Math.max(2, Math.round((stepDist / 35) * 60));
 
       return {
         step: index + 1,
@@ -717,12 +796,16 @@ async function optimizeAdminRoute(req, res) {
           email: item.triggeredBy.email || '',
           phoneNumber: item.triggeredBy.phoneNumber || ''
         } : null,
-        distanceFromPrevKm: Number(stepDist.toFixed(2)),
-        estTravelTimeMin: estTravelMinutes
+        distanceFromPrevKm: stepDist,
+        estTravelTimeMin: estTravelMinutes,
+        isRoadDistance: !!realLeg   // flag: true = real road dist, false = straight-line fallback
       };
     });
 
-    const totalEstimatedMinutes = Math.max(3, Math.round((totalDistanceKm / 35) * 60));
+    // Total time: sum of real leg durations, or haversine estimate
+    const totalEstimatedMinutes = directionsResult?.legs
+      ? directionsResult.legs.reduce((sum, l) => sum + l.durationMin, 0)
+      : Math.max(3, Math.round((totalDistanceKm / 35) * 60));
 
     return res.status(200).json({
       message: `Successfully computed optimal rescue route for ${bestOrder.length} SOS events.`,
@@ -735,6 +818,8 @@ async function optimizeAdminRoute(req, res) {
       totalWaypoints: bestOrder.length,
       totalDistanceKm: Number(totalDistanceKm.toFixed(2)),
       totalEstimatedMinutes,
+      // Road-snapped polyline from Directions API (null if API unavailable)
+      encodedPolyline: directionsResult?.encodedPolyline || null,
       optimizedRoute: formattedRoute
     });
   } catch (error) {
