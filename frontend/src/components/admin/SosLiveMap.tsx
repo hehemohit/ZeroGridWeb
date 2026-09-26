@@ -469,8 +469,8 @@ function MapController({
         const key = cell.id;
         activeKeys.add(key);
 
-        const strokeColor = hasSos ? '#EF4444' : '#2DD4BF';
-        const fillColor = hasSos ? '#EF4444' : '#0A6E6E';
+        const strokeColor = hasSos ? '#EF4444' : '#FACC15'; // Yellow stroke (#FACC15)
+        const fillColor = hasSos ? '#EF4444' : '#EAB308';   // Yellow fill (#EAB308)
         const fillOpacity = hasSos ? 0.45 : 0.30; // 30% visible (70% transparent)
 
         if (hexPolygonsRef.current.has(key)) {
