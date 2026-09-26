@@ -157,10 +157,13 @@ function MapController({
 }: MapControllerProps) {
   const map = useMap();
   const markerLib = useMapsLibrary('marker');
+  const routesLib = useMapsLibrary('routes');
+  const mapsLib = useMapsLibrary('maps');
 
   const markersRef = useRef<Map<string, google.maps.marker.AdvancedMarkerElement>>(
     new globalThis.Map()
   );
+  const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
   const polylineRef = useRef<google.maps.Polyline | null>(null);
   const stepMarkersRef = useRef<Map<string, google.maps.marker.AdvancedMarkerElement>>(
     new globalThis.Map()
@@ -441,81 +444,158 @@ function MapController({
   useEffect(() => {
     if (!map || !markerLib || !isReady) return;
 
-    // Clean up previous polyline
+    // 1. Clean up previous directions renderer
+    if (directionsRendererRef.current) {
+      directionsRendererRef.current.setMap(null);
+      directionsRendererRef.current = null;
+    }
+
+    // 2. Clean up previous polyline
     if (polylineRef.current) {
       polylineRef.current.setMap(null);
       polylineRef.current = null;
     }
 
-    // Clean up previous step markers
+    // 3. Clean up previous step markers
     stepMarkersRef.current.forEach(m => { m.map = null; });
     stepMarkersRef.current.clear();
 
-    if (!optimizedRouteData || !optimizedRouteData.optimizedRoute || optimizedRouteData.optimizedRoute.length === 0) {
+    if (
+      !optimizedRouteData ||
+      !optimizedRouteData.optimizedRoute ||
+      !Array.isArray(optimizedRouteData.optimizedRoute) ||
+      optimizedRouteData.optimizedRoute.length === 0
+    ) {
       return;
     }
 
     const pathPoints: google.maps.LatLngLiteral[] = [];
 
-    // Add origin location
-    if (optimizedRouteData.origin && optimizedRouteData.origin.location) {
-      const oLat = Number(optimizedRouteData.origin.location.lat);
-      const oLng = Number(optimizedRouteData.origin.location.lng);
-      if (!isNaN(oLat) && !isNaN(oLng)) {
-        pathPoints.push({ lat: oLat, lng: oLng });
+    // Helper to safely extract LatLng object
+    const getPt = (loc: any): google.maps.LatLngLiteral | null => {
+      if (!loc) return null;
+      if (typeof loc === 'object') {
+        const lat = Number(loc.lat ?? loc.latitude);
+        const lng = Number(loc.lng ?? loc.longitude);
+        if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) return { lat, lng };
+        if (Array.isArray(loc.coordinates) && loc.coordinates.length === 2) {
+          const lngC = Number(loc.coordinates[0]);
+          const latC = Number(loc.coordinates[1]);
+          if (!isNaN(latC) && !isNaN(lngC) && latC !== 0 && lngC !== 0) return { lat: latC, lng: lngC };
+        }
       }
+      return null;
+    };
+
+    // Add origin
+    const origPt = getPt(optimizedRouteData.origin?.location);
+    if (origPt) {
+      pathPoints.push(origPt);
     }
 
-    // Add sequence waypoints
+    // Add waypoints
     optimizedRouteData.optimizedRoute.forEach((step: any) => {
-      if (step.location && typeof step.location.lat === 'number' && typeof step.location.lng === 'number') {
-        pathPoints.push({ lat: Number(step.location.lat), lng: Number(step.location.lng) });
-      }
+      const pt = getPt(step.location);
+      if (pt) pathPoints.push(pt);
     });
 
-    if (pathPoints.length >= 2) {
-      const polyline = new google.maps.Polyline({
-        path: pathPoints,
-        geodesic: true,
-        strokeColor: '#10B981',
-        strokeOpacity: 0.95,
-        strokeWeight: 5,
-        map
-      });
-      polylineRef.current = polyline;
+    if (pathPoints.length < 2) return;
 
-      // Add Step Number Badges (1, 2, 3...)
-      optimizedRouteData.optimizedRoute.forEach((step: any) => {
-        if (!step.location?.lat || !step.location?.lng) return;
-        const key = `step-${step.step}`;
-
-        const img = document.createElement('img');
-        img.src = buildStepMarkerSvg(step.step, step.category);
-        img.style.width = '44px';
-        img.style.height = '44px';
-        img.style.cursor = 'pointer';
-
-        const marker = new markerLib.AdvancedMarkerElement({
-          map,
-          position: { lat: Number(step.location.lat), lng: Number(step.location.lng) },
-          content: img,
-          title: `Step ${step.step}: ${step.category} (${step.distanceFromPrevKm} km)`,
-          zIndex: 1000 + step.step
+    function drawDirectPolyline(pts: google.maps.LatLngLiteral[]) {
+      const PolylineClass = mapsLib?.Polyline || (typeof google !== 'undefined' && google.maps?.Polyline);
+      if (PolylineClass) {
+        const polyline = new PolylineClass({
+          path: pts,
+          geodesic: true,
+          strokeColor: '#10B981',
+          strokeOpacity: 0.95,
+          strokeWeight: 6,
+          map
         });
+        polylineRef.current = polyline;
+      }
+    }
 
-        stepMarkersRef.current.set(key, marker);
+    // Try Google Maps DirectionsService (Real Road Directions)
+    if (routesLib && routesLib.DirectionsService && routesLib.DirectionsRenderer) {
+      try {
+        const directionsService = new routesLib.DirectionsService();
+        const directionsRenderer = new routesLib.DirectionsRenderer({
+          map,
+          suppressMarkers: true, // We render custom step badges
+          polylineOptions: {
+            strokeColor: '#10B981',
+            strokeOpacity: 0.95,
+            strokeWeight: 6
+          }
+        });
+        directionsRendererRef.current = directionsRenderer;
+
+        const origin = pathPoints[0];
+        const destination = pathPoints[pathPoints.length - 1];
+        const waypoints = pathPoints.slice(1, -1).map(pt => ({
+          location: pt,
+          stopover: true
+        }));
+
+        directionsService.route(
+          {
+            origin,
+            destination,
+            waypoints,
+            travelMode: routesLib.TravelMode.DRIVING
+          },
+          (result, status) => {
+            if (status === 'OK' && result) {
+              directionsRenderer.setDirections(result);
+            } else {
+              drawDirectPolyline(pathPoints);
+            }
+          }
+        );
+      } catch (e) {
+        drawDirectPolyline(pathPoints);
+      }
+    } else {
+      drawDirectPolyline(pathPoints);
+    }
+
+    // Render Step Number Badges (1, 2, 3...)
+    optimizedRouteData.optimizedRoute.forEach((step: any) => {
+      const pt = getPt(step.location);
+      if (!pt) return;
+      const key = `step-${step.step}`;
+
+      const img = document.createElement('img');
+      img.src = buildStepMarkerSvg(step.step, step.category);
+      img.style.width = '44px';
+      img.style.height = '44px';
+      img.style.cursor = 'pointer';
+
+      const marker = new markerLib.AdvancedMarkerElement({
+        map,
+        position: pt,
+        content: img,
+        title: `Step ${step.step}: ${step.category} (${step.distanceFromPrevKm} km)`,
+        zIndex: 2000 + step.step
       });
 
-      // Fit map bounds to show full optimized route
-      const bounds = new google.maps.LatLngBounds();
-      pathPoints.forEach(pt => bounds.extend(pt));
-      map.fitBounds(bounds, { top: 70, right: 70, bottom: 70, left: 70 });
-    }
-  }, [map, markerLib, isReady, optimizedRouteData]);
+      stepMarkersRef.current.set(key, marker);
+    });
+
+    // Fit map bounds to show full route
+    const bounds = new google.maps.LatLngBounds();
+    pathPoints.forEach(pt => bounds.extend(pt));
+    map.fitBounds(bounds, { top: 80, right: 80, bottom: 80, left: 80 });
+  }, [map, markerLib, routesLib, mapsLib, isReady, optimizedRouteData]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      if (directionsRendererRef.current) {
+        directionsRendererRef.current.setMap(null);
+        directionsRendererRef.current = null;
+      }
       if (polylineRef.current) {
         polylineRef.current.setMap(null);
         polylineRef.current = null;
