@@ -16,9 +16,9 @@ function getHaversineDistance(lat1, lon1, lat2, lon2) {
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) *
+    Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }
@@ -180,11 +180,11 @@ async function getUsers(req, res) {
 
     const searchFilter = q.trim()
       ? {
-          $or: [
-            { displayName: { $regex: q.trim(), $options: 'i' } },
-            { email: { $regex: q.trim(), $options: 'i' } }
-          ]
-        }
+        $or: [
+          { displayName: { $regex: q.trim(), $options: 'i' } },
+          { email: { $regex: q.trim(), $options: 'i' } }
+        ]
+      }
       : {};
 
     const [users, total] = await Promise.all([
@@ -521,56 +521,51 @@ async function clearAllSosEvents(req, res) {
 }
 
 /**
- * Calls Google Maps Directions API to get a real road-snapped encoded polyline
- * and actual road distances/travel times for the given ordered waypoint sequence.
- * Returns null gracefully if the API key is missing or the call fails.
+ * Helper to fetch real road-snapped polylines and step leg metrics from OSRM (Open Source Routing Machine).
+ * Completely free, no API key required! Uses lng,lat coordinate format.
  */
-async function fetchGoogleDirections(origin, orderedWaypoints, apiKey) {
-  if (!apiKey || orderedWaypoints.length === 0) return null;
+async function fetchOSRMDirections(origin, orderedWaypoints) {
+  if (!origin || !orderedWaypoints || orderedWaypoints.length === 0) return null;
 
   try {
-    const destination = orderedWaypoints[orderedWaypoints.length - 1];
-    const intermediates = orderedWaypoints.slice(0, -1);
+    const allPoints = [origin, ...orderedWaypoints];
+    const coordString = allPoints
+      .map(p => `${p.lng.toFixed(6)},${p.lat.toFixed(6)}`)
+      .join(';');
 
-    const originStr = `${origin.lat},${origin.lng}`;
-    const destStr = `${destination.lat},${destination.lng}`;
+    const url = `http://router.project-osrm.org/route/v1/driving/${coordString}?overview=full&geometries=polyline&steps=false`;
 
-    const url = new URL('https://maps.googleapis.com/maps/api/directions/json');
-    url.searchParams.set('origin', originStr);
-    url.searchParams.set('destination', destStr);
-    url.searchParams.set('mode', 'driving');
-    url.searchParams.set('key', apiKey);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-    if (intermediates.length > 0) {
-      // optimize:false preserves our already-computed optimal order
-      const waypointStr = 'optimize:false|' + intermediates
-        .map(w => `${w.lat},${w.lng}`)
-        .join('|');
-      url.searchParams.set('waypoints', waypointStr);
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      console.warn('[OSRM] Response not OK:', response.status);
+      return null;
     }
 
-    const response = await fetch(url.toString(), { signal: AbortSignal.timeout(8000) });
-    if (!response.ok) return null;
-
     const data = await response.json();
-    if (data.status !== 'OK' || !data.routes || data.routes.length === 0) {
-      console.warn('[Directions API] Non-OK status:', data.status, data.error_message || '');
+    if (data.code !== 'Ok' || !data.routes || data.routes.length === 0) {
+      console.warn('[OSRM] Routing failed with code:', data.code);
       return null;
     }
 
     const route = data.routes[0];
-    const encodedPolyline = route.overview_polyline?.points || null;
+    const encodedPolyline = route.geometry;
 
-    // Extract real road distances & durations per leg
-    // Leg 0 = origin → waypoint[0], leg 1 = waypoint[0] → waypoint[1], ...
     const legs = (route.legs || []).map(leg => ({
-      distanceKm: Number((leg.distance.value / 1000).toFixed(2)),
-      durationMin: Math.max(1, Math.round(leg.duration.value / 60))
+      distanceKm: Number((leg.distance / 1000).toFixed(2)),
+      durationMin: Math.max(1, Math.round(leg.duration / 60))
     }));
 
-    return { encodedPolyline, legs };
-  } catch (err) {
-    console.warn('[Directions API] fetch failed, falling back to Haversine:', err.message);
+    return {
+      encodedPolyline,
+      legs
+    };
+  } catch (error) {
+    console.warn('[OSRM] Error fetching road route (falling back to straight-line):', error.message);
     return null;
   }
 }
@@ -663,17 +658,17 @@ async function optimizeAdminRoute(req, res) {
     }
 
     if (!origin) {
-      // Prefer ACTIVE HQs; fall back to any assigned HQ
-      const hqs = await Headquarters.find({
+      // Prefer ACTIVE HQ for this admin; fall back to any assigned HQ
+      const activeHqs = await Headquarters.find({
         assignedAdmins: targetAdminId,
         status: 'ACTIVE'
       }).sort({ updatedAt: -1 });
 
-      const hqFallback = hqs.length === 0
+      const anyHq = activeHqs.length === 0
         ? await Headquarters.findOne({ assignedAdmins: targetAdminId }).sort({ updatedAt: -1 })
         : null;
 
-      const resolvedHq = hqs[0] || hqFallback;
+      const resolvedHq = activeHqs[0] || anyHq;
       if (resolvedHq) {
         origin = extractCoords(resolvedHq.location);
         originName = resolvedHq.name;
@@ -753,16 +748,11 @@ async function optimizeAdminRoute(req, res) {
       }
     }
 
-    // ── Phase 2: Fetch real road-snapped polyline from Google Directions API ───
-    const mapsApiKey =
-      process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
-      process.env.GOOGLE_MAPS_API_KEY ||
-      '';
-
+    // ── Phase 2: Fetch real road-snapped polyline from OSRM (Free Directions API) ───
     const orderedCoords = bestOrder.map(item => item.coords);
-    const directionsResult = await fetchGoogleDirections(origin, orderedCoords, mapsApiKey);
+    const directionsResult = await fetchOSRMDirections(origin, orderedCoords);
 
-    // ── Build finalized ordered route response ───────────────────────────────
+    // ── Build finalized ordered route response ────────────────────────────────────
     let totalDistanceKm = 0;
     let prevPoint = origin;
 
@@ -798,11 +788,11 @@ async function optimizeAdminRoute(req, res) {
         } : null,
         distanceFromPrevKm: stepDist,
         estTravelTimeMin: estTravelMinutes,
-        isRoadDistance: !!realLeg   // flag: true = real road dist, false = straight-line fallback
+        isRoadDistance: !!realLeg  // true = real road km, false = straight-line fallback
       };
     });
 
-    // Total time: sum of real leg durations, or haversine estimate
+    // Total time: sum of real Directions API leg durations, else Haversine estimate
     const totalEstimatedMinutes = directionsResult?.legs
       ? directionsResult.legs.reduce((sum, l) => sum + l.durationMin, 0)
       : Math.max(3, Math.round((totalDistanceKm / 35) * 60));
@@ -818,7 +808,7 @@ async function optimizeAdminRoute(req, res) {
       totalWaypoints: bestOrder.length,
       totalDistanceKm: Number(totalDistanceKm.toFixed(2)),
       totalEstimatedMinutes,
-      // Road-snapped polyline from Directions API (null if API unavailable)
+      // Road-snapped polyline from Directions API (null = API unavailable, fallback used)
       encodedPolyline: directionsResult?.encodedPolyline || null,
       optimizedRoute: formattedRoute
     });

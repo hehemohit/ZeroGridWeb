@@ -509,7 +509,7 @@ function MapController({
 
     if (pathPoints.length < 2) return;
 
-    // ── Build route path: decode road-snapped polyline if available, else raw coords ──
+    // ── Decode road-snapped polyline if backend returned one, else raw coords ────────
     let routePath: google.maps.LatLng[] | google.maps.LatLngLiteral[] = [];
     let isRealRoad = false;
 
@@ -518,17 +518,17 @@ function MapController({
       typeof optimizedRouteData.encodedPolyline === 'string' &&
       geometryLib?.encoding
     ) {
-      // ✅ Real road-following path from Google Directions API
+      // ✅ Real road-following path decoded from Directions API encoded polyline
       routePath = geometryLib.encoding.decodePath(optimizedRouteData.encodedPolyline);
       isRealRoad = true;
     } else {
-      // ⚠️ Fallback: straight-line between waypoint coords
+      // ⚠️ Fallback: straight lines between raw waypoint coords
       routePath = pathPoints;
     }
 
     if (routePath.length < 2) return;
 
-    // Render the tactical polyline
+    // Render tactical polyline
     const PolylineClass = mapsLib?.Polyline || (typeof google !== 'undefined' && google.maps?.Polyline);
     if (PolylineClass) {
       const arrowSymbol = typeof google !== 'undefined' && google.maps?.SymbolPath ? {
@@ -541,52 +541,44 @@ function MapController({
 
       const polyline = new PolylineClass({
         path: routePath,
-        geodesic: !isRealRoad,   // false when road-snapped (follow decoded path exactly)
+        geodesic: !isRealRoad,  // false = follow decoded points exactly; true = great-circle arc fallback
         strokeColor: '#10B981',
         strokeOpacity: 0.95,
         strokeWeight: 6,
-        icons: arrowSymbol ? [{
-          icon: arrowSymbol,
-          offset: '30%',
-          repeat: '120px'
-        }] : undefined,
+        icons: arrowSymbol ? [{ icon: arrowSymbol, offset: '30%', repeat: '120px' }] : undefined,
         map
       });
       polylineRef.current = polyline;
     }
 
-    // ── Origin (HQ) marker ────────────────────────────────────────────────────
-    // origPt is already declared above when building pathPoints — reuse it here
+    // ── Origin (HQ) pin marker ─────────────────────────────────────────────────
+    // origPt already declared above when building pathPoints
     if (origPt && markerLib) {
       const originName = optimizedRouteData.origin?.name || 'Headquarters';
 
-      const hqSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="60" height="68" viewBox="0 0 60 68">
+      const hqSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="56" height="64" viewBox="0 0 56 64">
         <defs>
-          <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.5"/>
+          <filter id="hq-shadow" x="-20%" y="-10%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000" flood-opacity="0.5"/>
           </filter>
         </defs>
-        <!-- Pin body -->
-        <path d="M30 4 C16 4 5 15 5 29 C5 46 30 64 30 64 C30 64 55 46 55 29 C55 15 44 4 30 4 Z"
-          fill="#0E7490" stroke="#2DD4BF" stroke-width="2.5" filter="url(#shadow)"/>
-        <!-- Building icon -->
-        <path d="M22 41V25a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v16M18 41h24M27 31h6M27 35h6M27 39h6"
+        <path d="M28 3 C14 3 4 13.5 4 27 C4 43 28 61 28 61 C28 61 52 43 52 27 C52 13.5 42 3 28 3Z"
+          fill="#0E7490" stroke="#2DD4BF" stroke-width="2.5" filter="url(#hq-shadow)"/>
+        <path d="M20 38V24a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v14M16 38h24M25 30h6M25 34h6M25 37h6"
           fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>`;
 
       const hqEl = document.createElement('div');
-      hqEl.style.cssText = 'cursor:default; filter: drop-shadow(0 0 8px #2DD4BF88);';
+      hqEl.style.cssText = 'cursor:default; filter:drop-shadow(0 0 8px #2DD4BF66);';
       hqEl.innerHTML = hqSvg;
 
-      // Tooltip label below pin
       const label = document.createElement('div');
       label.style.cssText = [
-        'position:absolute', 'bottom:-22px', 'left:50%', 'transform:translateX(-50%)',
-        'white-space:nowrap', 'font-size:10px', 'font-weight:700',
+        'position:absolute', 'bottom:-20px', 'left:50%', 'transform:translateX(-50%)',
+        'white-space:nowrap', 'font-size:9px', 'font-weight:700', 'letter-spacing:0.06em',
         'color:#2DD4BF', 'font-family:monospace',
-        'background:rgba(13,20,36,0.85)', 'padding:2px 6px',
-        'border-radius:4px', 'border:1px solid #2DD4BF44',
-        'letter-spacing:0.05em', 'pointer-events:none'
+        'background:rgba(13,20,36,0.88)', 'padding:2px 5px',
+        'border-radius:3px', 'border:1px solid #2DD4BF33', 'pointer-events:none'
       ].join(';');
       label.textContent = originName.toUpperCase();
 
@@ -766,7 +758,6 @@ export function SosLiveMap({
   headquarters = [],
   selectedSosId,
   selectedHqId,
-  optimizedRouteData,
   onMarkerClick,
   onMarkerDoubleClick,
   onHqMarkerClick
@@ -815,7 +806,6 @@ export function SosLiveMap({
             headquarters={headquarters}
             selectedSosId={selectedSosId}
             selectedHqId={selectedHqId}
-            optimizedRouteData={optimizedRouteData}
             onMarkerClick={onMarkerClick}
             onMarkerDoubleClick={onMarkerDoubleClick}
             onHqMarkerClick={onHqMarkerClick}
