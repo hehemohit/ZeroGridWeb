@@ -11,7 +11,9 @@ import {
   FileText,
   Loader2,
   UserCheck,
-  Compass
+  Compass,
+  MapPin,
+  ExternalLink
 } from 'lucide-react';
 import { AdminUserUI } from './UserManagementModal';
 
@@ -96,6 +98,24 @@ export function SosDrawer({
       currentUserId &&
       (assignedAdminObj.id === currentUserId || (assignedAdminObj as any)._id === currentUserId)
   );
+
+  const googleMapsUrl = React.useMemo(() => {
+    if (!sos) return null;
+    if (sos.coordinates && sos.coordinates.length === 2) {
+      const [lat, lng] = sos.coordinates;
+      if (!isNaN(lat) && !isNaN(lng)) {
+        return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+      }
+    }
+    if (sos.location) {
+      const match = sos.location.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+      if (match) {
+        return `https://www.google.com/maps/search/?api=1&query=${match[1]},${match[2]}`;
+      }
+      return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(sos.location)}`;
+    }
+    return null;
+  }, [sos]);
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-black/60 backdrop-blur-sm transition-opacity animate-fade-in">
@@ -197,10 +217,24 @@ export function SosDrawer({
 
               {/* Geolocation Specs */}
               <div className="p-3 sm:p-4 bg-surfaceCard rounded-16dp border border-hairline">
-                <h5 className="text-[11px] sm:text-xs font-bold text-brandTeal uppercase tracking-wider mb-2 flex items-center gap-1.5 font-display">
-                  <Crosshair className="w-3.5 h-3.5 flex-shrink-0" />
-                  Reported Location Telemetry
-                </h5>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <h5 className="text-[11px] sm:text-xs font-bold text-brandTeal uppercase tracking-wider flex items-center gap-1.5 font-display">
+                    <Crosshair className="w-3.5 h-3.5 flex-shrink-0" />
+                    Reported Location Telemetry
+                  </h5>
+                  {googleMapsUrl && (
+                    <a
+                      href={googleMapsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold text-brandTeal bg-brandTeal/10 hover:bg-brandTeal/20 border border-brandTeal/30 hover:border-brandTeal/60 rounded-lg transition-all flex-shrink-0 group"
+                    >
+                      <MapPin className="w-3 h-3 text-brandTeal group-hover:scale-110 transition-transform" />
+                      <span>Google Maps</span>
+                      <ExternalLink className="w-3 h-3 opacity-70 group-hover:opacity-100" />
+                    </a>
+                  )}
+                </div>
                 <p className="text-xs sm:text-sm font-medium text-primaryText">{sos.location}</p>
                 {sos.message && (
                   <p className="text-xs italic text-secondaryText mt-2 bg-canvas p-2.5 rounded-lg border border-hairline">
