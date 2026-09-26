@@ -1,0 +1,23 @@
+global:
+  scrape_interval: 15s
+
+remote_write:
+  - url: https://prometheus-prod-43-prod-ap-south-1.grafana.net/api/prom/push
+    basic_auth:
+      username: "3614464"
+      password: "YOUR_GRAFANA_CLOUD_PASSWORD_HERE"
+
+scrape_configs:
+  # ─── Local ZeroGrid Backend Server ──────────────────────────────────────────
+  - job_name: "zerogrid-backend-local"
+    metrics_path: "/metrics"
+    scheme: "http"
+    static_configs:
+      - targets: ["localhost:5000"]
+
+  # ─── Render Production ZeroGrid Backend ──────────────────────────────────────
+  - job_name: "zerogrid-backend-render"
+    metrics_path: "/metrics"
+    scheme: "https"
+    static_configs:
+      - targets: ["zerogridweb.onrender.com"]

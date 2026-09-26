@@ -1,17 +1,22 @@
 'use client';
 
 import React from 'react';
-import { MapPin, Info, Shield, User, X, ChevronRight, Clock, Building2 } from 'lucide-react';
+import { MapPin, Info, Shield, User, X, ChevronRight, Clock, Building2, Cpu, Activity } from 'lucide-react';
 import { SosLiveMap, SosLiveMapProps } from './SosLiveMap';
 
 interface MapCanvasProps extends SosLiveMapProps {
   activeSosCount: number;
+  systemStats?: {
+    cpu?: { usagePercent: number };
+    memory?: { rssMb: number };
+  } | null;
   onOpenDetails?: (id: string) => void;
   onClosePreview?: () => void;
 }
 
 export function MapCanvas({
   activeSosCount,
+  systemStats,
   sosEvents = [],
   headquarters = [],
   selectedSosId,
@@ -53,7 +58,19 @@ export function MapCanvas({
         </div>
 
         {/* Badges */}
-        <div className="flex items-center gap-2 sm:gap-3 text-xs text-mutedGray">
+        <div className="flex items-center gap-2 sm:gap-3 text-xs text-mutedGray flex-wrap">
+          {systemStats?.cpu && (
+            <span className="font-mono text-[11px] text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded border border-yellow-400/20 font-semibold flex items-center gap-1.5" title="Prometheus Live Process CPU Usage">
+              <Cpu className="w-3.5 h-3.5 text-yellow-400" />
+              <span>CPU: {systemStats.cpu.usagePercent}%</span>
+            </span>
+          )}
+          {systemStats?.memory && (
+            <span className="font-mono text-[11px] text-brandTeal bg-brandTeal/10 px-2 py-0.5 rounded border border-brandTeal/20 font-semibold flex items-center gap-1.5" title="Node.js Process RSS Memory">
+              <Activity className="w-3.5 h-3.5 text-brandTeal" />
+              <span>RAM: {systemStats.memory.rssMb} MB</span>
+            </span>
+          )}
           {headquarters.length > 0 && (
             <span className="font-mono text-[11px] text-brandTeal bg-brandTeal/10 px-2 py-0.5 rounded border border-brandTeal/20 font-semibold">
               HQs: {headquarters.length}

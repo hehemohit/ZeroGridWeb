@@ -134,7 +134,23 @@ function AdminDashboardContent() {
   const [noteInput, setNoteInput] = useState('');
   const [optimizedRouteData, setOptimizedRouteData] = useState<any>(null);
   const [isOptimizingRoute, setIsOptimizingRoute] = useState(false);
+  const [systemStats, setSystemStats] = useState<any>(null);
   const socketRef = useRef<Socket | null>(null);
+
+  const fetchSystemStats = useCallback(async () => {
+    try {
+      const stats = await api.get('/api/admin/system-stats');
+      setSystemStats(stats);
+    } catch {
+      // Non-blocking fallback
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSystemStats();
+    const interval = setInterval(fetchSystemStats, 4000);
+    return () => clearInterval(interval);
+  }, [fetchSystemStats]);
 
   const showToast = useCallback((message: string, type: 'success' | 'info' | 'error' = 'success') => {
     setToast({ message, type });
@@ -446,6 +462,7 @@ function AdminDashboardContent() {
         {/* UPPER: Geo-Spatial Map Canvas */}
         <MapCanvas
           activeSosCount={activeSosCount}
+          systemStats={systemStats}
           sosEvents={sosEvents.filter(e => e.status === 'ACTIVE' || e.status === 'ACKNOWLEDGED')}
           headquarters={hqs}
           selectedSosId={selectedSosId}

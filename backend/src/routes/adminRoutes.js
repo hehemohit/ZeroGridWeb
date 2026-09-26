@@ -9,13 +9,17 @@ const {
   removeAdmin,
   autoAssignNearestAdmin,
   clearAllSosEvents,
-  optimizeAdminRoute
+  optimizeAdminRoute,
+  getSystemStats
 } = require('../controllers/adminController');
 
 const router = express.Router();
 
 // All admin routes require: (1) valid JWT, (2) DB-verified ADMIN role + adminApproved: true
 router.use(verifyToken, verifyAdminRole);
+
+// GET /api/admin/system-stats — Live CPU %, Memory, Uptime, and Telemetry
+router.get('/system-stats', getSystemStats);
 
 // GET /api/admin/sos?status=ACTIVE — live SOS event list for the map
 router.get('/sos/history', getSosHistory);

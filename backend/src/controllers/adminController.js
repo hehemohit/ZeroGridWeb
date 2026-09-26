@@ -818,6 +818,22 @@ async function optimizeAdminRoute(req, res) {
   }
 }
 
+const { getSystemTelemetry } = require('../utils/metrics');
+
+/**
+ * GET /api/admin/system-stats
+ * Returns real-time CPU %, Memory MB, Uptime, and Active SOS telemetry for the Web Admin Console.
+ */
+async function getSystemStats(req, res) {
+  try {
+    const stats = await getSystemTelemetry();
+    return res.status(200).json(stats);
+  } catch (error) {
+    console.error('[Admin Controller] getSystemStats error:', error);
+    return res.status(500).json({ message: 'Failed to fetch system stats.' });
+  }
+}
+
 module.exports = {
   getActiveSosEvents,
   getSosHistory,
@@ -826,5 +842,6 @@ module.exports = {
   removeAdmin,
   autoAssignNearestAdmin,
   clearAllSosEvents,
-  optimizeAdminRoute
+  optimizeAdminRoute,
+  getSystemStats
 };
