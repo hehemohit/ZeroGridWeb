@@ -16,6 +16,7 @@ export function MapCanvas({
   headquarters = [],
   selectedSosId,
   selectedHqId,
+  optimizedRouteData,
   onMarkerClick,
   onMarkerDoubleClick,
   onHqMarkerClick,
@@ -71,6 +72,7 @@ export function MapCanvas({
           headquarters={headquarters}
           selectedSosId={selectedSosId}
           selectedHqId={selectedHqId}
+          optimizedRouteData={optimizedRouteData}
           onMarkerClick={onMarkerClick}
           onMarkerDoubleClick={onMarkerDoubleClick}
           onHqMarkerClick={onHqMarkerClick}

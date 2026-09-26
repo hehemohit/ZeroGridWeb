@@ -450,6 +450,7 @@ function AdminDashboardContent() {
           headquarters={hqs}
           selectedSosId={selectedSosId}
           selectedHqId={selectedHqId}
+          optimizedRouteData={optimizedRouteData}
           onMarkerClick={(id) => { setSelectedSosId(id); setSelectedHqId(null); }}
           onHqMarkerClick={(id) => { setSelectedHqId(id); setSelectedSosId(null); }}
           onMarkerDoubleClick={(id) => { setSelectedSosId(id); setDrawerSosId(id); }}

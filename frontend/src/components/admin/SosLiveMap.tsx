@@ -30,6 +30,8 @@ export interface SosLiveMapProps {
   selectedSosId?: string | null;
   /** The currently selected HQ id */
   selectedHqId?: string | null;
+  /** Optimized route dataset for tactical path overlay */
+  optimizedRouteData?: any;
   /** Called when the user single-clicks an SOS map marker */
   onMarkerClick?: (id: string) => void;
   /** Called when the user double-clicks an SOS map marker */
@@ -93,6 +95,16 @@ function buildHqMarkerSvg(status: 'ACTIVE' | 'INACTIVE', isSelected: boolean): s
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
+function buildStepMarkerSvg(step: number, category: string): string {
+  const bg = category === 'MEDICAL' ? '#EF4444' : category === 'TRAPPED' ? '#F59E0B' : '#10B981';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44">
+  <circle cx="22" cy="22" r="20" fill="${bg}" opacity="0.35" />
+  <circle cx="22" cy="22" r="14" fill="${bg}" stroke="#FFFFFF" stroke-width="2.5" />
+  <text x="22" y="27" font-size="14" font-weight="900" font-family="sans-serif" fill="#FFFFFF" text-anchor="middle">${step}</text>
+</svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
 export function parseHqCoords(location: any, index: number = 0): [number, number] {
   if (typeof location === 'object' && location !== null) {
     if (Array.isArray(location.coordinates) && location.coordinates.length === 2) {
@@ -137,6 +149,7 @@ function MapController({
   headquarters = [],
   selectedSosId,
   selectedHqId,
+  optimizedRouteData,
   onMarkerClick,
   onMarkerDoubleClick,
   onHqMarkerClick,
@@ -146,6 +159,10 @@ function MapController({
   const markerLib = useMapsLibrary('marker');
 
   const markersRef = useRef<Map<string, google.maps.marker.AdvancedMarkerElement>>(
+    new globalThis.Map()
+  );
+  const polylineRef = useRef<google.maps.Polyline | null>(null);
+  const stepMarkersRef = useRef<Map<string, google.maps.marker.AdvancedMarkerElement>>(
     new globalThis.Map()
   );
   const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -420,9 +437,91 @@ function MapController({
     animateSmoothZoom
   ]);
 
+  // ── Render / Update Tactical Route Overlay & Sequence Badges ──────────────
+  useEffect(() => {
+    if (!map || !markerLib || !isReady) return;
+
+    // Clean up previous polyline
+    if (polylineRef.current) {
+      polylineRef.current.setMap(null);
+      polylineRef.current = null;
+    }
+
+    // Clean up previous step markers
+    stepMarkersRef.current.forEach(m => { m.map = null; });
+    stepMarkersRef.current.clear();
+
+    if (!optimizedRouteData || !optimizedRouteData.optimizedRoute || optimizedRouteData.optimizedRoute.length === 0) {
+      return;
+    }
+
+    const pathPoints: google.maps.LatLngLiteral[] = [];
+
+    // Add origin location
+    if (optimizedRouteData.origin && optimizedRouteData.origin.location) {
+      const oLat = Number(optimizedRouteData.origin.location.lat);
+      const oLng = Number(optimizedRouteData.origin.location.lng);
+      if (!isNaN(oLat) && !isNaN(oLng)) {
+        pathPoints.push({ lat: oLat, lng: oLng });
+      }
+    }
+
+    // Add sequence waypoints
+    optimizedRouteData.optimizedRoute.forEach((step: any) => {
+      if (step.location && typeof step.location.lat === 'number' && typeof step.location.lng === 'number') {
+        pathPoints.push({ lat: Number(step.location.lat), lng: Number(step.location.lng) });
+      }
+    });
+
+    if (pathPoints.length >= 2) {
+      const polyline = new google.maps.Polyline({
+        path: pathPoints,
+        geodesic: true,
+        strokeColor: '#10B981',
+        strokeOpacity: 0.95,
+        strokeWeight: 5,
+        map
+      });
+      polylineRef.current = polyline;
+
+      // Add Step Number Badges (1, 2, 3...)
+      optimizedRouteData.optimizedRoute.forEach((step: any) => {
+        if (!step.location?.lat || !step.location?.lng) return;
+        const key = `step-${step.step}`;
+
+        const img = document.createElement('img');
+        img.src = buildStepMarkerSvg(step.step, step.category);
+        img.style.width = '44px';
+        img.style.height = '44px';
+        img.style.cursor = 'pointer';
+
+        const marker = new markerLib.AdvancedMarkerElement({
+          map,
+          position: { lat: Number(step.location.lat), lng: Number(step.location.lng) },
+          content: img,
+          title: `Step ${step.step}: ${step.category} (${step.distanceFromPrevKm} km)`,
+          zIndex: 1000 + step.step
+        });
+
+        stepMarkersRef.current.set(key, marker);
+      });
+
+      // Fit map bounds to show full optimized route
+      const bounds = new google.maps.LatLngBounds();
+      pathPoints.forEach(pt => bounds.extend(pt));
+      map.fitBounds(bounds, { top: 70, right: 70, bottom: 70, left: 70 });
+    }
+  }, [map, markerLib, isReady, optimizedRouteData]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      if (polylineRef.current) {
+        polylineRef.current.setMap(null);
+        polylineRef.current = null;
+      }
+      stepMarkersRef.current.forEach(m => { m.map = null; });
+      stepMarkersRef.current.clear();
       markersRef.current.forEach(m => { m.map = null; });
       markersRef.current.clear();
     };
