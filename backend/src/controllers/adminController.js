@@ -317,25 +317,38 @@ async function autoAssignNearestAdmin(req, res) {
       });
     }
 
-    // 2. Fetch approved admins
-    const admins = await User.find({ role: 'ADMIN', adminApproved: true });
-    if (admins.length === 0) {
-      return res.status(400).json({ message: 'No approved admins available for assignment.' });
+    // 2. Fetch Headquarters to resolve admin locations via HQ assignment
+    const hqs = await Headquarters.find().populate('assignedAdmins');
+    if (hqs.length === 0) {
+      return res.status(400).json({ message: 'No registered Headquarters found. Please create a Headquarters first.' });
     }
 
-    // 3. Fetch Headquarters to resolve admin locations via HQ assignment
-    const hqs = await Headquarters.find().populate('assignedAdmins');
+    // Collect set of admin IDs that are explicitly assigned to at least one HQ
+    const hqAdminIds = new Set();
+    hqs.forEach(hq => {
+      (hq.assignedAdmins || []).forEach(a => {
+        const aId = typeof a === 'object' && a !== null ? (a._id || a.id) : a;
+        if (aId) hqAdminIds.add(aId.toString());
+      });
+    });
 
-    // Build map of admin ID -> location coordinates
+    // 3. Fetch approved admins who belong to at least one Headquarters
+    const allApprovedAdmins = await User.find({ role: 'ADMIN', adminApproved: true });
+    const admins = allApprovedAdmins.filter(admin => hqAdminIds.has(admin._id.toString()));
+
+    if (admins.length === 0) {
+      return res.status(400).json({
+        message: 'No approved admins are assigned to any Headquarters. Please assign admins to a Headquarters in HQ Management first.'
+      });
+    }
+
+    // Build map of admin ID -> location coordinates (strictly from assigned HQ)
     const adminLocationMap = new Map();
 
-    admins.forEach((admin, idx) => {
+    admins.forEach(admin => {
       const adminIdStr = admin._id.toString();
 
-      let coords = null;
-      let assignedHqName = null;
-
-      // Check assigned HQs for location
+      // Find the HQ that this admin is assigned to
       const assignedHq = hqs.find(hq =>
         (hq.assignedAdmins || []).some(a => {
           const aId = typeof a === 'object' && a !== null ? (a._id || a.id) : a;
@@ -344,28 +357,18 @@ async function autoAssignNearestAdmin(req, res) {
       );
 
       if (assignedHq) {
-        coords = extractCoords(assignedHq.location);
-        assignedHqName = assignedHq.name;
+        const coords = extractCoords(assignedHq.location);
+        if (coords) {
+          adminLocationMap.set(adminIdStr, { admin, coords, hqName: assignedHq.name });
+        }
       }
-
-      // If admin has live lastKnownLocation, use that
-      if (!coords) {
-        coords = extractCoords(admin.lastKnownLocation);
-      }
-
-      // If admin is unassigned to any HQ yet, map them across registered HQs
-      if (!coords && hqs.length > 0) {
-        const fallbackHq = hqs[idx % hqs.length];
-        coords = extractCoords(fallbackHq.location);
-        assignedHqName = fallbackHq.name;
-      }
-
-      if (!coords) {
-        coords = { lat: 28.6139 + idx * 0.02, lng: 77.2090 + idx * 0.02 };
-      }
-
-      adminLocationMap.set(adminIdStr, { admin, coords, hqName: assignedHqName });
     });
+
+    if (adminLocationMap.size === 0) {
+      return res.status(400).json({
+        message: 'No valid headquarters coordinates found for the assigned admins.'
+      });
+    }
 
     // 4. Pre-calculate active workload for each admin to balance assignments equally
     const adminWorkload = new Map();

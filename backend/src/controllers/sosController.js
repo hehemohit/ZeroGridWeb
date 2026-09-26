@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const SosEvent = require('../models/SosEvent');
 const User = require('../models/User');
 const Contact = require('../models/Contact');
+const Headquarters = require('../models/Headquarters');
 const { sendSosPush } = require('../utils/fcm');
 
 /** Helper to get io instance from app (set in server.js) */
@@ -487,6 +488,12 @@ async function assignAdminToSos(req, res) {
       if (targetUser.role !== 'ADMIN') {
         return res.status(400).json({ message: 'Assigned user must have ADMIN role' });
       }
+
+      const hqAssignmentCount = await Headquarters.countDocuments({ assignedAdmins: targetUser._id });
+      if (hqAssignmentCount === 0) {
+        return res.status(400).json({ message: 'Target admin is not assigned to any Headquarters. Assign them to an HQ first.' });
+      }
+
       assignedAdminId = targetUser._id;
     }
 
