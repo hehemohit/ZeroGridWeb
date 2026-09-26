@@ -469,9 +469,9 @@ function MapController({
         const key = cell.id;
         activeKeys.add(key);
 
-        const strokeColor = hasSos ? '#EF4444' : '#FACC15'; // Yellow stroke (#FACC15)
-        const fillColor = hasSos ? '#EF4444' : '#EAB308';   // Yellow fill (#EAB308)
-        const fillOpacity = hasSos ? 0.45 : 0.30; // 30% visible (70% transparent)
+        const strokeColor = '#FACC15'; // Always Tactical Yellow stroke (#FACC15)
+        const fillColor = '#EAB308';   // Always Amber Yellow fill (#EAB308)
+        const fillOpacity = 0.30;       // 30% visible (70% transparent)
 
         if (hexPolygonsRef.current.has(key)) {
           const polygon = hexPolygonsRef.current.get(key)!;
@@ -479,7 +479,7 @@ function MapController({
             strokeColor,
             fillColor,
             fillOpacity,
-            strokeWeight: hasSos ? 2.5 : 1.5,
+            strokeWeight: 2.0,
           });
         } else {
           const PolygonClass = mapsLib.Polygon || (typeof google !== 'undefined' && google.maps?.Polygon);
@@ -487,8 +487,8 @@ function MapController({
             const polygon = new PolygonClass({
               paths: cell.path,
               strokeColor,
-              strokeOpacity: 0.80,
-              strokeWeight: hasSos ? 2.5 : 1.5,
+              strokeOpacity: 0.85,
+              strokeWeight: 2.0,
               fillColor,
               fillOpacity,
               clickable: true,
