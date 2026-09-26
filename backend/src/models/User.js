@@ -31,13 +31,23 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['CITIZEN', 'ADMIN'],
+      enum: ['CITIZEN', 'ADMIN', 'ZONE_ADMIN', 'HQ_ADMIN', 'SUPER_ADMIN'],
       default: 'CITIZEN'
     },
     adminApproved: {
       type: Boolean,
       default: null
       // null = not applicable for citizens; false = admin pending approval; true = admin approved
+    },
+    assignedHq: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Headquarters',
+      default: null
+    },
+    assignedZone: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Zone',
+      default: null
     },
     // Profile completion fields
     phoneNumber: {
@@ -108,7 +118,8 @@ const userSchema = new mongoose.Schema(
 // Pre-save hook: maintain role/approval consistency
 userSchema.pre('save', function () {
   if (this.isModified('role')) {
-    if (this.role === 'ADMIN' && this.adminApproved === null) {
+    const isAdminRole = ['ADMIN', 'ZONE_ADMIN', 'HQ_ADMIN', 'SUPER_ADMIN'].includes(this.role);
+    if (isAdminRole && this.adminApproved === null) {
       this.adminApproved = false;
     } else if (this.role === 'CITIZEN') {
       this.adminApproved = null;

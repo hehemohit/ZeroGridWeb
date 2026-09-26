@@ -19,7 +19,8 @@ import {
   Loader2,
   RefreshCw,
   Radio,
-  AlertTriangle
+  AlertTriangle,
+  Zap
 } from 'lucide-react';
 import { MapCanvas } from '@/components/admin/MapCanvas';
 import { HqModal, HeadquartersUI, AdminUserOption } from '@/components/admin/HqModal';
@@ -237,6 +238,21 @@ export default function HeadquartersPage() {
     });
   }, [hqs, searchQuery, statusFilter]);
 
+  const [isSeedingNcr, setIsSeedingNcr] = useState(false);
+
+  const handleSeedNcrHqs = async () => {
+    setIsSeedingNcr(true);
+    try {
+      const data = await api.post<{ hqs: HeadquartersUI[]; message: string }>('/api/admin/hq/seed-ncr', {});
+      setHqs(data.hqs || []);
+      showToast(data.message || 'Seeded Strategic NCR Headquarters & Hex Zones!', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to seed NCR Headquarters', 'error');
+    } finally {
+      setIsSeedingNcr(false);
+    }
+  };
+
   const openCreateModal = () => {
     setEditingHq(null);
     setIsModalOpen(true);
@@ -291,6 +307,19 @@ export default function HeadquartersPage() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          <button
+            onClick={handleSeedNcrHqs}
+            disabled={isSeedingNcr}
+            title="Deploy strategic Headquarters and 10-15km Hexagonal Zones across NCR"
+            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-brandTeal/10 border border-brandTeal/30 text-brandTeal hover:bg-brandTeal/20 font-bold text-xs sm:text-sm transition-all shadow-sm disabled:opacity-50"
+          >
+            {isSeedingNcr ? (
+              <Loader2 className="w-4 h-4 animate-spin text-brandTeal" />
+            ) : (
+              <Zap className="w-4 h-4 text-brandTeal" />
+            )}
+            <span>Deploy NCR Grid (6 HQs)</span>
+          </button>
           <button
             onClick={() => handleGenerateMockSos()}
             disabled={isGeneratingMock || hqs.length === 0}

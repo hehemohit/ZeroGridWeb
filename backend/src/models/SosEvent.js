@@ -125,6 +125,23 @@ const sosEventSchema = new mongoose.Schema(
       ref: 'User',
       default: null
     },
+    zoneId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Zone',
+      default: null,
+      index: true
+    },
+    hqId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Headquarters',
+      default: null,
+      index: true
+    },
+    h3Index: {
+      type: String,
+      default: null,
+      index: true
+    },
     notes: {
       type: [sosNoteSchema],
       default: []

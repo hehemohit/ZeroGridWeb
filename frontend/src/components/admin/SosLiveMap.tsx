@@ -9,6 +9,7 @@ import {
 } from '@vis.gl/react-google-maps';
 import { Loader2, Building2 } from 'lucide-react';
 import type { SosEventUI } from './SosDrawer';
+import { generateHqHexHoneycomb, isPointInPolygon } from '@/utils/hexUtils';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -170,6 +171,7 @@ function MapController({
   const stepMarkersRef = useRef<Map<string, google.maps.marker.AdvancedMarkerElement>>(
     new globalThis.Map()
   );
+  const hexPolygonsRef = useRef<Map<string, google.maps.Polygon>>(new globalThis.Map());
   const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
   const hasAutoFit = useRef(false);
   const [isReady, setIsReady] = useState(false);
@@ -442,6 +444,76 @@ function MapController({
     animateSmoothZoom
   ]);
 
+  // ── Render 10–15 km Hexagonal Zone Grid Overlays around Headquarters ──────
+  useEffect(() => {
+    if (!map || !isReady || !mapsLib) return;
+
+    const activeKeys = new Set<string>();
+
+    headquarters.forEach((hq, idx) => {
+      const coords = hq.coordinates || parseHqCoords(hq.location, idx);
+      const hexCells = generateHqHexHoneycomb(
+        hq.id,
+        hq.name,
+        { lat: coords[0], lng: coords[1] },
+        12.0 // 12 km radius => ~14 km diameter 10-15 km grid
+      );
+
+      hexCells.forEach((cell) => {
+        // Check if any active SOS falls inside this 10-15 km hexagon
+        const hasSos = sosEvents.some((sos) => {
+          if (!sos.coordinates || sos.status === 'RESOLVED') return false;
+          return isPointInPolygon({ lat: sos.coordinates[0], lng: sos.coordinates[1] }, cell.path);
+        });
+
+        const key = cell.id;
+        activeKeys.add(key);
+
+        const strokeColor = hasSos ? '#EF4444' : '#2DD4BF';
+        const fillColor = hasSos ? '#EF4444' : '#0A6E6E';
+        const fillOpacity = hasSos ? 0.35 : 0.12;
+
+        if (hexPolygonsRef.current.has(key)) {
+          const polygon = hexPolygonsRef.current.get(key)!;
+          polygon.setOptions({
+            strokeColor,
+            fillColor,
+            fillOpacity,
+            strokeWeight: hasSos ? 2.5 : 1.5,
+          });
+        } else {
+          const PolygonClass = mapsLib.Polygon || (typeof google !== 'undefined' && google.maps?.Polygon);
+          if (PolygonClass) {
+            const polygon = new PolygonClass({
+              paths: cell.path,
+              strokeColor,
+              strokeOpacity: 0.75,
+              strokeWeight: hasSos ? 2.5 : 1.5,
+              fillColor,
+              fillOpacity,
+              clickable: true,
+              map,
+            });
+
+            polygon.addListener('click', () => {
+              animateSmoothZoom(cell.center.lat, cell.center.lng, 14);
+            });
+
+            hexPolygonsRef.current.set(key, polygon);
+          }
+        }
+      });
+    });
+
+    // Remove stale hex polygons
+    hexPolygonsRef.current.forEach((poly, key) => {
+      if (!activeKeys.has(key)) {
+        poly.setMap(null);
+        hexPolygonsRef.current.delete(key);
+      }
+    });
+  }, [map, isReady, mapsLib, headquarters, sosEvents, animateSmoothZoom]);
+
   // ── Render / Update Tactical Route Overlay & Sequence Badges ──────────────
   useEffect(() => {
     if (!map || !markerLib || !isReady) return;
@@ -645,6 +717,8 @@ function MapController({
       stepMarkersRef.current.clear();
       markersRef.current.forEach(m => { m.map = null; });
       markersRef.current.clear();
+      hexPolygonsRef.current.forEach(p => p.setMap(null));
+      hexPolygonsRef.current.clear();
     };
   }, []);
 

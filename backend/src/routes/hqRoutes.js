@@ -6,7 +6,8 @@ const {
   createHq,
   updateHq,
   deleteHq,
-  generateMockSos
+  generateMockSos,
+  seedNcrHqs
 } = require('../controllers/hqController');
 
 const router = express.Router();
@@ -19,6 +20,9 @@ router.get('/', getHqs);
 
 // POST /api/admin/hq - Create new HQ
 router.post('/', createHq);
+
+// POST /api/admin/hq/seed-ncr - Seed strategic NCR Headquarters & 10-15km Hexagonal Zones
+router.post('/seed-ncr', seedNcrHqs);
 
 // POST /api/admin/hq/mock-sos - Generate mock SOS signals <= 15km from default/latest HQ
 router.post('/mock-sos', generateMockSos);

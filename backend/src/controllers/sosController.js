@@ -3,6 +3,7 @@ const SosEvent = require('../models/SosEvent');
 const User = require('../models/User');
 const Contact = require('../models/Contact');
 const Headquarters = require('../models/Headquarters');
+const Zone = require('../models/Zone');
 const { sendSosPush } = require('../utils/fcm');
 
 /** Helper to get io instance from app (set in server.js) */
@@ -110,6 +111,28 @@ async function triggerSos(req, res) {
       });
     }
 
+    // Perform spatial lookup to auto-assign 10-15km Hexagonal Zone and HQ
+    let resolvedZoneId = null;
+    let resolvedHqId = null;
+    try {
+      const matchedZone = await Zone.findOne({
+        boundary: {
+          $geoIntersects: {
+            $geometry: {
+              type: 'Point',
+              coordinates: [longitude, latitude]
+            }
+          }
+        }
+      });
+      if (matchedZone) {
+        resolvedZoneId = matchedZone._id;
+        resolvedHqId = matchedZone.hqId;
+      }
+    } catch (spatialErr) {
+      console.warn('[SOS Controller] Spatial zone resolution skipped:', spatialErr.message);
+    }
+
     // Create the SOS event document
     const sosEvent = await SosEvent.create({
       triggeredBy: req.user.userId,
@@ -124,7 +147,9 @@ async function triggerSos(req, res) {
       batteryPercentage: (batteryPercentage !== undefined && batteryPercentage !== null && !isNaN(parseInt(batteryPercentage)))
         ? Math.min(100, Math.max(0, parseInt(batteryPercentage)))
         : null,
-      status: 'ACTIVE'
+      status: 'ACTIVE',
+      zoneId: resolvedZoneId,
+      hqId: resolvedHqId
     });
 
     // Populate triggeredBy for the response and Socket.io payload

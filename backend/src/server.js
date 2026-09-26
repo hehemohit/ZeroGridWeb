@@ -13,6 +13,7 @@ const sosRoutes = require('./routes/sosRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const familyRoutes = require('./routes/familyRoutes');
 const hqRoutes = require('./routes/hqRoutes');
+const zoneRoutes = require('./routes/zoneRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -85,6 +86,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/contacts', contactRoutes);
 app.use('/api/sos', sosRoutes);
 app.use('/api/admin/hq', hqRoutes);
+app.use('/api/admin/zones', zoneRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/family', familyRoutes);
 

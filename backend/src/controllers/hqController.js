@@ -91,15 +91,56 @@ function generatePointWithinRadius(lat0, lng0, minKm = 0.8, maxKm = 14.8) {
   };
 }
 
+const STRATEGIC_NCR_HQS = [
+  {
+    name: 'Central Delhi HQ',
+    location: { type: 'Point', coordinates: [77.2090, 28.6139] },
+    status: 'ACTIVE'
+  },
+  {
+    name: 'Gurugram Rescue HQ',
+    location: { type: 'Point', coordinates: [77.0266, 28.4595] },
+    status: 'ACTIVE'
+  },
+  {
+    name: 'Noida Metro HQ',
+    location: { type: 'Point', coordinates: [77.3910, 28.5355] },
+    status: 'ACTIVE'
+  },
+  {
+    name: 'Ghaziabad North HQ',
+    location: { type: 'Point', coordinates: [77.4538, 28.6692] },
+    status: 'ACTIVE'
+  },
+  {
+    name: 'Faridabad South HQ',
+    location: { type: 'Point', coordinates: [77.3178, 28.4089] },
+    status: 'ACTIVE'
+  },
+  {
+    name: 'Sonipat North HQ',
+    location: { type: 'Point', coordinates: [77.0151, 28.9931] },
+    status: 'ACTIVE'
+  }
+];
+
 /**
  * GET /api/admin/hq
  * List all headquarters populated with assigned admins (displayName, email, photoUrl).
  */
 async function getHqs(req, res) {
   try {
-    const hqs = await Headquarters.find()
+    let hqs = await Headquarters.find()
       .populate('assignedAdmins', 'displayName email photoUrl role')
       .sort({ createdAt: -1 });
+
+    // Auto-seed if 0 headquarters exist or if auto-seed requested
+    if (hqs.length === 0 || req.query.seed === 'true') {
+      await autoSeedNcrHqsInternal();
+      hqs = await Headquarters.find()
+        .populate('assignedAdmins', 'displayName email photoUrl role')
+        .sort({ createdAt: -1 });
+    }
 
     const formattedHqs = hqs.map(hq => ({
       ...(hq.toJSON ? hq.toJSON() : hq.toObject ? hq.toObject() : hq),
@@ -110,6 +151,65 @@ async function getHqs(req, res) {
   } catch (error) {
     console.error('[HQ Controller] getHqs error:', error);
     return res.status(500).json({ message: 'Failed to fetch headquarters.' });
+  }
+}
+
+/** Internal helper function to seed strategic NCR HQs and Zones */
+async function autoSeedNcrHqsInternal() {
+  const Zone = require('../models/Zone');
+  const { generateHqHexGrid } = require('../utils/geoUtils');
+
+  await Headquarters.deleteMany({});
+  await Zone.deleteMany({});
+
+  for (const data of STRATEGIC_NCR_HQS) {
+    const hq = await Headquarters.create(data);
+    const lng = data.location.coordinates[0];
+    const lat = data.location.coordinates[1];
+    const gridSpecs = generateHqHexGrid(lat, lng, 12.0);
+
+    for (const spec of gridSpecs) {
+      const code = `ZONE-${hq.name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()}-${spec.suffix}`;
+      await Zone.create({
+        name: `${hq.name} ${spec.name}`,
+        code,
+        hqId: hq._id,
+        radiusKm: 12.0,
+        center: {
+          type: 'Point',
+          coordinates: [spec.centerLng, spec.centerLat]
+        },
+        boundary: spec.boundary,
+        status: 'ACTIVE'
+      });
+    }
+  }
+}
+
+/**
+ * POST /api/admin/hq/seed-ncr
+ * Seed/reset 6 well-spaced strategic Headquarters across NCR.
+ */
+async function seedNcrHqs(req, res) {
+  try {
+    await autoSeedNcrHqsInternal();
+
+    const hqs = await Headquarters.find()
+      .populate('assignedAdmins', 'displayName email photoUrl role')
+      .sort({ createdAt: -1 });
+
+    const formattedHqs = hqs.map(hq => ({
+      ...(hq.toJSON ? hq.toJSON() : hq.toObject ? hq.toObject() : hq),
+      id: hq._id.toString()
+    }));
+
+    return res.status(201).json({
+      message: `Successfully seeded ${formattedHqs.length} strategic NCR Headquarters and 10-15 km Hexagonal Zones!`,
+      hqs: formattedHqs
+    });
+  } catch (error) {
+    console.error('[HQ Controller] seedNcrHqs error:', error);
+    return res.status(500).json({ message: 'Failed to seed strategic NCR Headquarters.' });
   }
 }
 
@@ -356,5 +456,6 @@ module.exports = {
   createHq,
   updateHq,
   deleteHq,
-  generateMockSos
+  generateMockSos,
+  seedNcrHqs
 };
