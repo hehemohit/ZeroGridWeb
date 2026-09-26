@@ -520,6 +520,229 @@ async function clearAllSosEvents(req, res) {
   }
 }
 
+/** Helper to calculate composite priority score P_i for an SOS event */
+function computeSosPriorityScore(sos) {
+  // 1. Category Score
+  const categoryScores = {
+    MEDICAL: 100,
+    TRAPPED: 85,
+    DISASTER: 70,
+    SECURITY: 50,
+    OTHER: 30
+  };
+  const S_category = categoryScores[sos.category] || 30;
+
+  // 2. Battery Depletion Score (100 - battery percentage)
+  let S_battery = 40;
+  if (sos.batteryPercentage !== undefined && sos.batteryPercentage !== null) {
+    const batt = Math.max(0, Math.min(100, Number(sos.batteryPercentage)));
+    S_battery = 100 - batt;
+  }
+
+  // 3. Time Elapsed Score (1 pt per minute, max 50 pts)
+  const elapsedMinutes = Math.floor((Date.now() - new Date(sos.createdAt).getTime()) / (1000 * 60));
+  const S_time = Math.min(50, Math.max(0, elapsedMinutes));
+
+  return S_category + S_battery + S_time;
+}
+
+/** Permutation generator for exact TSP solver (N <= 8) */
+function getPermutations(arr) {
+  if (arr.length <= 1) return [arr];
+  const result = [];
+  for (let i = 0; i < arr.length; i++) {
+    const current = arr[i];
+    const remaining = arr.slice(0, i).concat(arr.slice(i + 1));
+    const perms = getPermutations(remaining);
+    for (const perm of perms) {
+      result.push([current, ...perm]);
+    }
+  }
+  return result;
+}
+
+/**
+ * POST /api/admin/sos/optimize-route
+ * Generates optimal rescue route sequence for an admin assigned to multiple SOS signals.
+ * Body: { adminId?: string, originOverride?: { lat: number, lng: number } }
+ */
+async function optimizeAdminRoute(req, res) {
+  try {
+    const targetAdminId = req.body.adminId || req.user.userId;
+
+    if (!mongoose.Types.ObjectId.isValid(targetAdminId)) {
+      return res.status(400).json({ message: 'Invalid Admin ID' });
+    }
+
+    const admin = await User.findById(targetAdminId);
+    if (!admin) {
+      return res.status(404).json({ message: 'Admin user not found' });
+    }
+
+    // Find active/acknowledged SOS signals assigned to this admin
+    const assignedSosEvents = await SosEvent.find({
+      assignedAdmin: targetAdminId,
+      status: { $in: ['ACTIVE', 'ACKNOWLEDGED'] }
+    }).populate('triggeredBy', 'displayName email phoneNumber photoUrl');
+
+    if (assignedSosEvents.length === 0) {
+      return res.status(200).json({
+        message: 'No active SOS signals assigned to this admin for route optimization.',
+        adminId: targetAdminId,
+        adminName: admin.displayName,
+        totalWaypoints: 0,
+        optimizedRoute: []
+      });
+    }
+
+    // Resolve Origin Coordinates for Admin (HQ -> live location -> override -> fallback)
+    let origin = null;
+    let originName = 'Rescue Station Base';
+
+    if (req.body.originOverride && req.body.originOverride.lat && req.body.originOverride.lng) {
+      origin = {
+        lat: Number(req.body.originOverride.lat),
+        lng: Number(req.body.originOverride.lng)
+      };
+      originName = 'Tactical Position';
+    }
+
+    if (!origin) {
+      const hqs = await Headquarters.find({ assignedAdmins: targetAdminId });
+      if (hqs.length > 0) {
+        origin = extractCoords(hqs[0].location);
+        originName = hqs[0].name;
+      }
+    }
+
+    if (!origin) {
+      origin = extractCoords(admin.lastKnownLocation);
+      if (origin) originName = 'Last Known Admin Location';
+    }
+
+    if (!origin) {
+      origin = { lat: 28.6139, lng: 77.2090 };
+      originName = 'Base Control Center';
+    }
+
+    // Process waypoints and compute priority scores
+    const waypoints = assignedSosEvents.map(sos => {
+      const coords = extractCoords(sos.location) || { lat: 28.6139, lng: 77.2090 };
+      const priorityScore = computeSosPriorityScore(sos);
+      return {
+        sos,
+        sosId: sos._id.toString(),
+        coords,
+        priorityScore,
+        category: sos.category,
+        batteryPercentage: sos.batteryPercentage,
+        triggeredBy: sos.triggeredBy
+      };
+    });
+
+    let bestOrder = [];
+
+    // Algorithm Selection: Exact Permutations vs Priority Ratio Heuristic
+    if (waypoints.length <= 8) {
+      const permutations = getPermutations(waypoints);
+      let minCost = Infinity;
+
+      for (const perm of permutations) {
+        let currentCost = 0;
+        let prevLoc = origin;
+
+        perm.forEach((item, k) => {
+          const dist = getHaversineDistance(prevLoc.lat, prevLoc.lng, item.coords.lat, item.coords.lng);
+          const stepIndex = k + 1;
+          // Cost formula: Distance penalty - Priority incentive / stepIndex
+          currentCost += (dist * 1.0) - ((item.priorityScore * 0.5) / stepIndex);
+          prevLoc = item.coords;
+        });
+
+        if (currentCost < minCost) {
+          minCost = currentCost;
+          bestOrder = perm;
+        }
+      }
+    } else {
+      // Heuristic for N > 8: Priority-Over-Distance Ratio Insertion
+      const unvisited = [...waypoints];
+      let currLoc = origin;
+
+      while (unvisited.length > 0) {
+        let bestIdx = 0;
+        let bestRatio = Infinity;
+
+        unvisited.forEach((item, idx) => {
+          const dist = getHaversineDistance(currLoc.lat, currLoc.lng, item.coords.lat, item.coords.lng);
+          const ratio = (dist + 0.1) / (item.priorityScore + 1);
+          if (ratio < bestRatio) {
+            bestRatio = ratio;
+            bestIdx = idx;
+          }
+        });
+
+        const nextItem = unvisited.splice(bestIdx, 1)[0];
+        bestOrder.push(nextItem);
+        currLoc = nextItem.coords;
+      }
+    }
+
+    // Build finalized ordered route response
+    let totalDistanceKm = 0;
+    let prevPoint = origin;
+
+    const formattedRoute = bestOrder.map((item, index) => {
+      const stepDist = getHaversineDistance(prevPoint.lat, prevPoint.lng, item.coords.lat, item.coords.lng);
+      totalDistanceKm += stepDist;
+      prevPoint = item.coords;
+
+      // Estimate travel time assuming 35 km/h avg rescue vehicle speed in city/mesh domain
+      const estTravelMinutes = Math.max(2, Math.round((stepDist / 35) * 60));
+
+      return {
+        step: index + 1,
+        sosId: item.sosId,
+        category: item.category,
+        message: item.sos.message,
+        batteryPercentage: item.batteryPercentage,
+        priorityScore: item.priorityScore,
+        location: {
+          lat: Number(item.coords.lat.toFixed(6)),
+          lng: Number(item.coords.lng.toFixed(6))
+        },
+        triggeredBy: item.triggeredBy ? {
+          id: item.triggeredBy._id.toString(),
+          displayName: item.triggeredBy.displayName || 'Unknown',
+          email: item.triggeredBy.email || '',
+          phoneNumber: item.triggeredBy.phoneNumber || ''
+        } : null,
+        distanceFromPrevKm: Number(stepDist.toFixed(2)),
+        estTravelTimeMin: estTravelMinutes
+      };
+    });
+
+    const totalEstimatedMinutes = Math.max(3, Math.round((totalDistanceKm / 35) * 60));
+
+    return res.status(200).json({
+      message: `Successfully computed optimal rescue route for ${bestOrder.length} SOS events.`,
+      adminId: targetAdminId,
+      adminName: admin.displayName,
+      origin: {
+        name: originName,
+        location: origin
+      },
+      totalWaypoints: bestOrder.length,
+      totalDistanceKm: Number(totalDistanceKm.toFixed(2)),
+      totalEstimatedMinutes,
+      optimizedRoute: formattedRoute
+    });
+  } catch (error) {
+    console.error('[Admin] optimizeAdminRoute error:', error);
+    return res.status(500).json({ message: 'Failed to compute optimal route.' });
+  }
+}
+
 module.exports = {
   getActiveSosEvents,
   getSosHistory,
@@ -527,5 +750,6 @@ module.exports = {
   addAdmin,
   removeAdmin,
   autoAssignNearestAdmin,
-  clearAllSosEvents
+  clearAllSosEvents,
+  optimizeAdminRoute
 };

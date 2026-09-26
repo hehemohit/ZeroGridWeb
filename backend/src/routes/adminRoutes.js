@@ -8,7 +8,8 @@ const {
   addAdmin,
   removeAdmin,
   autoAssignNearestAdmin,
-  clearAllSosEvents
+  clearAllSosEvents,
+  optimizeAdminRoute
 } = require('../controllers/adminController');
 
 const router = express.Router();
@@ -22,6 +23,9 @@ router.get('/sos', getActiveSosEvents);
 
 // POST /api/admin/sos/auto-assign — Auto-assign active SOS events to nearest admin responder
 router.post('/sos/auto-assign', autoAssignNearestAdmin);
+
+// POST /api/admin/sos/optimize-route — Compute multi-factor rescue route sequence for assigned SOS events
+router.post('/sos/optimize-route', optimizeAdminRoute);
 
 // DELETE /api/admin/sos/clear-all — Temporary route to clear/delete all existing SOS signals
 router.delete('/sos/clear-all', clearAllSosEvents);

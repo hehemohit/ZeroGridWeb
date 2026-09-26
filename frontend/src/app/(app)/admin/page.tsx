@@ -17,7 +17,11 @@ import {
   Loader2,
   Building2,
   Compass,
-  Trash2
+  Trash2,
+  Route,
+  Navigation,
+  Zap,
+  RotateCcw
 } from 'lucide-react';
 import { MapCanvas } from '@/components/admin/MapCanvas';
 import { SosDrawer, SosEventUI, NoteItem } from '@/components/admin/SosDrawer';
@@ -128,6 +132,8 @@ function AdminDashboardContent() {
   const [drawerLoading, setDrawerLoading] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const [noteInput, setNoteInput] = useState('');
+  const [optimizedRouteData, setOptimizedRouteData] = useState<any>(null);
+  const [isOptimizingRoute, setIsOptimizingRoute] = useState(false);
   const socketRef = useRef<Socket | null>(null);
 
   const showToast = useCallback((message: string, type: 'success' | 'info' | 'error' = 'success') => {
@@ -336,6 +342,27 @@ function AdminDashboardContent() {
     }
   };
 
+  const handleOptimizeRoute = async () => {
+    setIsOptimizingRoute(true);
+    try {
+      const res = await api.post<any>('/api/admin/sos/optimize-route', {
+        adminId: currentUser?.id
+      });
+      if (res && res.optimizedRoute) {
+        setOptimizedRouteData(res);
+        if (res.optimizedRoute.length === 0) {
+          showToast('No active SOS signals assigned to you to optimize.', 'info');
+        } else {
+          showToast(`Computed optimal rescue route for ${res.optimizedRoute.length} SOS events!`);
+        }
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to compute optimal route', 'error');
+    } finally {
+      setIsOptimizingRoute(false);
+    }
+  };
+
   const handleClearAllSos = async () => {
     if (!window.confirm('Are you sure you want to delete all existing SOS signals from the database?')) return;
     setActionLoading(true);
@@ -513,6 +540,21 @@ function AdminDashboardContent() {
               </button>
 
               <button
+                onClick={handleOptimizeRoute}
+                disabled={isOptimizingRoute || actionLoading}
+                title="Compute optimal multi-factor rescue route based on battery, urgency, and distance"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors shadow-sm disabled:opacity-50"
+              >
+                {isOptimizingRoute ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                ) : (
+                  <Route className="w-3.5 h-3.5 text-emerald-400" />
+                )}
+                <span className="hidden sm:inline">Optimize Route</span>
+                <span className="sm:hidden">Route</span>
+              </button>
+
+              <button
                 onClick={handleClearAllSos}
                 disabled={actionLoading}
                 title="Temporary action: Delete all existing SOS signals from database"
@@ -525,7 +567,7 @@ function AdminDashboardContent() {
 
               <button
                 onClick={() => router.push('/admin/headquarters')}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-surfaceElevated text-primaryText border border-hairline hover:bg-surfaceCard transition-colors shadow-sm ml-auto sm:ml-0"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-surfaceElevated text-primaryText border border-hairline hover:bg-surfaceCard transition-colors shadow-sm"
               >
                 <Building2 className="w-3.5 h-3.5 text-brandTeal" />
                 <span className="hidden sm:inline">Headquarters</span>
@@ -534,7 +576,7 @@ function AdminDashboardContent() {
 
               <button
                 onClick={() => setIsUserManagementOpen(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-surfaceElevated text-primaryText border border-hairline hover:bg-surfaceCard transition-colors shadow-sm"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-surfaceElevated text-primaryText border border-hairline hover:bg-surfaceCard transition-colors shadow-sm ml-auto sm:ml-0"
               >
                 <Users className="w-3.5 h-3.5 text-brandTeal" />
                 <span className="hidden sm:inline">Nodes & Users</span>
@@ -542,6 +584,73 @@ function AdminDashboardContent() {
               </button>
             </div>
           </div>
+
+          {/* Tactical Rescue Route Matrix Overlay */}
+          {optimizedRouteData && optimizedRouteData.optimizedRoute && optimizedRouteData.optimizedRoute.length > 0 && (
+            <div className="mx-3 sm:mx-4 mt-3 p-3.5 bg-surfaceElevated border border-emerald-500/30 rounded-xl shadow-lg animate-fade-in space-y-3">
+              <div className="flex items-center justify-between gap-2 border-b border-hairline pb-2.5">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-glow-teal">
+                    <Navigation className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs sm:text-sm font-bold text-primaryText flex items-center gap-2">
+                      Optimal Rescue Route Matrix
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                        {optimizedRouteData.totalWaypoints} Waypoints
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-mutedGray mt-0.5">
+                      Origin: <span className="font-semibold text-primaryText">{optimizedRouteData.origin?.name}</span> • Total Distance: <span className="font-mono text-emerald-400 font-semibold">{optimizedRouteData.totalDistanceKm} km</span> • Est. Duration: <span className="font-mono text-emerald-400 font-semibold">{optimizedRouteData.totalEstimatedMinutes} min</span>
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setOptimizedRouteData(null)}
+                  className="px-2.5 py-1 rounded-lg bg-surfaceCard hover:bg-surface border border-hairline text-mutedGray hover:text-primaryText text-xs flex items-center gap-1 font-medium transition-colors"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  Close Route
+                </button>
+              </div>
+
+              {/* Waypoints Sequence List */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-56 overflow-y-auto pr-1">
+                {optimizedRouteData.optimizedRoute.map((step: any) => (
+                  <div
+                    key={step.step}
+                    onClick={() => { setSelectedSosId(step.sosId); setDrawerSosId(step.sosId); }}
+                    className="p-2.5 bg-surfaceCard hover:bg-surface border border-hairline rounded-lg cursor-pointer transition-colors space-y-1.5 group"
+                  >
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="w-5 h-5 rounded-full bg-emerald-500 text-canvas font-bold text-[11px] flex items-center justify-center shadow-sm font-mono">
+                        {step.step}
+                      </span>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded font-mono ${
+                        step.category === 'MEDICAL' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+                        step.category === 'TRAPPED' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
+                        'bg-brandTeal/20 text-brandTeal border border-brandTeal/30'
+                      }`}>
+                        {step.category}
+                      </span>
+                    </div>
+
+                    <div className="text-xs font-semibold text-primaryText group-hover:text-brandTeal transition-colors line-clamp-1">
+                      {step.message || `Emergency Ping #${step.step}`}
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] text-mutedGray font-mono pt-1 border-t border-hairline">
+                      <span>+{step.distanceFromPrevKm} km ({step.estTravelTimeMin}m)</span>
+                      <span className="text-amber-400 flex items-center gap-1 font-semibold">
+                        <Zap className="w-3 h-3" /> {step.batteryPercentage !== null ? `${step.batteryPercentage}%` : 'N/A'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Scrollable SOS Grid Panel */}
           <div className="flex-1 overflow-y-auto p-2 sm:p-3.5 bg-canvas">
