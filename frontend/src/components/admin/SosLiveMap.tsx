@@ -556,7 +556,7 @@ function MapController({
     }
 
     // ── Origin (HQ) marker ────────────────────────────────────────────────────
-    const origPt = getPt(optimizedRouteData.origin?.location);
+    // origPt is already declared above when building pathPoints — reuse it here
     if (origPt && markerLib) {
       const originName = optimizedRouteData.origin?.name || 'Headquarters';
 
