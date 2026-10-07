@@ -119,6 +119,33 @@ function buildDetourPinSvg(label: string, color: string): string {
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
+/**
+ * Wraps a circular SVG marker image in a zero-dimension relative container so
+ * that its visual center (cx, cy) is positioned exactly on the GPS coordinate [lat, lng],
+ * rather than Google Maps AdvancedMarkerElement's default bottom-center anchor.
+ */
+function createCenteredMarkerWrapper(
+  img: HTMLImageElement,
+  width: number,
+  height: number
+): HTMLDivElement {
+  const wrapper = document.createElement('div');
+  wrapper.style.width = '0px';
+  wrapper.style.height = '0px';
+  wrapper.style.position = 'relative';
+  wrapper.style.pointerEvents = 'auto';
+
+  img.style.position = 'absolute';
+  img.style.left = `${-width / 2}px`;
+  img.style.top = `${-height / 2}px`;
+  img.style.width = `${width}px`;
+  img.style.height = `${height}px`;
+  img.style.transformOrigin = 'center center';
+
+  wrapper.appendChild(img);
+  return wrapper;
+}
+
 export function parseHqCoords(location: any, index: number = 0): [number, number] {
   if (typeof location === 'object' && location !== null) {
     if (Array.isArray(location.coordinates) && location.coordinates.length === 2) {
@@ -400,7 +427,8 @@ function MapController({
 
       if (markersRef.current.has(key)) {
         const existing = markersRef.current.get(key)!;
-        const img = existing.content as HTMLImageElement;
+        const wrapper = existing.content as HTMLElement;
+        const img = (wrapper.tagName === 'IMG' ? wrapper : wrapper.querySelector('img')) as HTMLImageElement;
         img.src = buildMarkerSvg(sos.status as 'ACTIVE' | 'ACKNOWLEDGED', isSelected);
         existing.zIndex = isSelected ? 999 : sos.status === 'ACTIVE' ? 10 : 5;
 
@@ -418,8 +446,6 @@ function MapController({
       } else {
         const img = document.createElement('img');
         img.src = buildMarkerSvg(sos.status as 'ACTIVE' | 'ACKNOWLEDGED', isSelected);
-        img.style.width = '48px';
-        img.style.height = '48px';
         img.style.cursor = 'pointer';
         img.style.transition = 'transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)';
         img.draggable = false;
@@ -431,10 +457,12 @@ function MapController({
           img.style.animation = 'sosMarkerPulse 1.8s ease-in-out infinite';
         }
 
+        const wrapper = createCenteredMarkerWrapper(img, 48, 48);
+
         const marker = new markerLib.AdvancedMarkerElement({
           map,
           position: { lat: sos.coordinates![0], lng: sos.coordinates![1] },
-          content: img,
+          content: wrapper,
           title: `${sos.userName} — ${sos.status}`,
           zIndex: isSelected ? 999 : sos.status === 'ACTIVE' ? 10 : 5,
         });
@@ -467,7 +495,8 @@ function MapController({
 
       if (markersRef.current.has(key)) {
         const existing = markersRef.current.get(key)!;
-        const img = existing.content as HTMLImageElement;
+        const wrapper = existing.content as HTMLElement;
+        const img = (wrapper.tagName === 'IMG' ? wrapper : wrapper.querySelector('img')) as HTMLImageElement;
         img.src = buildHqMarkerSvg(hq.status, isSelected);
         existing.zIndex = isSelected ? 999 : 8;
 
@@ -482,8 +511,6 @@ function MapController({
       } else {
         const img = document.createElement('img');
         img.src = buildHqMarkerSvg(hq.status, isSelected);
-        img.style.width = '52px';
-        img.style.height = '52px';
         img.style.cursor = 'pointer';
         img.style.transition = 'transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)';
         img.draggable = false;
@@ -493,10 +520,12 @@ function MapController({
           img.style.transform = 'scale(1.25)';
         }
 
+        const wrapper = createCenteredMarkerWrapper(img, 52, 52);
+
         const marker = new markerLib.AdvancedMarkerElement({
           map,
           position: { lat: coords[0], lng: coords[1] },
-          content: img,
+          content: wrapper,
           title: `[Headquarters] ${hq.name} (${hq.status})`,
           zIndex: isSelected ? 999 : 8,
         });
@@ -862,14 +891,14 @@ function MapController({
 
       const img = document.createElement('img');
       img.src = buildStepMarkerSvg(step.step, step.category);
-      img.style.width = '44px';
-      img.style.height = '44px';
       img.style.cursor = 'pointer';
+
+      const wrapper = createCenteredMarkerWrapper(img, 44, 44);
 
       const marker = new markerLib.AdvancedMarkerElement({
         map,
         position: pt,
-        content: img,
+        content: wrapper,
         title: `Step ${step.step}: ${step.category} (${step.distanceFromPrevKm} km)`,
         zIndex: 2000 + step.step
       });
