@@ -10,7 +10,9 @@ const {
   getAcknowledgedSosForUser,
   resolveSos,
   addNoteToSos,
-  assignAdminToSos
+  assignAdminToSos,
+  bulkMuleUpload,
+  generateSituationBrief
 } = require('../controllers/sosController');
 
 const router = express.Router();
@@ -33,32 +35,39 @@ const sosRateLimiter = rateLimit({
   }
 });
 
-// POST /api/sos — trigger a new SOS event (authenticated + rate-limited)
+// POST /api/sos - trigger a new SOS event (authenticated + rate-limited)
 router.post('/', verifyToken, sosRateLimiter, triggerSos);
 
-// GET /api/sos/active — active alerts visible to the authenticated user
+// POST /api/sos/bulk-mule - Data Mule batch upload (no rate limit; uses packetId dedup)
+// Registered BEFORE /:id to prevent route shadowing
+router.post('/bulk-mule', verifyToken, bulkMuleUpload);
+
+// GET /api/sos/active - active alerts visible to the authenticated user
 router.get('/active', verifyToken, getActiveSos);
 
-// GET /api/sos/acknowledged — SOS events this user has personally acknowledged (history)
+// GET /api/sos/acknowledged - SOS events this user has personally acknowledged (history)
 router.get('/acknowledged', verifyToken, getAcknowledgedSosForUser);
 
-// GET /api/sos/:id — get a single SOS event (creator or admin only)
+// POST /api/sos/:id/brief - AWS Strands Agent situation brief for incident
+router.post('/:id/brief', verifyToken, generateSituationBrief);
+
+// GET /api/sos/:id - get a single SOS event (creator or admin only)
 router.get('/:id', verifyToken, getSosById);
 
-// PUT /api/sos/:id/acknowledge — any authenticated relative / contact / responder can acknowledge
+// PUT /api/sos/:id/acknowledge - any authenticated relative / contact / responder can acknowledge
 // Removed verifyAdminRole: relatives and local responders must be able to acknowledge.
 // Body: { confirmedSafe: boolean }
 //   true  = relative SOS: "Are you sure he/she is safe?"
 //   false = local area SOS: "Are you sure the surrounding area / peer is attended to?"
 router.put('/:id/acknowledge', verifyToken, acknowledgeSos);
 
-// PUT /api/sos/:id/resolve — admin only: mark as fully resolved
+// PUT /api/sos/:id/resolve - admin only: mark as fully resolved
 router.put('/:id/resolve', verifyToken, verifyAdminRole, resolveSos);
 
-// PUT /api/sos/:id/assign — admin only: assign or unassign event ownership
+// PUT /api/sos/:id/assign - admin only: assign or unassign event ownership
 router.put('/:id/assign', verifyToken, verifyAdminRole, assignAdminToSos);
 
-// POST /api/sos/:id/notes — admin only: append a case note
+// POST /api/sos/:id/notes - admin only: append a case note
 router.post('/:id/notes', verifyToken, verifyAdminRole, addNoteToSos);
 
 module.exports = router;

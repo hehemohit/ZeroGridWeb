@@ -88,6 +88,10 @@ function mapSosFromBackend(raw: any): SosEventUI {
     message: raw.message || '',
     notes: notesList,
     assignedAdmin: assignedAdminData,
+    waterDepthCm: typeof raw.waterDepthCm === 'number' ? raw.waterDepthCm : 0,
+    passability: raw.passability || 'ALL_PASSABLE',
+    relayedByMule: Boolean(raw.relayedByMule),
+    transport: raw.transport || 'ONLINE',
   };
 }
 
@@ -137,6 +141,12 @@ function AdminDashboardContent() {
   const [systemStats, setSystemStats] = useState<any>(null);
   const socketRef = useRef<Socket | null>(null);
 
+  const [detourMode, setDetourMode] = useState(false);
+  const [detourOrigin, setDetourOrigin] = useState<[number, number] | null>(null);
+  const [detourDest, setDetourDest] = useState<[number, number] | null>(null);
+  const [detourResult, setDetourResult] = useState<any | null>(null);
+  const [isDetourLoading, setIsDetourLoading] = useState(false);
+
   const fetchSystemStats = useCallback(async () => {
     try {
       const stats = await api.get('/api/admin/system-stats');
@@ -156,6 +166,48 @@ function AdminDashboardContent() {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3800);
   }, []);
+
+const handleToggleDetourMode = useCallback(() => {
+    setDetourMode((prev) => {
+      const next = !prev;
+      if (!next) {
+        setDetourOrigin(null);
+        setDetourDest(null);
+        setDetourResult(null);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleDetourMapClick = useCallback(async (lat: number, lng: number) => {
+    if (!detourOrigin) {
+      setDetourOrigin([lat, lng]);
+      showToast('Detour Origin (A) set. Click destination on map.', 'info');
+    } else if (!detourDest) {
+      setDetourDest([lat, lng]);
+      setIsDetourLoading(true);
+      showToast('Calculating safe detour route via AWS Strands Agent...', 'info');
+      try {
+        const res = await api.post<any>('/api/routes/detour', {
+          originLat: detourOrigin[0],
+          originLng: detourOrigin[1],
+          destLat: lat,
+          destLng: lng
+        });
+        setDetourResult(res);
+        showToast(res.warningMessage || 'Safe detour calculated by AWS Strands Agent!');
+      } catch (err: any) {
+        showToast(err.message || 'Failed to calculate detour route', 'error');
+      } finally {
+        setIsDetourLoading(false);
+      }
+    } else {
+      setDetourOrigin([lat, lng]);
+      setDetourDest(null);
+      setDetourResult(null);
+      showToast('Detour reset. Origin (A) placed. Click destination.', 'info');
+    }
+  }, [detourOrigin, detourDest, showToast]);
 
   useEffect(() => {
     if (currentUser && currentUser.role !== 'ADMIN') {
@@ -468,6 +520,13 @@ function AdminDashboardContent() {
           selectedSosId={selectedSosId}
           selectedHqId={selectedHqId}
           optimizedRouteData={optimizedRouteData}
+          detourMode={detourMode}
+          detourOrigin={detourOrigin}
+          detourDest={detourDest}
+          detourResult={detourResult}
+          isDetourLoading={isDetourLoading}
+          onToggleDetour={handleToggleDetourMode}
+          onDetourMapClick={handleDetourMapClick}
           onMarkerClick={(id) => { setSelectedSosId(id); setSelectedHqId(null); }}
           onHqMarkerClick={(id) => { setSelectedHqId(id); setSelectedSosId(null); }}
           onMarkerDoubleClick={(id) => { setSelectedSosId(id); setDrawerSosId(id); }}

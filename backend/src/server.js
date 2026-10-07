@@ -10,6 +10,7 @@ const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const contactRoutes = require('./routes/contactRoutes');
 const sosRoutes = require('./routes/sosRoutes');
+const routeRoutes = require('./routes/routeRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const familyRoutes = require('./routes/familyRoutes');
 const hqRoutes = require('./routes/hqRoutes');
@@ -20,9 +21,8 @@ const { getPrometheusMetrics } = require('./utils/metrics');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// ─── Express Setup ────────────────────────────────────────────────────────────
-
-// Trust reverse proxy (Render) for correct IP resolution in rate limiters
+// Express Setup
+// Trust reverse proxy (AWS App Runner / Render) for correct IP resolution in rate limiters
 app.set('trust proxy', 1);
 
 // Allowed origins: comma-separated list in ALLOWED_ORIGINS env var, or wildcard in dev
@@ -41,8 +41,7 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// ─── HTTP Server + Socket.io ─────────────────────────────────────────────────
-
+// HTTP Server + Socket.io
 const server = http.createServer(app);
 
 const io = new Server(server, {
@@ -55,7 +54,7 @@ const io = new Server(server, {
 // Expose io to route handlers via app.get('io')
 app.set('io', io);
 
-// /sos namespace — admin rescue panel subscribes here for real-time SOS events
+// /sos namespace - admin rescue panel subscribes here for real-time SOS events
 const sosNamespace = io.of('/sos');
 
 sosNamespace.on('connection', (socket) => {
@@ -66,19 +65,18 @@ sosNamespace.on('connection', (socket) => {
   });
 });
 
-// ─── Health & Telemetry Probes ────────────────────────────────────────────────
-
+// Health & Telemetry Probes
 // Used by AWS App Runner, health probes, UptimeRobot, and monitoring services.
-// Keeps the service warm and provides instant readiness feedback.
 app.get('/health', (req, res) => {
   const dbState = mongoose.connection.readyState;
   const states = { 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' };
   res.status(200).json({
     status: 'ok',
     platform: 'AWS App Runner',
+    agentEngine: 'AWS Strands Agents SDK',
     database: states[dbState] || 'unknown',
     uptime: process.uptime(),
-    timestamp: new Date().toISOString()
+    timestamp: Date.now()
   });
 });
 
@@ -93,20 +91,19 @@ app.get('/metrics', async (req, res) => {
   }
 });
 
-// ─── Route Mounts ─────────────────────────────────────────────────────────────
-
+// Route Mounts
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/contacts', contactRoutes);
 app.use('/api/sos', sosRoutes);
+app.use('/api/routes', routeRoutes);
 app.use('/api/admin/hq', hqRoutes);
 app.use('/api/admin/zones', zoneRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/family', familyRoutes);
 app.use('/api/v1/public', publicRoutes);
 
-// ─── Global Error Handler ─────────────────────────────────────────────────────
-
+// Global Error Handler
 app.use((err, req, res, next) => {
   console.error('[GlobalError]', err);
   res.status(err.status || 500).json({
@@ -114,8 +111,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// ─── Database Connection ──────────────────────────────────────────────────────
-
+// Database Connection
 const mongoUri = process.env.MONGODB_URI;
 
 if (!mongoUri) {
@@ -134,8 +130,7 @@ if (!mongoUri) {
     });
 }
 
-// ─── Start Server ─────────────────────────────────────────────────────────────
-
+// Start Server
 server.listen(PORT, () => {
   console.log('=============================================');
   console.log(` ZeroGrid Backend Server running on port ${PORT}`);

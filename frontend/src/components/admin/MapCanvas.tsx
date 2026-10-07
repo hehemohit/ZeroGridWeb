@@ -22,6 +22,13 @@ export function MapCanvas({
   selectedSosId,
   selectedHqId,
   optimizedRouteData,
+  detourMode,
+  detourOrigin,
+  detourDest,
+  detourResult,
+  isDetourLoading,
+  onToggleDetour,
+  onDetourMapClick,
   onMarkerClick,
   onMarkerDoubleClick,
   onHqMarkerClick,
@@ -82,7 +89,7 @@ export function MapCanvas({
         </div>
       </div>
 
-      {/* Map Body — relative container so the map can fill it absolutely */}
+      {/* Map Body */}
       <div className="flex-1 relative w-full h-full min-h-[220px]">
         <SosLiveMap
           sosEvents={sosEvents}
@@ -90,6 +97,13 @@ export function MapCanvas({
           selectedSosId={selectedSosId}
           selectedHqId={selectedHqId}
           optimizedRouteData={optimizedRouteData}
+          detourMode={detourMode}
+          detourOrigin={detourOrigin}
+          detourDest={detourDest}
+          detourResult={detourResult}
+          isDetourLoading={isDetourLoading}
+          onToggleDetour={onToggleDetour}
+          onDetourMapClick={onDetourMapClick}
           onMarkerClick={onMarkerClick}
           onMarkerDoubleClick={onMarkerDoubleClick}
           onHqMarkerClick={onHqMarkerClick}
@@ -221,11 +235,11 @@ export function MapCanvas({
       <div className="border-t border-hairline px-3 sm:px-5 py-2 bg-surface flex items-center justify-between text-xs text-mutedGray flex-shrink-0 z-10">
         <span className="flex items-center gap-1.5 text-[10px] sm:text-[11px]">
           <Info className="w-3.5 h-3.5 text-brandTeal flex-shrink-0" />
-          <span className="truncate">HQ markers rendered live • Click any marker to view location telemetry.</span>
+          <span className="truncate">Hydro & flood markers active • Click simulate detour to evaluate route bypass corridors via AWS Strands.</span>
         </span>
 
         <span className="hidden sm:inline-block font-mono text-[10px] text-dimGray">
-          ZeroGrid Geo-Spatial • Headquarters Engine
+          ZeroGrid Geo-Spatial • AWS Strands Engine
         </span>
       </div>
     </section>

@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 /**
- * SosEvent — persisted record of every SOS dispatch.
+ * SosEvent - persisted record of every SOS dispatch.
  *
  * location uses GeoJSON Point so MongoDB can do geospatial queries
  * (e.g. "find active SOS within 10 km of rescue base").
@@ -79,8 +79,37 @@ const sosEventSchema = new mongoose.Schema(
     },
     category: {
       type: String,
-      enum: ['MEDICAL', 'DISASTER', 'TRAPPED', 'SECURITY', 'OTHER'],
+      enum: [
+        'WATERLOGGING',
+        'SUBMERGED_UNDERPASS',
+        'DRAINAGE_OVERFLOW',
+        'HEATWAVE',
+        'FALLEN_GRID',
+        'MEDICAL',
+        'DISASTER',
+        'TRAPPED',
+        'SECURITY',
+        'OTHER'
+      ],
       default: 'OTHER'
+    },
+    waterDepthCm: {
+      type: Number,
+      default: 0
+    },
+    passability: {
+      type: String,
+      enum: ['ALL_PASSABLE', 'HIGH_CLEARANCE_ONLY', 'PEDESTRIAN_ONLY', 'IMPASSABLE'],
+      default: 'ALL_PASSABLE'
+    },
+    packetId: {
+      type: String,
+      index: true,
+      sparse: true
+    },
+    relayedByMule: {
+      type: Boolean,
+      default: false
     },
     message: {
       type: String,
@@ -166,7 +195,7 @@ const sosEventSchema = new mongoose.Schema(
   }
 );
 
-// 2dsphere index — enables geospatial queries on the location field.
+// 2dsphere index - enables geospatial queries on the location field.
 // Equivalent to: db.sosEvents.createIndex({ location: "2dsphere" })
 sosEventSchema.index({ location: '2dsphere' });
 

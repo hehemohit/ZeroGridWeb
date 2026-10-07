@@ -7,12 +7,11 @@ import {
   useMap,
   useMapsLibrary,
 } from '@vis.gl/react-google-maps';
-import { Loader2, Building2 } from 'lucide-react';
+import { Loader2, Building2, Route, Droplets } from 'lucide-react';
 import type { SosEventUI } from './SosDrawer';
 import { generateHqHexHoneycomb, isPointInPolygon } from '@/utils/hexUtils';
 
-// ─── Types ──────────────────────────────────────────────────────────────────
-
+// Types
 export interface HqMarkerItem {
   id: string;
   name: string;
@@ -33,6 +32,14 @@ export interface SosLiveMapProps {
   selectedHqId?: string | null;
   /** Optimized route dataset for tactical path overlay */
   optimizedRouteData?: any;
+  /** Detour Interactive Mode props */
+  detourMode?: boolean;
+  detourOrigin?: [number, number] | null;
+  detourDest?: [number, number] | null;
+  detourResult?: any | null;
+  isDetourLoading?: boolean;
+  onToggleDetour?: () => void;
+  onDetourMapClick?: (lat: number, lng: number) => void;
   /** Called when the user single-clicks an SOS map marker */
   onMarkerClick?: (id: string) => void;
   /** Called when the user double-clicks an SOS map marker */
@@ -41,8 +48,7 @@ export interface SosLiveMapProps {
   onHqMarkerClick?: (hqId: string) => void;
 }
 
-// ─── Dark / Tactical Map Style ───────────────────────────────────────────────
-
+// Dark / Tactical Map Style
 const DARK_MAP_STYLE: google.maps.MapTypeStyle[] = [
   { elementType: 'geometry', stylers: [{ color: '#0d1424' }] },
   { elementType: 'labels.text.stroke', stylers: [{ color: '#0d1424' }] },
@@ -63,8 +69,6 @@ const DARK_MAP_STYLE: google.maps.MapTypeStyle[] = [
   { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#334155' }] },
   { featureType: 'water', elementType: 'labels.text.stroke', stylers: [{ color: '#071016' }] },
 ];
-
-// ─── SVG Marker Factories ──────────────────────────────────────────────────────
 
 function buildMarkerSvg(status: 'ACTIVE' | 'ACKNOWLEDGED', isSelected: boolean): string {
   const isActive = status === 'ACTIVE';
@@ -106,6 +110,15 @@ function buildStepMarkerSvg(step: number, category: string): string {
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
+function buildDetourPinSvg(label: string, color: string): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="46" viewBox="0 0 36 46">
+    <path d="M18 0 C8 0 0 8 0 18 C0 31 18 46 18 46 C18 46 36 31 36 18 C36 8 28 0 18 0 Z" fill="${color}" stroke="#FFFFFF" stroke-width="2"/>
+    <circle cx="18" cy="18" r="12" fill="#FFFFFF"/>
+    <text x="18" y="22" font-size="11" font-weight="bold" font-family="sans-serif" fill="${color}" text-anchor="middle">${label}</text>
+  </svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
 export function parseHqCoords(location: any, index: number = 0): [number, number] {
   if (typeof location === 'object' && location !== null) {
     if (Array.isArray(location.coordinates) && location.coordinates.length === 2) {
@@ -139,8 +152,7 @@ export function parseHqCoords(location: any, index: number = 0): [number, number
   return [baseLat + offsetLat, baseLng + offsetLng];
 }
 
-// ─── Inner Map Controller ─────────────────────────────────────────────────────
-
+// Inner Map Controller
 interface MapControllerProps extends SosLiveMapProps {
   onMapReady: () => void;
 }
@@ -151,6 +163,12 @@ function MapController({
   selectedSosId,
   selectedHqId,
   optimizedRouteData,
+  detourMode = false,
+  detourOrigin = null,
+  detourDest = null,
+  detourResult = null,
+  isDetourLoading = false,
+  onDetourMapClick,
   onMarkerClick,
   onMarkerDoubleClick,
   onHqMarkerClick,
@@ -165,6 +183,7 @@ function MapController({
   const markersRef = useRef<Map<string, google.maps.marker.AdvancedMarkerElement>>(
     new globalThis.Map()
   );
+  const hydroCirclesRef = useRef<Map<string, google.maps.Circle>>(new globalThis.Map());
   const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
   const polylineRef = useRef<google.maps.Polyline | null>(null);
   const originMarkerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
@@ -172,6 +191,13 @@ function MapController({
     new globalThis.Map()
   );
   const hexPolygonsRef = useRef<Map<string, google.maps.Polygon>>(new globalThis.Map());
+
+  // Detour visualization refs
+  const detourOriginMarkerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
+  const detourDestMarkerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
+  const detourBlockedLineRef = useRef<google.maps.Polyline | null>(null);
+  const detourSafePolylineRef = useRef<google.maps.Polyline | null>(null);
+
   const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
   const hasAutoFit = useRef(false);
   const [isReady, setIsReady] = useState(false);
@@ -184,7 +210,22 @@ function MapController({
     }
   }, [map, markerLib, onMapReady]);
 
-  // ── Auto-fit bounds on first meaningful data load ──────────────────────────
+  // Detour mode map click listener
+  useEffect(() => {
+    if (!map || !detourMode || !onDetourMapClick) return;
+
+    const clickListener = map.addListener('click', (e: google.maps.MapMouseEvent) => {
+      if (e.latLng) {
+        onDetourMapClick(e.latLng.lat(), e.latLng.lng());
+      }
+    });
+
+    return () => {
+      google.maps.event.removeListener(clickListener);
+    };
+  }, [map, detourMode, onDetourMapClick]);
+
+  // Auto-fit bounds on first meaningful data load
   useEffect(() => {
     if (!map || !isReady || hasAutoFit.current) return;
 
@@ -221,7 +262,7 @@ function MapController({
     hasAutoFit.current = true;
   }, [map, isReady, sosEvents, headquarters]);
 
-  // ── Smooth Zoom Animation Helper ───────────────────────────────────────────
+  // Smooth Zoom Animation Helper
   const animateSmoothZoom = useCallback(
     (targetLat: number, targetLng: number, targetZoom = 16) => {
       if (!map) return;
@@ -264,7 +305,7 @@ function MapController({
     [onMarkerClick, onMarkerDoubleClick, animateSmoothZoom]
   );
 
-  // ── Pan + smooth zoom when a list item or marker is selected ─────────────
+  // Pan + smooth zoom when a list item or marker is selected
   useEffect(() => {
     if (!map) return;
     if (selectedSosId) {
@@ -286,7 +327,63 @@ function MapController({
     }
   }, [map, selectedSosId, selectedHqId, sosEvents, headquarters, animateSmoothZoom]);
 
-  // ── Create / update / remove markers ─────────────────────────────────────
+  // Render Hydro Depth Circles for flood events
+  useEffect(() => {
+    if (!map || !isReady || !mapsLib) return;
+
+    const activeHydroKeys = new Set<string>();
+    const validHydroEvents = sosEvents.filter(
+      e => e.coordinates &&
+      (e.status === 'ACTIVE' || e.status === 'ACKNOWLEDGED') &&
+      ((e.waterDepthCm ?? 0) > 0 || ['WATERLOGGING', 'SUBMERGED_UNDERPASS', 'DRAINAGE_OVERFLOW'].includes(e.severity))
+    );
+
+    validHydroEvents.forEach(sos => {
+      const key = `hydro-${sos.rawId || sos.id}`;
+      activeHydroKeys.add(key);
+
+      const depth = sos.waterDepthCm || 0;
+      const radius = depth >= 60 ? 120 : depth >= 30 ? 80 : 50;
+      const color = depth >= 60 ? '#EF4444' : depth >= 30 ? '#F97316' : '#EAB308';
+
+      if (hydroCirclesRef.current.has(key)) {
+        const circle = hydroCirclesRef.current.get(key)!;
+        circle.setCenter({ lat: sos.coordinates![0], lng: sos.coordinates![1] });
+        circle.setRadius(radius);
+        circle.setOptions({
+          fillColor: color,
+          strokeColor: color
+        });
+      } else {
+        const CircleClass = mapsLib.Circle || (typeof google !== 'undefined' && google.maps?.Circle);
+        if (CircleClass) {
+          const circle = new CircleClass({
+            map,
+            center: { lat: sos.coordinates![0], lng: sos.coordinates![1] },
+            radius,
+            fillColor: color,
+            fillOpacity: 0.25,
+            strokeColor: color,
+            strokeOpacity: 0.7,
+            strokeWeight: 2,
+            clickable: false,
+            zIndex: 1
+          });
+          hydroCirclesRef.current.set(key, circle);
+        }
+      }
+    });
+
+    // Clean up stale circles
+    hydroCirclesRef.current.forEach((circle, key) => {
+      if (!activeHydroKeys.has(key)) {
+        circle.setMap(null);
+        hydroCirclesRef.current.delete(key);
+      }
+    });
+  }, [map, isReady, mapsLib, sosEvents]);
+
+  // Create / update / remove markers
   useEffect(() => {
     if (!map || !markerLib || !isReady) return;
 
@@ -444,7 +541,7 @@ function MapController({
     animateSmoothZoom
   ]);
 
-  // ── Render 10–15 km Hexagonal Zone Grid Overlays around Headquarters ──────
+  // Render 10–15 km Hexagonal Zone Grid Overlays around Headquarters
   useEffect(() => {
     if (!map || !isReady || !mapsLib) return;
 
@@ -456,22 +553,16 @@ function MapController({
         hq.id,
         hq.name,
         { lat: coords[0], lng: coords[1] },
-        12.0 // 12 km radius => ~14 km diameter 10-15 km grid
+        12.0
       );
 
       hexCells.forEach((cell) => {
-        // Check if any active SOS falls inside this 10-15 km hexagon
-        const hasSos = sosEvents.some((sos) => {
-          if (!sos.coordinates || sos.status === 'RESOLVED') return false;
-          return isPointInPolygon({ lat: sos.coordinates[0], lng: sos.coordinates[1] }, cell.path);
-        });
-
         const key = cell.id;
         activeKeys.add(key);
 
-        const strokeColor = '#FACC15'; // Always Tactical Yellow stroke (#FACC15)
-        const fillColor = '#EAB308';   // Always Amber Yellow fill (#EAB308)
-        const fillOpacity = 0.30;       // 30% visible (70% transparent)
+        const strokeColor = '#FACC15';
+        const fillColor = '#EAB308';
+        const fillOpacity = 0.30;
 
         if (hexPolygonsRef.current.has(key)) {
           const polygon = hexPolygonsRef.current.get(key)!;
@@ -514,29 +605,135 @@ function MapController({
     });
   }, [map, isReady, mapsLib, headquarters, sosEvents, animateSmoothZoom]);
 
-  // ── Render / Update Tactical Route Overlay & Sequence Badges ──────────────
+  // Render Detour Overlays (Origin, Destination, Red blocked direct line, Green Strands safe route)
+  useEffect(() => {
+    if (!map || !markerLib || !mapsLib || !isReady) return;
+
+    // 1. Detour Origin Pin
+    if (detourOrigin) {
+      if (!detourOriginMarkerRef.current) {
+        const img = document.createElement('img');
+        img.src = buildDetourPinSvg('A', '#0EA5E9');
+        img.style.width = '36px';
+        img.style.height = '46px';
+        const marker = new markerLib.AdvancedMarkerElement({
+          map,
+          position: { lat: detourOrigin[0], lng: detourOrigin[1] },
+          content: img,
+          title: 'Detour Origin',
+          zIndex: 4000
+        });
+        detourOriginMarkerRef.current = marker;
+      } else {
+        detourOriginMarkerRef.current.position = { lat: detourOrigin[0], lng: detourOrigin[1] };
+      }
+    } else if (detourOriginMarkerRef.current) {
+      detourOriginMarkerRef.current.map = null;
+      detourOriginMarkerRef.current = null;
+    }
+
+    // 2. Detour Destination Pin
+    if (detourDest) {
+      if (!detourDestMarkerRef.current) {
+        const img = document.createElement('img');
+        img.src = buildDetourPinSvg('B', '#F59E0B');
+        img.style.width = '36px';
+        img.style.height = '46px';
+        const marker = new markerLib.AdvancedMarkerElement({
+          map,
+          position: { lat: detourDest[0], lng: detourDest[1] },
+          content: img,
+          title: 'Detour Destination',
+          zIndex: 4000
+        });
+        detourDestMarkerRef.current = marker;
+      } else {
+        detourDestMarkerRef.current.position = { lat: detourDest[0], lng: detourDest[1] };
+      }
+    } else if (detourDestMarkerRef.current) {
+      detourDestMarkerRef.current.map = null;
+      detourDestMarkerRef.current = null;
+    }
+
+    // 3. Direct Blocked Route (Dashed Red Line)
+    if (detourOrigin && detourDest) {
+      const PolylineClass = mapsLib.Polyline || (typeof google !== 'undefined' && google.maps?.Polyline);
+      if (PolylineClass) {
+        if (!detourBlockedLineRef.current) {
+          const line = new PolylineClass({
+            path: [
+              { lat: detourOrigin[0], lng: detourOrigin[1] },
+              { lat: detourDest[0], lng: detourDest[1] }
+            ],
+            strokeColor: '#EF4444',
+            strokeOpacity: 0.7,
+            strokeWeight: 3,
+            map
+          });
+          detourBlockedLineRef.current = line;
+        } else {
+          detourBlockedLineRef.current.setPath([
+            { lat: detourOrigin[0], lng: detourOrigin[1] },
+            { lat: detourDest[0], lng: detourDest[1] }
+          ]);
+        }
+      }
+    } else if (detourBlockedLineRef.current) {
+      detourBlockedLineRef.current.setMap(null);
+      detourBlockedLineRef.current = null;
+    }
+
+    // 4. Safe Strands Detour Polyline (Glowing Green)
+    if (detourResult?.recommendedRouteGeoJson?.coordinates) {
+      const coords = detourResult.recommendedRouteGeoJson.coordinates;
+      const safePath: google.maps.LatLngLiteral[] = coords.map((c: number[]) => ({
+        lat: Number(c[1]),
+        lng: Number(c[0])
+      }));
+
+      const PolylineClass = mapsLib.Polyline || (typeof google !== 'undefined' && google.maps?.Polyline);
+      if (PolylineClass && safePath.length > 1) {
+        if (!detourSafePolylineRef.current) {
+          const polyline = new PolylineClass({
+            path: safePath,
+            strokeColor: '#22C55E',
+            strokeOpacity: 0.95,
+            strokeWeight: 5,
+            zIndex: 3500,
+            map
+          });
+          detourSafePolylineRef.current = polyline;
+        } else {
+          detourSafePolylineRef.current.setPath(safePath);
+        }
+
+        // Fit bounds to show entire safe detour
+        const bounds = new google.maps.LatLngBounds();
+        safePath.forEach(pt => bounds.extend(pt));
+        map.fitBounds(bounds, { top: 70, right: 70, bottom: 70, left: 70 });
+      }
+    } else if (detourSafePolylineRef.current) {
+      detourSafePolylineRef.current.setMap(null);
+      detourSafePolylineRef.current = null;
+    }
+  }, [map, markerLib, mapsLib, isReady, detourOrigin, detourDest, detourResult]);
+
+  // Render / Update Tactical Route Overlay & Sequence Badges
   useEffect(() => {
     if (!map || !markerLib || !isReady) return;
 
-    // 1. Clean up previous directions renderer
     if (directionsRendererRef.current) {
       directionsRendererRef.current.setMap(null);
       directionsRendererRef.current = null;
     }
-
-    // 2. Clean up previous polyline
     if (polylineRef.current) {
       polylineRef.current.setMap(null);
       polylineRef.current = null;
     }
-
-    // 3. Clean up previous origin marker
     if (originMarkerRef.current) {
       originMarkerRef.current.map = null;
       originMarkerRef.current = null;
     }
-
-    // 4. Clean up previous step markers
     stepMarkersRef.current.forEach(m => { m.map = null; });
     stepMarkersRef.current.clear();
 
@@ -551,7 +748,6 @@ function MapController({
 
     const pathPoints: google.maps.LatLngLiteral[] = [];
 
-    // Helper to safely extract LatLng object
     const getPt = (loc: any): google.maps.LatLngLiteral | null => {
       if (!loc) return null;
       if (typeof loc === 'object') {
@@ -567,13 +763,9 @@ function MapController({
       return null;
     };
 
-    // Add origin
     const origPt = getPt(optimizedRouteData.origin?.location);
-    if (origPt) {
-      pathPoints.push(origPt);
-    }
+    if (origPt) pathPoints.push(origPt);
 
-    // Add waypoints
     optimizedRouteData.optimizedRoute.forEach((step: any) => {
       const pt = getPt(step.location);
       if (pt) pathPoints.push(pt);
@@ -581,7 +773,6 @@ function MapController({
 
     if (pathPoints.length < 2) return;
 
-    // ── Decode road-snapped polyline if backend returned one, else raw coords ────────
     let routePath: google.maps.LatLng[] | google.maps.LatLngLiteral[] = [];
     let isRealRoad = false;
 
@@ -590,17 +781,14 @@ function MapController({
       typeof optimizedRouteData.encodedPolyline === 'string' &&
       geometryLib?.encoding
     ) {
-      // ✅ Real road-following path decoded from Directions API encoded polyline
       routePath = geometryLib.encoding.decodePath(optimizedRouteData.encodedPolyline);
       isRealRoad = true;
     } else {
-      // ⚠️ Fallback: straight lines between raw waypoint coords
       routePath = pathPoints;
     }
 
     if (routePath.length < 2) return;
 
-    // Render tactical polyline
     const PolylineClass = mapsLib?.Polyline || (typeof google !== 'undefined' && google.maps?.Polyline);
     if (PolylineClass) {
       const arrowSymbol = typeof google !== 'undefined' && google.maps?.SymbolPath ? {
@@ -613,7 +801,7 @@ function MapController({
 
       const polyline = new PolylineClass({
         path: routePath,
-        geodesic: !isRealRoad,  // false = follow decoded points exactly; true = great-circle arc fallback
+        geodesic: !isRealRoad,
         strokeColor: '#10B981',
         strokeOpacity: 0.95,
         strokeWeight: 6,
@@ -623,8 +811,6 @@ function MapController({
       polylineRef.current = polyline;
     }
 
-    // ── Origin (HQ) pin marker ─────────────────────────────────────────────────
-    // origPt already declared above when building pathPoints
     if (origPt && markerLib) {
       const originName = optimizedRouteData.origin?.name || 'Headquarters';
 
@@ -669,7 +855,6 @@ function MapController({
       originMarkerRef.current = originMarker;
     }
 
-    // Render Step Number Badges (1, 2, 3...)
     optimizedRouteData.optimizedRoute.forEach((step: any) => {
       const pt = getPt(step.location);
       if (!pt) return;
@@ -692,7 +877,6 @@ function MapController({
       stepMarkersRef.current.set(key, marker);
     });
 
-    // Fit map bounds to show full route
     const bounds = new google.maps.LatLngBounds();
     pathPoints.forEach(pt => bounds.extend(pt));
     map.fitBounds(bounds, { top: 80, right: 80, bottom: 80, left: 80 });
@@ -713,20 +897,37 @@ function MapController({
         originMarkerRef.current.map = null;
         originMarkerRef.current = null;
       }
+      if (detourBlockedLineRef.current) {
+        detourBlockedLineRef.current.setMap(null);
+        detourBlockedLineRef.current = null;
+      }
+      if (detourSafePolylineRef.current) {
+        detourSafePolylineRef.current.setMap(null);
+        detourSafePolylineRef.current = null;
+      }
+      if (detourOriginMarkerRef.current) {
+        detourOriginMarkerRef.current.map = null;
+        detourOriginMarkerRef.current = null;
+      }
+      if (detourDestMarkerRef.current) {
+        detourDestMarkerRef.current.map = null;
+        detourDestMarkerRef.current = null;
+      }
       stepMarkersRef.current.forEach(m => { m.map = null; });
       stepMarkersRef.current.clear();
       markersRef.current.forEach(m => { m.map = null; });
       markersRef.current.clear();
       hexPolygonsRef.current.forEach(p => p.setMap(null));
       hexPolygonsRef.current.clear();
+      hydroCirclesRef.current.forEach(c => c.setMap(null));
+      hydroCirclesRef.current.clear();
     };
   }, []);
 
   return null;
 }
 
-// ─── Loading Skeleton ─────────────────────────────────────────────────────────
-
+// Loading Skeleton
 function MapSkeleton() {
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0d1424] gap-3 z-10 pointer-events-none">
@@ -748,54 +949,114 @@ function MapSkeleton() {
   );
 }
 
-// ─── HUD Overlays ─────────────────────────────────────────────────────────────
-
+// HUD Overlays
 function MapHUD({
   sosEvents = [],
-  headquarters = []
+  headquarters = [],
+  detourMode = false,
+  isDetourLoading = false,
+  detourOrigin = null,
+  detourDest = null,
+  detourResult = null,
+  onToggleDetour
 }: {
   sosEvents?: SosEventUI[];
   headquarters?: HqMarkerItem[];
+  detourMode?: boolean;
+  isDetourLoading?: boolean;
+  detourOrigin?: [number, number] | null;
+  detourDest?: [number, number] | null;
+  detourResult?: any | null;
+  onToggleDetour?: () => void;
 }) {
   const activeCount = sosEvents.filter(e => e.status === 'ACTIVE').length;
   const ackCount = sosEvents.filter(e => e.status === 'ACKNOWLEDGED').length;
   const hqActiveCount = headquarters.filter(h => h.status === 'ACTIVE').length;
+  const floodCount = sosEvents.filter(
+    e => (e.status === 'ACTIVE' || e.status === 'ACKNOWLEDGED') &&
+      ((e.waterDepthCm ?? 0) > 0 || ['WATERLOGGING', 'SUBMERGED_UNDERPASS'].includes(e.severity))
+  ).length;
 
   return (
     <div className="absolute top-3 left-3 z-20 flex flex-col gap-1.5 pointer-events-none">
-      {hqActiveCount > 0 && (
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-surfaceCard/90 backdrop-blur-md border border-brandTeal/30 rounded-full text-[11px] shadow-glow-teal">
-          <Building2 className="w-3.5 h-3.5 text-brandTeal" />
-          <span className="font-bold text-brandTeal font-mono">{hqActiveCount}</span>
-          <span className="text-secondaryText">ACTIVE HQs</span>
-        </div>
-      )}
-      {activeCount > 0 && (
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-surfaceCard/90 backdrop-blur-md border border-alertRedBorder rounded-full text-[11px] shadow-glow-red">
-          <span className="w-2 h-2 rounded-full bg-alertRed animate-ping" />
-          <span className="font-bold text-alertRed font-mono">{activeCount}</span>
-          <span className="text-secondaryText">ACTIVE SOS</span>
-        </div>
-      )}
-      {ackCount > 0 && (
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-surfaceCard/90 backdrop-blur-md border border-brandTeal/30 rounded-full text-[11px] shadow-glow-teal">
-          <span className="w-2 h-2 rounded-full bg-brandTeal" />
-          <span className="font-bold text-brandTeal font-mono">{ackCount}</span>
-          <span className="text-secondaryText">ACK&apos;D</span>
-        </div>
-      )}
-      {activeCount === 0 && ackCount === 0 && hqActiveCount === 0 && (
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-surfaceCard/90 backdrop-blur-md border border-hairline rounded-full text-[11px]">
-          <span className="w-2 h-2 rounded-full bg-brandTeal/40 animate-pulse" />
-          <span className="text-mutedGray">Telemetry Ready</span>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {hqActiveCount > 0 && (
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-surfaceCard/90 backdrop-blur-md border border-brandTeal/30 rounded-full text-[11px] shadow-glow-teal">
+            <Building2 className="w-3.5 h-3.5 text-brandTeal" />
+            <span className="font-bold text-brandTeal font-mono">{hqActiveCount}</span>
+            <span className="text-secondaryText">ACTIVE HQs</span>
+          </div>
+        )}
+        {activeCount > 0 && (
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-surfaceCard/90 backdrop-blur-md border border-alertRedBorder rounded-full text-[11px] shadow-glow-red">
+            <span className="w-2 h-2 rounded-full bg-alertRed animate-ping" />
+            <span className="font-bold text-alertRed font-mono">{activeCount}</span>
+            <span className="text-secondaryText">ACTIVE SOS</span>
+          </div>
+        )}
+        {floodCount > 0 && (
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-950/90 backdrop-blur-md border border-blue-500/40 rounded-full text-[11px] shadow-glow-blue">
+            <Droplets className="w-3.5 h-3.5 text-blue-400" />
+            <span className="font-bold text-blue-300 font-mono">{floodCount}</span>
+            <span className="text-blue-200">HYDRO HAZARDS</span>
+          </div>
+        )}
+        {ackCount > 0 && (
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-surfaceCard/90 backdrop-blur-md border border-brandTeal/30 rounded-full text-[11px] shadow-glow-teal">
+            <span className="w-2 h-2 rounded-full bg-brandTeal" />
+            <span className="font-bold text-brandTeal font-mono">{ackCount}</span>
+            <span className="text-secondaryText">ACK&apos;D</span>
+          </div>
+        )}
+
+        {/* Detour Mode Toggle Button */}
+        {onToggleDetour && (
+          <button
+            onClick={onToggleDetour}
+            className={`pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold border transition-all shadow-md ${
+              detourMode
+                ? 'bg-brandTeal hover:bg-brandTealGlow text-canvas border-brandTeal shadow-glow-teal'
+                : 'bg-surfaceCard/90 hover:bg-surfaceCard text-primaryText border-hairline'
+            }`}
+          >
+            <Route className="w-3.5 h-3.5" />
+            <span>{detourMode ? 'Exit Detour Mode' : 'Simulate Detour (AWS Strands)'}</span>
+          </button>
+        )}
+      </div>
+
+      {/* Detour Guidance Banner */}
+      {detourMode && (
+        <div className="pointer-events-auto mt-1 px-3 py-2 bg-canvas/95 backdrop-blur-md border border-brandTeal/40 rounded-xl text-xs text-primaryText shadow-panel-dark space-y-1 max-w-sm">
+          <div className="flex items-center gap-2">
+            {isDetourLoading ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-brandTeal" />
+            ) : (
+              <span className="w-2 h-2 rounded-full bg-brandTeal animate-pulse" />
+            )}
+            <span className="font-bold text-brandTeal text-[11px]">
+              {isDetourLoading
+                ? 'AWS Strands Bedrock routing through flood corridor...'
+                : !detourOrigin
+                ? 'Step 1: Click map to place Origin (A)'
+                : !detourDest
+                ? 'Step 2: Click map to place Destination (B)'
+                : 'Safe Detour Active: Bypassing Flood Zones'}
+            </span>
+          </div>
+          {detourResult?.warningMessage && (
+            <p className="text-[10px] text-amber-300 font-medium">{detourResult.warningMessage}</p>
+          )}
+          {detourResult?.agentAdvisory && (
+            <p className="text-[10px] text-secondaryText leading-relaxed">{detourResult.agentAdvisory}</p>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-// ─── Missing API Key Fallback ─────────────────────────────────────────────────
-
+// Missing API Key Fallback
 function NoApiKeyFallback() {
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0d1424] gap-3">
@@ -823,8 +1084,7 @@ function NoApiKeyFallback() {
   );
 }
 
-// ─── Main SosLiveMap Component ────────────────────────────────────────────────
-
+// Main SosLiveMap Component
 const DEFAULT_CENTER = { lat: 20.5937, lng: 78.9629 }; // India center fallback
 
 export function SosLiveMap({
@@ -832,6 +1092,14 @@ export function SosLiveMap({
   headquarters = [],
   selectedSosId,
   selectedHqId,
+  optimizedRouteData,
+  detourMode = false,
+  detourOrigin = null,
+  detourDest = null,
+  detourResult = null,
+  isDetourLoading = false,
+  onToggleDetour,
+  onDetourMapClick,
   onMarkerClick,
   onMarkerDoubleClick,
   onHqMarkerClick
@@ -880,6 +1148,13 @@ export function SosLiveMap({
             headquarters={headquarters}
             selectedSosId={selectedSosId}
             selectedHqId={selectedHqId}
+            optimizedRouteData={optimizedRouteData}
+            detourMode={detourMode}
+            detourOrigin={detourOrigin}
+            detourDest={detourDest}
+            detourResult={detourResult}
+            isDetourLoading={isDetourLoading}
+            onDetourMapClick={onDetourMapClick}
             onMarkerClick={onMarkerClick}
             onMarkerDoubleClick={onMarkerDoubleClick}
             onHqMarkerClick={onHqMarkerClick}
@@ -887,7 +1162,18 @@ export function SosLiveMap({
           />
         </Map>
 
-        {mapReady && <MapHUD sosEvents={sosEvents} headquarters={headquarters} />}
+        {mapReady && (
+          <MapHUD
+            sosEvents={sosEvents}
+            headquarters={headquarters}
+            detourMode={detourMode}
+            isDetourLoading={isDetourLoading}
+            detourOrigin={detourOrigin}
+            detourDest={detourDest}
+            detourResult={detourResult}
+            onToggleDetour={onToggleDetour}
+          />
+        )}
       </APIProvider>
     </>
   );

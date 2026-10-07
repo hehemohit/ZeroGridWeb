@@ -5,6 +5,7 @@ const Contact = require('../models/Contact');
 const Headquarters = require('../models/Headquarters');
 const Zone = require('../models/Zone');
 const { sendSosPush } = require('../utils/fcm');
+const strandsRouterAgent = require('../utils/strandsRouterAgent');
 
 /** Helper to get io instance from app (set in server.js) */
 function getIo(req) {
@@ -42,6 +43,10 @@ function buildSosPayload(sos, requestingUserId) {
     message: sos.message,
     transport: sos.transport,
     batteryPercentage: sos.batteryPercentage !== undefined ? sos.batteryPercentage : null,
+    waterDepthCm: sos.waterDepthCm !== undefined ? sos.waterDepthCm : 0,
+    passability: sos.passability || 'ALL_PASSABLE',
+    packetId: sos.packetId || null,
+    relayedByMule: !!sos.relayedByMule,
     status: sos.status,
     acknowledgedBy: sos.acknowledgedBy,
     acknowledgedByUsers: sos.acknowledgedByUsers || [],
@@ -59,11 +64,23 @@ function buildSosPayload(sos, requestingUserId) {
  * Creates a new SOS event, emits Socket.io event to admin namespace,
  * and fires FCM push to all of the user's emergency contacts.
  *
- * Body: { lat, lng, accuracy, category, message, transport }
+ * Body: { lat, lng, accuracy, category, message, transport, batteryPercentage, waterDepthCm, passability, packetId, relayedByMule }
  */
 async function triggerSos(req, res) {
   try {
-    const { lat, lng, accuracy, category, message, transport, batteryPercentage } = req.body;
+    const {
+      lat,
+      lng,
+      accuracy,
+      category,
+      message,
+      transport,
+      batteryPercentage,
+      waterDepthCm,
+      passability,
+      packetId,
+      relayedByMule
+    } = req.body;
 
     // Validate coordinates
     if (lat === undefined || lng === undefined) {
@@ -85,9 +102,39 @@ async function triggerSos(req, res) {
       return res.status(400).json({ message: 'lng must be between -180 and 180' });
     }
 
+    // Packet ID deduplication check (from mesh or data mule)
+    if (packetId) {
+      const existingPacket = await SosEvent.findOne({ packetId }).populate({
+        path: 'triggeredBy',
+        select: 'displayName email phoneNumber photoUrl'
+      });
+      if (existingPacket) {
+        return res.status(200).json({
+          message: 'Duplicate packet - returning existing event',
+          sos: buildSosPayload(existingPacket, req.user.userId)
+        });
+      }
+    }
+
     // Validate category if provided
-    const VALID_CATEGORIES = ['MEDICAL', 'DISASTER', 'TRAPPED', 'SECURITY', 'OTHER'];
+    const VALID_CATEGORIES = [
+      'WATERLOGGING',
+      'SUBMERGED_UNDERPASS',
+      'DRAINAGE_OVERFLOW',
+      'HEATWAVE',
+      'FALLEN_GRID',
+      'MEDICAL',
+      'DISASTER',
+      'TRAPPED',
+      'SECURITY',
+      'OTHER'
+    ];
     const sosCategory = category && VALID_CATEGORIES.includes(category) ? category : 'OTHER';
+
+    // Validate passability if provided
+    const VALID_PASSABILITY = ['ALL_PASSABLE', 'HIGH_CLEARANCE_ONLY', 'PEDESTRIAN_ONLY', 'IMPASSABLE'];
+    const sosPassability = passability && VALID_PASSABILITY.includes(passability) ? passability : 'ALL_PASSABLE';
+    const sosWaterDepth = !isNaN(parseInt(waterDepthCm)) ? Math.max(0, parseInt(waterDepthCm)) : 0;
 
     // Validate transport if provided
     const VALID_TRANSPORTS = ['ONLINE', 'MESH', 'BOTH'];
@@ -147,6 +194,10 @@ async function triggerSos(req, res) {
       batteryPercentage: (batteryPercentage !== undefined && batteryPercentage !== null && !isNaN(parseInt(batteryPercentage)))
         ? Math.min(100, Math.max(0, parseInt(batteryPercentage)))
         : null,
+      waterDepthCm: sosWaterDepth,
+      passability: sosPassability,
+      packetId: packetId || null,
+      relayedByMule: !!relayedByMule,
       status: 'ACTIVE',
       zoneId: resolvedZoneId,
       hqId: resolvedHqId
@@ -224,6 +275,151 @@ async function triggerSos(req, res) {
 }
 
 /**
+ * POST /api/sos/bulk-mule
+ * Batch upload from Data Mule devices carrying queued offline mesh packets.
+ * Body: { packets: Array<{ lat, lng, accuracy, category, message, waterDepthCm, passability, packetId, batteryPercentage, transport }> }
+ */
+async function bulkMuleUpload(req, res) {
+  try {
+    const { packets } = req.body;
+
+    if (!Array.isArray(packets) || packets.length === 0) {
+      return res.status(400).json({ message: 'packets must be a non-empty array' });
+    }
+
+    if (packets.length > 200) {
+      return res.status(400).json({ message: 'Maximum 200 packets allowed per batch upload' });
+    }
+
+    const VALID_CATEGORIES = [
+      'WATERLOGGING',
+      'SUBMERGED_UNDERPASS',
+      'DRAINAGE_OVERFLOW',
+      'HEATWAVE',
+      'FALLEN_GRID',
+      'MEDICAL',
+      'DISASTER',
+      'TRAPPED',
+      'SECURITY',
+      'OTHER'
+    ];
+    const VALID_PASSABILITY = ['ALL_PASSABLE', 'HIGH_CLEARANCE_ONLY', 'PEDESTRIAN_ONLY', 'IMPASSABLE'];
+
+    // Extract unique packetIds from input
+    const incomingPacketIds = packets.map((p) => p.packetId).filter(Boolean);
+    const existingDocs = incomingPacketIds.length > 0
+      ? await SosEvent.find({ packetId: { $in: incomingPacketIds } }).select('packetId').lean()
+      : [];
+    const existingSet = new Set(existingDocs.map((d) => d.packetId));
+
+    const newDocsToInsert = [];
+    let duplicatesSkipped = 0;
+
+    for (const p of packets) {
+      if (p.packetId && existingSet.has(p.packetId)) {
+        duplicatesSkipped++;
+        continue;
+      }
+
+      const lat = parseFloat(p.lat);
+      const lng = parseFloat(p.lng);
+      if (isNaN(lat) || isNaN(lng)) continue;
+
+      const cat = p.category && VALID_CATEGORIES.includes(p.category) ? p.category : 'OTHER';
+      const pass = p.passability && VALID_PASSABILITY.includes(p.passability) ? p.passability : 'ALL_PASSABLE';
+      const depth = !isNaN(parseInt(p.waterDepthCm)) ? Math.max(0, parseInt(p.waterDepthCm)) : 0;
+
+      newDocsToInsert.push({
+        triggeredBy: req.user.userId,
+        location: {
+          type: 'Point',
+          coordinates: [lng, lat]
+        },
+        accuracyMeters: p.accuracy ? parseFloat(p.accuracy) : null,
+        category: cat,
+        message: p.message ? String(p.message).trim() : '',
+        transport: 'MESH',
+        relayedByMule: true,
+        waterDepthCm: depth,
+        passability: pass,
+        packetId: p.packetId || null,
+        batteryPercentage: (!isNaN(parseInt(p.batteryPercentage))) ? Math.min(100, Math.max(0, parseInt(p.batteryPercentage))) : null,
+        status: 'ACTIVE'
+      });
+
+      if (p.packetId) existingSet.add(p.packetId);
+    }
+
+    let insertedCount = 0;
+    let insertedEvents = [];
+    if (newDocsToInsert.length > 0) {
+      insertedEvents = await SosEvent.insertMany(newDocsToInsert, { ordered: false });
+      insertedCount = insertedEvents.length;
+
+      const io = getIo(req);
+      if (io) {
+        for (const event of insertedEvents) {
+          io.of('/sos').emit('sos:new', buildSosPayload(event));
+        }
+      }
+    }
+
+    return res.status(200).json({
+      message: 'Data mule bulk upload complete',
+      inserted: insertedCount,
+      duplicatesSkipped: duplicatesSkipped + (packets.length - newDocsToInsert.length - duplicatesSkipped)
+    });
+  } catch (error) {
+    console.error('[SOS] bulkMuleUpload error:', error);
+    return res.status(500).json({ message: 'Failed to process bulk mule upload' });
+  }
+}
+
+/**
+ * POST /api/routes/detour
+ * Computes safe route around active flood/water hazards using AWS Strands Agent.
+ * Body: { originLat, originLng, destLat, destLng }
+ */
+async function getDetourRoute(req, res) {
+  try {
+    const { originLat, originLng, destLat, destLng } = req.body;
+    if (originLat === undefined || originLng === undefined || destLat === undefined || destLng === undefined) {
+      return res.status(400).json({ message: 'originLat, originLng, destLat, and destLng are required' });
+    }
+
+    const detourData = await strandsRouterAgent.getDetour(originLat, originLng, destLat, destLng);
+    return res.status(200).json(detourData);
+  } catch (error) {
+    console.error('[Route] getDetourRoute error:', error);
+    return res.status(500).json({ message: 'Failed to calculate safe detour route' });
+  }
+}
+
+/**
+ * POST /api/sos/:id/brief
+ * Generates tactical municipal & disaster response brief via AWS Strands Agent.
+ */
+async function generateSituationBrief(req, res) {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid SOS event ID' });
+    }
+
+    const sos = await SosEvent.findById(id).lean();
+    if (!sos) {
+      return res.status(404).json({ message: 'SOS event not found' });
+    }
+
+    const brief = await strandsRouterAgent.getSituationBrief(sos);
+    return res.status(200).json(brief);
+  } catch (error) {
+    console.error('[SOS] generateSituationBrief error:', error);
+    return res.status(500).json({ message: 'Failed to generate situation brief' });
+  }
+}
+
+/**
  * GET /api/sos/:id
  * Returns a single SOS event. Only the event creator or an admin can access this route.
  */
@@ -269,8 +465,6 @@ async function getSosById(req, res) {
  * Any authenticated user (relative, contact, local responder) can acknowledge an SOS.
  * Tracks per-user acknowledgments in acknowledgedByUsers[].
  * Body: { confirmedSafe?: boolean }
- *   - Relative/Family SOS: confirmedSafe = true  ("Are you sure he is safe?")
- *   - Local Area SOS:      confirmedSafe = false ("Are you sure the situation is attended to?")
  */
 async function acknowledgeSos(req, res) {
   try {
@@ -557,5 +751,8 @@ module.exports = {
   getAcknowledgedSosForUser,
   resolveSos,
   addNoteToSos,
-  assignAdminToSos
+  assignAdminToSos,
+  bulkMuleUpload,
+  getDetourRoute,
+  generateSituationBrief
 };

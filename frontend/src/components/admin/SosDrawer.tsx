@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Shield,
   User,
@@ -13,9 +13,14 @@ import {
   UserCheck,
   Compass,
   MapPin,
-  ExternalLink
+  ExternalLink,
+  Sparkles,
+  Droplets,
+  AlertTriangle,
+  Bot
 } from 'lucide-react';
 import { AdminUserUI } from './UserManagementModal';
+import { api } from '@/lib/api';
 
 export interface NoteItem {
   id: string;
@@ -48,6 +53,10 @@ export interface SosEventUI {
   message?: string;
   notes: NoteItem[];
   assignedAdmin?: AssignedAdminUI | string | null;
+  waterDepthCm?: number;
+  passability?: 'ALL_PASSABLE' | 'HIGH_CLEARANCE_ONLY' | 'PEDESTRIAN_ONLY' | 'IMPASSABLE';
+  relayedByMule?: boolean;
+  transport?: 'ONLINE' | 'MESH' | 'BOTH';
 }
 
 interface SosDrawerProps {
@@ -83,6 +92,20 @@ export function SosDrawer({
   onAutoAssignNearest,
   formatTime,
 }: SosDrawerProps) {
+  const [brief, setBrief] = useState<{
+    municipalActions?: string[];
+    trafficDiversion?: string;
+    agentAdvisory?: string;
+  } | null>(null);
+  const [isBriefLoading, setIsBriefLoading] = useState(false);
+  const [briefError, setBriefError] = useState<string | null>(null);
+
+  // Reset brief when active SOS changes
+  React.useEffect(() => {
+    setBrief(null);
+    setBriefError(null);
+  }, [sos?.id, sos?.rawId]);
+
   if (!sos) return null;
 
   const isAuthority = sos.role === 'AUTHORITY';
@@ -116,6 +139,25 @@ export function SosDrawer({
     }
     return null;
   }, [sos]);
+
+  const handleGenerateBrief = async () => {
+    if (!sos) return;
+    setIsBriefLoading(true);
+    setBriefError(null);
+    try {
+      const targetId = sos.rawId || sos.id;
+      const data = await api.post<{
+        municipalActions?: string[];
+        trafficDiversion?: string;
+        agentAdvisory?: string;
+      }>(`/api/sos/${targetId}/brief`, {});
+      setBrief(data);
+    } catch (err: any) {
+      setBriefError(err.message || 'Failed to generate situation brief');
+    } finally {
+      setIsBriefLoading(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-black/60 backdrop-blur-sm transition-opacity animate-fade-in">
@@ -190,8 +232,50 @@ export function SosDrawer({
                   </div>
                 </div>
 
+                {/* Hydro & Mesh Mule Telemetry Badges */}
+                <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-hairline">
+                  {typeof sos.waterDepthCm === 'number' && sos.waterDepthCm > 0 && (
+                    <span
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border ${
+                        sos.waterDepthCm >= 60
+                          ? 'bg-red-500/20 text-red-400 border-red-500/40 animate-pulse'
+                          : sos.waterDepthCm >= 30
+                            ? 'bg-amber-500/20 text-amber-400 border-amber-500/40'
+                            : 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40'
+                      }`}
+                    >
+                      <Droplets className="w-3.5 h-3.5" />
+                      <span>{sos.waterDepthCm}cm Depth</span>
+                      {sos.waterDepthCm >= 60 ? ' (Critical)' : sos.waterDepthCm >= 30 ? ' (Moderate)' : ''}
+                    </span>
+                  )}
+
+                  {sos.passability && sos.passability !== 'ALL_PASSABLE' && (
+                    <span
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border ${
+                        sos.passability === 'IMPASSABLE'
+                          ? 'bg-red-950/70 text-red-300 border-red-600/50'
+                          : sos.passability === 'HIGH_CLEARANCE_ONLY'
+                            ? 'bg-orange-950/70 text-orange-300 border-orange-600/50'
+                            : 'bg-yellow-950/70 text-yellow-300 border-yellow-600/50'
+                      }`}
+                    >
+                      <AlertTriangle className="w-3 h-3" />
+                      {sos.passability === 'IMPASSABLE' && 'IMPASSABLE'}
+                      {sos.passability === 'HIGH_CLEARANCE_ONLY' && 'High Clearance Only'}
+                      {sos.passability === 'PEDESTRIAN_ONLY' && 'Pedestrian Only'}
+                    </span>
+                  )}
+
+                  {(sos.relayedByMule || sos.transport === 'MESH') && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-cyan-950/60 text-cyan-300 border border-cyan-500/40">
+                      📡 Offline Mesh Mule Relay
+                    </span>
+                  )}
+                </div>
+
                 {/* Specs Grid: 2 columns with clear vertical spacing */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 pt-3 border-t border-hairline text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 pt-3 border-t border-hairline text-xs">
                   <div className="flex flex-col gap-0.5">
                     <span className="text-mutedGray text-[11px]">Reported Time</span>
                     <span className="font-semibold text-primaryText text-xs">
@@ -209,7 +293,7 @@ export function SosDrawer({
                     </span>
                   </div>
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-mutedGray text-[11px]">Urgency Class</span>
+                    <span className="text-mutedGray text-[11px]">Hazard Category</span>
                     <span className="font-semibold text-alertRed font-mono text-xs">{sos.severity}</span>
                   </div>
                 </div>
@@ -244,6 +328,89 @@ export function SosDrawer({
                 <p className="text-[10px] sm:text-[11px] text-mutedGray mt-2">
                   ZeroGrid Decentralized Mesh packet received via 868MHz relay gateway.
                 </p>
+              </div>
+
+              {/* AWS Strands Agent Situation Brief Card */}
+              <div className="p-3 sm:p-4 bg-surfaceCard rounded-16dp border border-brandTeal/30 shadow-glow-teal">
+                <div className="flex items-center justify-between mb-2">
+                  <h5 className="text-[11px] sm:text-xs font-bold text-brandTeal uppercase tracking-wider flex items-center gap-1.5 font-display">
+                    <Bot className="w-4 h-4 text-brandTeal" />
+                    AWS Strands Agent Situation Brief
+                  </h5>
+                  <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded bg-brandTeal/10 text-brandTeal border border-brandTeal/20">
+                    BEDROCK AI
+                  </span>
+                </div>
+
+                {!brief && !isBriefLoading && (
+                  <div>
+                    <p className="text-[11px] text-mutedGray mb-2.5">
+                      Synthesize automated municipal action orders, road diversion routes, and tactical advisory using AWS Strands Agent.
+                    </p>
+                    <button
+                      onClick={handleGenerateBrief}
+                      className="w-full py-2 px-3 rounded-xl bg-brandTeal hover:bg-brandTealGlow text-canvas font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-sm"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Generate Tactical Situation Brief</span>
+                    </button>
+                  </div>
+                )}
+
+                {isBriefLoading && (
+                  <div className="py-4 flex items-center justify-center gap-2 text-xs text-brandTeal">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Querying AWS Strands Agent...</span>
+                  </div>
+                )}
+
+                {briefError && (
+                  <p className="text-xs text-alertRed mt-2 bg-alertRedBg p-2 rounded border border-alertRedBorder">
+                    {briefError}
+                  </p>
+                )}
+
+                {brief && (
+                  <div className="space-y-2.5 mt-2 text-xs">
+                    {brief.agentAdvisory && (
+                      <div className="p-2.5 rounded-xl bg-canvas border border-hairline">
+                        <span className="text-[10px] text-brandTeal block mb-0.5 font-bold uppercase tracking-wider">
+                          Tactical Advisory
+                        </span>
+                        <p className="text-primaryText font-medium leading-relaxed">{brief.agentAdvisory}</p>
+                      </div>
+                    )}
+
+                    {brief.trafficDiversion && (
+                      <div className="p-2.5 rounded-xl bg-canvas border border-hairline">
+                        <span className="text-[10px] text-amber-400 block mb-0.5 font-bold uppercase tracking-wider">
+                          Traffic Diversion Corridor
+                        </span>
+                        <p className="text-secondaryText leading-relaxed">{brief.trafficDiversion}</p>
+                      </div>
+                    )}
+
+                    {Array.isArray(brief.municipalActions) && brief.municipalActions.length > 0 && (
+                      <div className="p-2.5 rounded-xl bg-canvas border border-hairline">
+                        <span className="text-[10px] text-mutedGray block mb-1 font-bold uppercase tracking-wider">
+                          Municipal & Dewatering Actions
+                        </span>
+                        <ul className="list-disc list-inside space-y-1 text-secondaryText text-[11px]">
+                          {brief.municipalActions.map((action, i) => (
+                            <li key={i}>{action}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    <button
+                      onClick={handleGenerateBrief}
+                      className="text-[10px] text-brandTeal hover:underline pt-1 block"
+                    >
+                      ↻ Regenerate Brief
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Dispatch Ownership & Assignment */}
