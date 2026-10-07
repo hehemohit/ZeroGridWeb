@@ -5,7 +5,7 @@ const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 const cors = require('cors');
 
-// Route imports
+// Route & Utility imports
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const contactRoutes = require('./routes/contactRoutes');
@@ -15,6 +15,7 @@ const familyRoutes = require('./routes/familyRoutes');
 const hqRoutes = require('./routes/hqRoutes');
 const zoneRoutes = require('./routes/zoneRoutes');
 const publicRoutes = require('./routes/publicRoutes');
+const { getPrometheusMetrics } = require('./utils/metrics');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -65,7 +66,7 @@ sosNamespace.on('connection', (socket) => {
   });
 });
 
-// ─── Health Check ─────────────────────────────────────────────────────────────
+// ─── Health & Telemetry Probes ────────────────────────────────────────────────
 
 // Used by AWS App Runner, health probes, UptimeRobot, and monitoring services.
 // Keeps the service warm and provides instant readiness feedback.
@@ -79,6 +80,17 @@ app.get('/health', (req, res) => {
     uptime: process.uptime(),
     timestamp: new Date().toISOString()
   });
+});
+
+// Prometheus Scrape Endpoint (scraped by Prometheus / Grafana Cloud every 15s)
+app.get('/metrics', async (req, res) => {
+  try {
+    res.set('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+    const metrics = await getPrometheusMetrics();
+    res.end(metrics);
+  } catch (err) {
+    res.status(500).end(err.message);
+  }
 });
 
 // ─── Route Mounts ─────────────────────────────────────────────────────────────
@@ -95,9 +107,6 @@ app.use('/api/v1/public', publicRoutes);
 
 // ─── Global Error Handler ─────────────────────────────────────────────────────
 
-// Catches any unhandled errors from route handlers or middleware.
-// Express 5 automatically forwards async errors — no need for try/catch wrappers,
-// but we keep them in controllers for cleaner targeted error logging.
 app.use((err, req, res, next) => {
   console.error('[GlobalError]', err);
   res.status(err.status || 500).json({
@@ -132,6 +141,7 @@ server.listen(PORT, () => {
   console.log(` ZeroGrid Backend Server running on port ${PORT}`);
   console.log(` Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(` Health check: http://localhost:${PORT}/health`);
+  console.log(` Prometheus:   http://localhost:${PORT}/metrics`);
   console.log(` Socket.io:    ws://localhost:${PORT}/sos`);
   console.log('=============================================');
 });
