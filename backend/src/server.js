@@ -67,13 +67,14 @@ sosNamespace.on('connection', (socket) => {
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
 
-// Used by Render health probes, UptimeRobot, and monitoring services.
-// Keeps the paid tier warm and provides instant readiness feedback.
+// Used by AWS App Runner, health probes, UptimeRobot, and monitoring services.
+// Keeps the service warm and provides instant readiness feedback.
 app.get('/health', (req, res) => {
   const dbState = mongoose.connection.readyState;
   const states = { 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' };
   res.status(200).json({
     status: 'ok',
+    platform: 'AWS App Runner',
     database: states[dbState] || 'unknown',
     uptime: process.uptime(),
     timestamp: new Date().toISOString()
