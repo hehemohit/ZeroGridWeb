@@ -12,18 +12,63 @@ try {
   console.warn('[StrandsRouterAgent] @strands-agents/sdk not loaded:', err.message);
 }
 
+// ─── OSRM Safe Client with In-Memory Caching & Rate-Limit Shield ───────────
+
+const routeCache = new Map();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minute TTL
+
+// OpenStreetMap & OSRM fair-use compliant User-Agent
+const OSRM_HEADERS = {
+  'User-Agent': 'ZeroGrid-Emergency-Response-Router/1.0 (https://github.com/hehemohit/ZeroGridWeb; disaster-mesh@zerogrid.org)',
+  'Accept': 'application/json'
+};
+
+function getCacheKey(coords) {
+  // Quantize coordinates to 4 decimals (~11 meters) to catch repeated clicks & micro-jitter
+  return coords.map(([lng, lat]) => `${Number(lng).toFixed(4)},${Number(lat).toFixed(4)}`).join(';');
+}
+
+function getFromCache(key) {
+  const entry = routeCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
+    routeCache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+function setInCache(key, data) {
+  if (routeCache.size > 300) {
+    const oldestKey = routeCache.keys().next().value;
+    routeCache.delete(oldestKey);
+  }
+  routeCache.set(key, { data, timestamp: Date.now() });
+}
+
 /**
- * Fetch OSRM candidate routes between origin and destination.
+ * Fetch OSRM candidate routes between origin and destination with caching.
  */
 async function fetchOsrmRoutes(originLat, originLng, destLat, destLng) {
+  const cacheKey = getCacheKey([[originLng, originLat], [destLng, destLat]]);
+  const cached = getFromCache(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   try {
     const url = `https://router.project-osrm.org/route/v1/driving/${originLng},${originLat};${destLng},${destLat}?alternatives=true&overview=full&geometries=geojson&steps=true`;
-    const response = await axios.get(url, { timeout: 6000 });
+    const response = await axios.get(url, { headers: OSRM_HEADERS, timeout: 5000 });
     if (response.data && response.data.routes && response.data.routes.length > 0) {
+      setInCache(cacheKey, response.data.routes);
       return response.data.routes;
     }
   } catch (err) {
-    console.warn('[StrandsRouterAgent] OSRM fetch failed:', err.message);
+    if (err.response?.status === 429) {
+      console.warn('[StrandsRouterAgent] OSRM rate limit (429) encountered, falling back to local geometry bypass');
+    } else {
+      console.warn('[StrandsRouterAgent] OSRM fetch failed:', err.message);
+    }
   }
   return null;
 }
@@ -160,14 +205,25 @@ function evaluateRouteSafety(routeCoordinates, hazards, originLat, originLng, de
  * Fetch OSRM route traversing an evasion waypoint: A -> Waypoint -> B
  */
 async function fetchOsrmWaypointRoute(originLat, originLng, viaLat, viaLng, destLat, destLng) {
+  const cacheKey = getCacheKey([[originLng, originLat], [viaLng, viaLat], [destLng, destLat]]);
+  const cached = getFromCache(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   try {
     const url = `https://router.project-osrm.org/route/v1/driving/${originLng},${originLat};${viaLng},${viaLat};${destLng},${destLat}?overview=full&geometries=geojson&steps=true`;
-    const response = await axios.get(url, { timeout: 6000 });
+    const response = await axios.get(url, { headers: OSRM_HEADERS, timeout: 5000 });
     if (response.data && response.data.routes && response.data.routes.length > 0) {
+      setInCache(cacheKey, response.data.routes[0]);
       return response.data.routes[0];
     }
   } catch (err) {
-    console.warn('[StrandsRouterAgent] OSRM waypoint query failed:', err.message);
+    if (err.response?.status === 429) {
+      console.warn('[StrandsRouterAgent] OSRM rate limit (429) during waypoint routing, falling back to local geometry');
+    } else {
+      console.warn('[StrandsRouterAgent] OSRM waypoint query failed:', err.message);
+    }
   }
   return null;
 }
