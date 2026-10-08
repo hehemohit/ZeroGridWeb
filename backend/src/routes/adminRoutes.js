@@ -15,9 +15,42 @@ const {
 
 const router = express.Router();
 
+const {
+  getTideSummary,
+  getDrainageTimeline,
+  getClusters,
+  auditCredibility,
+  generateSitRep,
+  broadcastAdvisory,
+  getChronicHotspots
+} = require('../controllers/predictiveController');
+
 // All admin routes require: (1) valid JWT, (2) DB-verified ADMIN role + adminApproved: true
 router.use(verifyToken, verifyAdminRole);
 
+// ─── Autonomous Predictive Crisis Command Routes ─────────────────────────────
+// GET /api/admin/predictive/tide-summary — Real-time coastal tides & rain metrics
+router.get('/predictive/tide-summary', getTideSummary);
+
+// POST /api/admin/predictive/drainage-timeline — Hydrodynamic recession ETA & timeline
+router.post('/predictive/drainage-timeline', getDrainageTimeline);
+
+// GET /api/admin/predictive/clusters — Density-based distress beacon clusters
+router.get('/predictive/clusters', getClusters);
+
+// POST /api/admin/predictive/audit-credibility — Peer consensus & anti-spam audit
+router.post('/predictive/audit-credibility', auditCredibility);
+
+// POST /api/admin/predictive/sitrep — Official NDMA standard Situation Report
+router.post('/predictive/sitrep', generateSitRep);
+
+// POST /api/admin/predictive/broadcast — 1-Click emergency LoRa/BLE mesh advisory
+router.post('/predictive/broadcast', broadcastAdvisory);
+
+// GET /api/admin/predictive/hotspots — Chronic flood bottlenecks database
+router.get('/predictive/hotspots', getChronicHotspots);
+
+// ─── Legacy & Standard Admin Operations ──────────────────────────────────────
 // GET /api/admin/system-stats — Live CPU %, Memory, Uptime, and Telemetry
 router.get('/system-stats', getSystemStats);
 

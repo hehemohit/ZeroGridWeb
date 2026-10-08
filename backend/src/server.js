@@ -54,16 +54,41 @@ const io = new Server(server, {
 // Expose io to route handlers via app.get('io')
 app.set('io', io);
 
+const tideService = require('./utils/tideService');
+const weatherService = require('./utils/weatherService');
+
 // /sos namespace - admin rescue panel subscribes here for real-time SOS events
 const sosNamespace = io.of('/sos');
 
-sosNamespace.on('connection', (socket) => {
+sosNamespace.on('connection', async (socket) => {
   console.log(`[Socket.io] Admin client connected: ${socket.id}`);
+
+  // Push immediate telemetry on connection
+  try {
+    const [tide, weather] = await Promise.all([
+      tideService.getTideConditions(19.4534, 72.8061),
+      weatherService.getRainfall(19.4534, 72.8061)
+    ]);
+    socket.emit('telemetry:tide-update', { tide, weather, emittedAt: new Date().toISOString() });
+  } catch (e) {}
 
   socket.on('disconnect', () => {
     console.log(`[Socket.io] Admin client disconnected: ${socket.id}`);
   });
 });
+
+// Broadcast real-time coastal telemetry every 60 seconds if clients are connected
+setInterval(async () => {
+  try {
+    if (sosNamespace.sockets && sosNamespace.sockets.size > 0) {
+      const [tide, weather] = await Promise.all([
+        tideService.getTideConditions(19.4534, 72.8061),
+        weatherService.getRainfall(19.4534, 72.8061)
+      ]);
+      sosNamespace.emit('telemetry:tide-update', { tide, weather, emittedAt: new Date().toISOString() });
+    }
+  } catch (e) {}
+}, 60000);
 
 // Health & Telemetry Probes
 // Used by AWS App Runner, health probes, UptimeRobot, and monitoring services.
