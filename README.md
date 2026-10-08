@@ -28,20 +28,26 @@
    - 6.2 [Directory Structure](#62-directory-structure)
    - 6.3 [Component Breakdown & Admin Maps](#63-component-breakdown--admin-maps)
    - 6.4 [Authentication & Context Management](#64-authentication--context-management)
-7. [Android Application (`gridzero`)](#7-android-application-gridzero)
-   - 7.1 [Technology Stack & Build Configuration](#71-technology-stack--build-configuration)
-   - 7.2 [Module Architecture & Package Structure](#72-module-architecture--package-structure)
-   - 7.3 [Navigation System & Custom Pager Stack](#73-navigation-system--custom-pager-stack)
-   - 7.4 [Module Deep-Dives](#74-module-deep-dives)
+7. [Voice-AI Dispatch Microservice (`voice-agent/` & Frontend)](#7-voice-ai-dispatch-microservice-voice-agent--frontend)
+   - 7.1 [Architecture & Real-Time Pipeline](#71-architecture--real-time-pipeline)
+   - 7.2 [Microservice Endpoints & Mangum Adapter](#72-microservice-endpoints--mangum-adapter)
+   - 7.3 [Hardware Microphone Selector & Live Level Visualizer](#73-hardware-microphone-selector--live-level-visualizer)
+   - 7.4 [Groq Whisper STT Prompt Conditioning & Anti-Hallucination](#74-groq-whisper-stt-prompt-conditioning--anti-hallucination)
+   - 7.5 [Cross-Platform AWS Lambda Linux Bundler](#75-cross-platform-aws-lambda-linux-bundler)
+8. [Android Application (`gridzero`)](#8-android-application-gridzero)
+   - 8.1 [Technology Stack & Build Configuration](#81-technology-stack--build-configuration)
+   - 8.2 [Module Architecture & Package Structure](#82-module-architecture--package-structure)
+   - 8.3 [Navigation System & Custom Pager Stack](#83-navigation-system--custom-pager-stack)
+   - 8.4 [Module Deep-Dives](#84-module-deep-dives)
      - Core Mesh Engine & Hardware Managers
      - Emergency Dispatcher & WorkManager Offline Sync
      - Mobile Admin Panel & Tactical Radar / Google Maps
      - Identity, Auth, Contacts & Family Linking
      - Background Services (BLE GATT + Firebase Cloud Messaging)
-8. [End-to-End SOS Lifecycle Workflow](#8-end-to-end-sos-lifecycle-workflow)
-9. [Security, Roles & Permission Model](#9-security-roles--permission-model)
-10. [Setup, Execution & Configuration Guide](#10-setup-execution--configuration-guide)
-11. [Troubleshooting & Known Architecture Notes](#11-troubleshooting--known-architecture-notes)
+9. [End-to-End SOS Lifecycle Workflow](#9-end-to-end-sos-lifecycle-workflow)
+10. [Security, Roles & Permission Model](#10-security-roles--permission-model)
+11. [Setup, Execution & Configuration Guide](#11-setup-execution--configuration-guide)
+12. [Troubleshooting & Known Architecture Notes](#12-troubleshooting--known-architecture-notes)
 
 ---
 
@@ -130,11 +136,26 @@ AndroidStudioProjects/
     │
     ├── frontend/                           # Next.js 16 Web Admin Dashboard
     │   ├── src/
-    │   │   ├── app/                        # App Router (pages: admin, dashboard, auth)
-    │   │   ├── components/                 # UI components (SosLiveMap, Drawer, Sidebar)
+    │   │   ├── app/                        # App Router (pages: admin, dashboard, auth, sos)
+    │   │   │   └── api/voice-chat/         # Next.js Server-Side Proxy for Voice Agent (Zero CORS)
+    │   │   ├── components/                 # UI components (SosLiveMap, Drawer, Sidebar, voice)
+    │   │   │   ├── voice/                  # Tactical Voice Assistant & hardware mic selector
+    │   │   │   └── admin/                  # CrisisCommandModal with Tab 5: Voice Dispatch AI
     │   │   ├── context/                    # AuthContext & ThemeContext providers
-    │   │   └── lib/                        # Axios HTTP API client & token injector
+    │   │   └── lib/                        # Axios HTTP API client & voiceAgent.ts service
     │   └── package.json                    # Frontend dependencies
+    │
+    ├── voice-agent/                        # Serverless Voice-AI Microservice (FastAPI + Groq)
+    │   ├── main.py                         # FastAPI app with Groq LLM (openai/gpt-oss-120b) & Mangum
+    │   ├── requirements.txt                # Pinned Python dependencies (fastapi, mangum, openai, httpx, etc.)
+    │   ├── Dockerfile                      # AWS Lambda Python 3.11 container specification
+    │   ├── build_lambda_zip.py             # Multi-platform Linux wheel bundler for AWS Lambda
+    │   ├── test_local.py                   # Local mock runner & AWS API Gateway V2 event emulator
+    │   ├── test_cloud.py                   # Live AWS Lambda endpoint latency & health tester
+    │   ├── test_audio_upload.py            # Whisper audio multipart upload verification
+    │   ├── .env.example                    # Environment variables template
+    │   └── voice-agent-lambda.zip          # Production deployment bundle for AWS Lambda (25.9 MB)
+    │
     └── postman/                            # Postman collection for API test automation
 ```
 
@@ -497,9 +518,157 @@ frontend/src/
 
 ---
 
-## 7. Android Application (`gridzero`)
+## 7. Voice-AI Dispatch Microservice (`voice-agent/` & Frontend)
 
-### 7.1 Technology Stack & Build Configuration
+### 7.1 Architecture & Real-Time Pipeline
+
+The Voice-AI Dispatch Assistant provides emergency command center dispatchers with a hands-free, conversational intelligence copilot. It allows dispatchers to analyze incident telemetry, recommend tactical prioritization, synthesize triage checklists, and automatically append notes to active SOS records using natural voice commands.
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│ WEB CLIENT (Browser - Next.js)                                                         │
+│                                                                                        │
+│  [ MediaRecorder ]  ──(Web Audio API AnalyserNode)──► [ Live Audio Level Meter ]       │
+│         │                                                    (0% - 100% Volume)        │
+│         ▼                                                                              │
+│  audio/webm Blob                                                                       │
+└─────────┼──────────────────────────────────────────────────────────────────────────────┘
+          │ POST multipart/form-data (/api/voice-chat)
+          ▼
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│ NEXT.JS SERVER ROUTE (frontend/src/app/api/voice-chat/route.ts)                        │
+│                                                                                        │
+│  1. Groq Whisper STT                                                                   │
+│     - Model: whisper-large-v3-turbo                                                    │
+│     - Prompt Conditioning: "ZeroGrid emergency disaster dispatch rescue team..."       │
+│     - Anti-Hallucination Filter (discards silent "Thank you." / "Thank you for watching")│
+│                                                                                        │
+│  2. Direct Lambda Proxy (Server-to-Server HTTPS)                                       │
+│     - Zero CORS restrictions                                                           │
+│     - Injects active SOS Incident Context (Category, Priority, Coordinates, Notes)     │
+└─────────┼──────────────────────────────────────────────────────────────────────────────┘
+          │ HTTPS POST (JSON)
+          ▼
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│ AWS API GATEWAY (HTTP API - Amazon Managed SSL)                                        │
+│ https://j6uweuhbak.execute-api.ap-south-1.amazonaws.com/default/voice-agent-microservice │
+└─────────┼──────────────────────────────────────────────────────────────────────────────┘
+          │ Lambda Proxy Integration ($default / ANY)
+          ▼
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│ AWS LAMBDA MICROSERVICE (voice-agent/ - Python 3.11 Runtime)                           │
+│                                                                                        │
+│  [ Mangum ASGI Adapter ] ──► [ FastAPI Core (main.py) ]                                │
+│                                      │                                                 │
+│                                      ▼                                                 │
+│                        [ Groq OpenAI Client ]                                          │
+│                        - Model: openai/gpt-oss-120b                                    │
+│                        - System Prompt: Emergency Command Dispatch Copilot             │
+│                        - Structured Output: { message, action_required, priority, ... }│
+└─────────┼──────────────────────────────────────────────────────────────────────────────┘
+          │ 200 OK (JSON)
+          ▼
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│ WEB CLIENT RESPONSE PROCESSING                                                         │
+│                                                                                        │
+│  1. In-App Speech Synthesis (Web Speech API / SpeechSynthesisUtterance)                │
+│  2. Dynamic Incident Card Update (Category Override & Priority Badge)                  │
+│  3. One-Click "+ Note" Injection directly into SosDrawer / Incident Detail Stream     │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 7.2 Microservice Endpoints & Mangum Adapter
+
+The backend microservice is built using **FastAPI** and adapted for serverless execution using **Mangum** (`mangum==0.17.0`). It supports dual execution: locally via `uvicorn` and in the cloud as an AWS Lambda handler (`main.handler`).
+
+| Endpoint | Method | Path Aliases | Description |
+|---|---|---|---|
+| `/api/health` | `GET` | `/default/voice-agent-microservice/api/health`, `/default/voice-agent-microservice` | Health check verifying model status (`openai/gpt-oss-120b`), API latency, and environment configuration. |
+| `/api/voice-chat` | `POST` | `/default/voice-agent-microservice/api/voice-chat`, `/default/voice-agent-microservice` | Main conversational endpoint. Processes dispatcher transcripts with contextual incident payloads. |
+
+#### Request Payload (`VoiceChatRequest`):
+```json
+{
+  "message": "We have an ongoing medical alert in Sector 4 with severe bleeding. What are the immediate triage steps?",
+  "context": {
+    "sosId": "67056e48f12a3b0012345678",
+    "category": "MEDICAL",
+    "location": { "lat": 19.0760, "lng": 72.8777 },
+    "priority": "HIGH",
+    "notes": ["Citizen reported heavy injury after structural collapse"]
+  }
+}
+```
+
+#### Response Payload (`VoiceChatResponse`):
+```json
+{
+  "response": "Understood, Sector 4 medical trauma. Immediate triage: 1. Dispatch EMS triage squad Alpha. 2. Direct bystander to apply direct pressure and tourniquet if limb is involved. 3. Update priority to CRITICAL.",
+  "action_required": true,
+  "suggested_category": "MEDICAL",
+  "priority_override": "CRITICAL",
+  "dispatch_notes": "Advised EMS Alpha deployment and direct pressure protocol."
+}
+```
+
+### 7.3 Hardware Microphone Selector & Live Level Visualizer
+
+To guarantee reliable audio capture even in noisy command center environments, the dispatch interface ([VoiceDispatchAssistant.tsx](file:///c:/Users/ACER/AndroidStudioProjects/gridZeroExpress/frontend/src/components/voice/VoiceDispatchAssistant.tsx)) provides:
+
+1. **Hardware Device Selection**:
+   - Queries `navigator.mediaDevices.enumerateDevices()` to filter all connected `audioinput` sources.
+   - Dispatchers can switch between built-in mics, USB headsets, or external conference mics directly from the UI dropdown without modifying OS defaults.
+2. **Real-Time Level Visualizer (`AudioContext` + `AnalyserNode`)**:
+   - Analyzes real-time microphone energy using a 256-sample FFT window.
+   - Computes RMS volume and maps it to a responsive visual energy bar with a live percentage indicator (`MIC: 48%`).
+   - Dynamic color alerting: Green (> 15% - optimal speech), Yellow (5-15% - quiet speech), Red/Muted (< 5% - potential hardware mute or silence).
+3. **Deterministic Track Teardown**:
+   - When switching microphones or closing the assistant, `stream.getTracks().forEach(track => track.stop())` is cleanly invoked to prevent lingering microphone recording locks.
+
+### 7.4 Groq Whisper STT Prompt Conditioning & Anti-Hallucination
+
+Automatic Speech Recognition (ASR) is powered by **Groq `whisper-large-v3-turbo`**, transcribing voice recordings in under 200 milliseconds.
+
+#### The Silence Hallucination Challenge:
+Standard zero-shot Whisper models are prone to hallucinating phrases such as *"Thank you."*, *"Thank you for watching."*, or *"Subtitles by..."* when provided with low-energy or silent audio streams.
+
+#### Dual-Layer Mitigation:
+1. **Prompt Conditioning Injection**:
+   - The audio transcription request passes a specialized system conditioning prompt:
+     ```typescript
+     form.append('prompt', 'ZeroGrid emergency disaster dispatch rescue team audio transcript. Responder voice command.');
+     ```
+   - This anchors the attention heads of the Whisper transformer toward emergency command terminology and suppresses YouTube-style conversational video artifacts.
+2. **Server-Side Silence Rejection Guard**:
+   - The Next.js API proxy inspects the transcribed text. If the transcript strictly matches known hallucination strings (`["thank you.", "thank you", "thanks for watching.", "bye."]`), the route suppresses the text and alerts the dispatcher to speak clearly rather than querying the LLM with erroneous data.
+
+### 7.5 Cross-Platform AWS Lambda Linux Bundler
+
+Packaging Python dependencies for AWS Lambda from a Windows host machine typically causes runtime crashes due to native C-extension mismatches (e.g., `pydantic_core` compiled as Windows `.pyd` instead of Linux `.so`).
+
+To solve this without requiring Docker or a Linux virtual machine, [build_lambda_zip.py](file:///c:/Users/ACER/AndroidStudioProjects/gridZeroExpress/voice-agent/build_lambda_zip.py) implements automated multi-platform binary compilation:
+
+```python
+# build_lambda_zip.py execution logic:
+subprocess.run([
+    sys.executable, "-m", "pip", "install",
+    "-r", "requirements.txt",
+    "--target", "package",
+    "--platform", "manylinux2014_x86_64",
+    "--only-binary=:all:",
+    "--upgrade"
+])
+```
+
+- **Pinned Compatible Dependencies**: Pins `httpx==0.27.2` to eliminate compatibility breaks with `openai==1.14.1` (which fails on `httpx>=0.28.0` due to `proxies` argument deprecation).
+- **Universal Multi-Python ABI Support**: Automatically gathers `.so` binaries for `cpython-310`, `cpython-311`, and `cpython-312`.
+- **Lightweight Production Artifact**: Generates `voice-agent-lambda.zip` (25.9 MB), ready for direct upload to AWS Lambda.
+
+---
+
+## 8. Android Application (`gridzero`)
+
+### 8.1 Technology Stack & Build Configuration
 
 - **Language / UI**: 100% Kotlin + Jetpack Compose (Material 3)
 - **Compile SDK**: 35 | **Min SDK**: 26 (Android 8.0) | **Target SDK**: 35
@@ -509,7 +678,7 @@ frontend/src/
 - **Maps**: Google Maps Compose 4.4.1 + Play Services Maps 18.2.0
 - **Secrets Management**: Dynamic `resValue` injection via `local.properties` (never committed to VCS).
 
-### 7.2 Module Architecture & Package Structure
+### 8.2 Module Architecture & Package Structure
 
 ```
 com.example.zerogrid/
@@ -539,7 +708,7 @@ com.example.zerogrid/
 └── util/                          # Validation helpers
 ```
 
-### 7.3 Navigation System & Custom Pager Stack
+### 8.3 Navigation System & Custom Pager Stack
 
 The application employs a custom high-performance navigation architecture:
 - **Root Screen (`NavGraph.kt`)**: Hosts an optimized `HorizontalPager` with `beyondViewportPageCount = 1` for instantaneous tab switching between:
@@ -553,7 +722,7 @@ The application employs a custom high-performance navigation architecture:
   2. If on root tab index > 0, smoothly animates pager back to Home (Tab 0).
   3. If on Home, allows Android system back to minimize the app.
 
-### 7.4 Module Deep-Dives
+### 8.4 Module Deep-Dives
 
 #### Core Mesh Engine & Hardware Managers
 - **`MeshEngine.kt`**: Central singleton orchestrator. Holds `StateFlow` streams for `connectedPeers`, `conversations`, `sosAlerts`, and `acknowledgedAlertIds`.
@@ -582,7 +751,7 @@ The application employs a custom high-performance navigation architecture:
 
 ---
 
-## 8. End-to-End SOS Lifecycle Workflow
+## 9. End-to-End SOS Lifecycle Workflow
 
 ```
 [CITIZEN SENDS SOS]
@@ -623,14 +792,15 @@ SendSosScreen.kt
                     │
                     ├──► [WEB ADMIN CONSOLE]
                     │      │ - Socket.IO captures 'sos:new'
-                    │      └─► SosLiveMap drops alert marker & sounds chime
+                    │      │ - SosLiveMap drops alert marker & sounds chime
+                    │      └─► VoiceDispatchAssistant parses tactical audio commands
                     │
                     └──► [ANDROID ADMIN PANEL]
                            │ - AdminSocketManager captures 'sos:new'
                            └─► AdminSosRepository appends to StateFlow; IncidentCard appears
 
 [ADMIN RESOLUTION]
-  Dispatcher reviews incident in SosDetailBottomSheet.kt
+  Dispatcher reviews incident in SosDetailBottomSheet.kt / SosDrawer.tsx
   │
   ▼
   PUT /api/sos/:id/resolve
@@ -641,24 +811,25 @@ SendSosScreen.kt
 
 ---
 
-## 9. Security, Roles & Permission Model
+## 10. Security, Roles & Permission Model
 
 | Security Dimension | Implementation Mechanism | Purpose |
 |---|---|---|
-| **API Transport** | TLS 1.3 / HTTPS (Enforced on Render) | Protects credentials and incident coordinates in transit. |
+| **API Transport** | TLS 1.3 / HTTPS (Enforced on Render & AWS API Gateway) | Protects credentials, incident coordinates, and voice streams in transit. |
 | **Authentication** | JWT (HMAC-SHA256), 7-day expiration | Stateless session management for REST and WebSockets. |
 | **Password Storage**| `bcrypt` with salt rounds = 12 | Secure irreversible credential hashing. |
 | **Role Verification**| `verifyAdminRole.js` (fresh DB check) | Eliminates token-forgery and privilege escalation risks. |
 | **Rate Limiting** | `express-rate-limit` (2 req / 30s for SOS) | Prevents denial-of-service and accidental duplicate submissions. |
 | **Geospatial Queries** | MongoDB `2dsphere` indexes | High-performance spatial querying without exposing raw table scans. |
 | **Maps API Secret** | Android `local.properties` + dynamic `resValue` | Prevents credential leaks in source code repositories. |
-| **Device Permissions** | `BLUETOOTH_SCAN`, `BLUETOOTH_ADVERTISE`, `ACCESS_FINE_LOCATION` | Required by Android OS for BLE mesh discovery and GPS tagging. |
+| **Voice-AI Isolation** | Next.js Server Route Proxy + AWS IAM | Groq API keys remain strictly server-side; client never interacts directly with raw cloud keys. |
+| **Device Permissions** | `BLUETOOTH_SCAN`, `BLUETOOTH_ADVERTISE`, `ACCESS_FINE_LOCATION`, `RECORD_AUDIO` | Required by Android OS and Web browsers for BLE mesh radios, GPS, and dispatch speech capture. |
 
 ---
 
-## 10. Setup, Execution & Configuration Guide
+## 11. Setup, Execution & Configuration Guide
 
-### 10.1 Backend Setup (`gridZeroExpress/backend`)
+### 11.1 Backend Setup (`gridZeroExpress/backend`)
 
 1. Navigate to directory:
    ```bash
@@ -682,7 +853,7 @@ SendSosScreen.kt
    - Health check: `http://localhost:5000/health`
    - WebSocket endpoint: `ws://localhost:5000/sos`
 
-### 10.2 Web Frontend Setup (`gridZeroExpress/frontend`)
+### 11.2 Web Frontend Setup (`gridZeroExpress/frontend`)
 
 1. Navigate to directory:
    ```bash
@@ -692,6 +863,8 @@ SendSosScreen.kt
    ```env
    NEXT_PUBLIC_API_URL=http://localhost:5000
    NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=AIzaSy...
+   NEXT_PUBLIC_VOICE_AGENT_URL=https://j6uweuhbak.execute-api.ap-south-1.amazonaws.com/default/voice-agent-microservice
+   GROQ_API_KEY=gsk_...
    ```
 3. Install dependencies and start Next.js:
    ```bash
@@ -700,7 +873,52 @@ SendSosScreen.kt
    ```
 4. Access interface at `http://localhost:3000`.
 
-### 10.3 Android Client Setup (`gridzero`)
+### 11.3 Voice-AI Microservice & AWS Lambda Deployment (`voice-agent/`)
+
+#### Option A: Local Execution
+1. Navigate to directory:
+   ```bash
+   cd voice-agent
+   python -m venv venv
+   source venv/bin/activate  # On Windows: .\venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
+2. Create `.env`:
+   ```env
+   GROQ_API_KEY=gsk_...
+   ```
+3. Start FastAPI server locally:
+   ```bash
+   uvicorn main:app --reload --port 8000
+   ```
+4. Test locally using [test_local.py](file:///c:/Users/ACER/AndroidStudioProjects/gridZeroExpress/voice-agent/test_local.py):
+   ```bash
+   python test_local.py
+   ```
+
+#### Option B: Deploying to AWS Lambda
+1. Generate the cross-platform Linux deployment ZIP:
+   ```bash
+   python build_lambda_zip.py
+   ```
+   *(This outputs `voice-agent-lambda.zip` (~25.9 MB) with universal Linux x86_64 binaries directly on Windows).*
+2. In the AWS Lambda Console:
+   - **Runtime**: Python 3.11 (x86_64)
+   - **Handler**: `main.handler`
+   - **Timeout**: Set to `30 sec` (prevents LLM inference timeouts)
+   - **Memory**: Set to `512 MB` or `1024 MB`
+   - **Code**: Upload `voice-agent-lambda.zip`
+   - **Environment Variables**: Add `GROQ_API_KEY = gsk_...`
+3. In AWS API Gateway:
+   - Create an **HTTP API** pointing to the Lambda function.
+   - Configure Route: `$default` (or `ANY /{proxy+}`).
+   - Deploy stage: Default stage with auto-deploy enabled.
+4. Verify deployment health using [test_cloud.py](file:///c:/Users/ACER/AndroidStudioProjects/gridZeroExpress/voice-agent/test_cloud.py):
+   ```bash
+   python test_cloud.py
+   ```
+
+### 11.4 Android Client Setup (`gridzero`)
 
 1. Open project `c:\Users\ACER\AndroidStudioProjects\gridzero` in Android Studio.
 2. In the root directory, create/update `local.properties`:
@@ -717,10 +935,15 @@ SendSosScreen.kt
 
 ---
 
-## 11. Troubleshooting & Known Architecture Notes
+## 12. Troubleshooting & Known Architecture Notes
 
 | Observed Behavior | Root Cause | Solution / Architecture Note |
 |---|---|---|
+| **AWS Lambda `Runtime.ImportModuleError: No module named 'pydantic_core._pydantic_core'`** | Packaging native Windows `.pyd` binaries onto Linux AWS Lambda runtime. | Use `build_lambda_zip.py` with `--platform manylinux2014_x86_64 --only-binary=:all:` to download Linux `.so` wheels. |
+| **AWS Lambda crash: `TypeError: Client.__init__() got an unexpected keyword argument 'proxies'`** | `httpx>=0.28.0` deprecated `proxies` argument used by `openai==1.14.1`. | Pin `httpx==0.27.2` in `requirements.txt`. |
+| **Browser `TypeError: Failed to fetch` on Voice Agent call** | Browser blocked cross-origin preflight `OPTIONS` against AWS API Gateway. | Route requests through Next.js server route proxy (`frontend/src/app/api/voice-chat/route.ts`). |
+| **Whisper outputs hallucinated "Thank you." on silent audio** | Low or zero audio energy triggers standard Whisper silence filler tokens. | Conditioned model via emergency dispatch prompt and added server-side silence filtering in `route.ts`. |
+| **Browser audio recording produces 0% mic volume** | Operating system or browser routed input to a disconnected default hardware source. | Use the in-app hardware microphone dropdown in `VoiceDispatchAssistant.tsx` and verify live volume meter (> 15%). |
 | **High Logcat frame invalidation (`gralloc4`)** | Infinite transition animations recalculating layout every frame. | Replaced infinite transitions in `AdminTopBar.kt` with static indicator chips. |
 | **Logcat flooded with large payloads** | `HttpLoggingInterceptor` set to `Level.BODY`. | Lowered to `Level.BASIC` in `RetrofitInstance.kt`. |
 | **Offline SOS double-upload** | Both `UnifiedSosDispatcher` and `SosUploadWorker` executing simultaneously upon rapid network re-association. | Guarded with state check and idempotency token. |

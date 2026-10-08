@@ -17,10 +17,13 @@ import {
   Copy,
   AlertCircle,
   HelpCircle,
-  Waves
+  Waves,
+  Square,
+  Settings
 } from 'lucide-react';
 import {
   sendVoiceTranscriptToAI,
+  sendAudioRecordingToAI,
   checkVoiceAgentHealth,
   VoiceAgentHealth
 } from '@/lib/voiceAgent';
@@ -65,9 +68,13 @@ export function VoiceDispatchAssistant({
   const [health, setHealth] = useState<VoiceAgentHealth>({ status: 'active' });
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [speechSupported, setSpeechSupported] = useState(true);
+  const [speechError, setSpeechError] = useState<string | null>(null);
 
   const recognitionRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
 
   // Auto-scroll chat
   useEffect(() => {
@@ -86,7 +93,7 @@ export function VoiceDispatchAssistant({
     setHealth(res);
   }
 
-  // Initialize SpeechRecognition
+  // Initialize SpeechRecognition for optional interim live text preview
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const SpeechRecognition =
@@ -98,51 +105,285 @@ export function VoiceDispatchAssistant({
       }
 
       const recognition = new SpeechRecognition();
-      recognition.continuous = false;
+      recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = 'en-US';
-
-      recognition.onstart = () => {
-        setIsListening(true);
-      };
 
       recognition.onresult = (event: any) => {
         let currentTranscript = '';
         for (let i = 0; i < event.results.length; i++) {
           currentTranscript += event.results[i][0].transcript;
         }
-        setInputText(currentTranscript);
+        if (currentTranscript.trim()) {
+          setInputText(currentTranscript);
+        }
       };
 
       recognition.onerror = (event: any) => {
-        console.warn('Speech recognition error:', event.error);
-        setIsListening(false);
-      };
-
-      recognition.onend = () => {
-        setIsListening(false);
+        // Silently ignore browser speech errors because MediaRecorder handles the actual audio
+        console.warn('Browser SpeechRecognition warning:', event.error);
       };
 
       recognitionRef.current = recognition;
     }
   }, []);
 
-  function toggleListening() {
-    if (!speechSupported) {
-      alert('Speech recognition is not supported in this browser. Please type your message.');
+  const [recordSeconds, setRecordSeconds] = useState(0);
+  const [micVolume, setMicVolume] = useState(0);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const animFrameRef = useRef<number | null>(null);
+
+  // Audio input device selection
+  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
+  const [showSettings, setShowSettings] = useState(false);
+  const [isTestingMic, setIsTestingMic] = useState(false);
+
+  useEffect(() => {
+    loadAudioDevices();
+    if (navigator.mediaDevices?.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', loadAudioDevices);
+      return () => {
+        navigator.mediaDevices.removeEventListener('devicechange', loadAudioDevices);
+      };
+    }
+  }, []);
+
+  async function loadAudioDevices() {
+    if (typeof window === 'undefined' || !navigator.mediaDevices?.enumerateDevices) return;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const mics = devices.filter((d) => d.kind === 'audioinput');
+      setAudioDevices(mics);
+      if (mics.length > 0) {
+        setSelectedDeviceId((prev) => prev || mics[0].deviceId);
+      }
+    } catch (err) {
+      console.warn('Could not enumerate audio devices:', err);
+    }
+  }
+
+  async function testMicrophone() {
+    if (isTestingMic) {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      if (audioContextRef.current) audioContextRef.current.close().catch(() => {});
+      mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
+      setIsTestingMic(false);
+      setMicVolume(0);
       return;
     }
 
+    try {
+      setIsTestingMic(true);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      mediaStreamRef.current = stream;
+      loadAudioDevices(); // refresh device labels now that permission is active
+
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const audioCtx = new AudioCtx();
+      audioContextRef.current = audioCtx;
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      const updateVol = () => {
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          sum += dataArray[i];
+        }
+        const avg = sum / dataArray.length;
+        const pct = Math.min(100, Math.round((avg / 64) * 100));
+        setMicVolume(pct);
+        animFrameRef.current = requestAnimationFrame(updateVol);
+      };
+      updateVol();
+    } catch (e: any) {
+      alert('Could not open selected microphone: ' + e.message);
+      setIsTestingMic(false);
+    }
+  }
+
+  // Timer for active recording
+  useEffect(() => {
+    let timer: any;
     if (isListening) {
-      recognitionRef.current?.stop();
-      setIsListening(false);
-    } else {
-      setInputText('');
+      setRecordSeconds(0);
+      timer = setInterval(() => {
+        setRecordSeconds((s) => s + 1);
+      }, 1000);
+    } else if (!isTestingMic) {
+      setRecordSeconds(0);
+      setMicVolume(0);
+    }
+    return () => clearInterval(timer);
+  }, [isListening, isTestingMic]);
+
+  async function startRecording() {
+    if (isTestingMic) {
+      await testMicrophone(); // stop testing if active
+    }
+    setSpeechError(null);
+    setInputText('');
+    audioChunksRef.current = [];
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      mediaStreamRef.current = stream;
+
+      // Audio volume analyzer
+      try {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        const audioCtx = new AudioCtx();
+        audioContextRef.current = audioCtx;
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        const updateVol = () => {
+          analyser.getByteFrequencyData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) {
+            sum += dataArray[i];
+          }
+          const avg = sum / dataArray.length;
+          const pct = Math.min(100, Math.round((avg / 64) * 100));
+          setMicVolume(pct);
+          animFrameRef.current = requestAnimationFrame(updateVol);
+        };
+        updateVol();
+      } catch (e) {
+        console.warn('AudioContext volume meter unavailable:', e);
+      }
+
+      // Select best supported MIME type
+      const mimeTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
+      const supportedMime = mimeTypes.find((m) => MediaRecorder.isTypeSupported(m)) || '';
+
+      const mediaRecorder = supportedMime
+        ? new MediaRecorder(stream, { mimeType: supportedMime })
+        : new MediaRecorder(stream);
+
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      // Collect data in 100ms chunks
+      mediaRecorder.start(100);
+      setIsListening(true);
+
+      // Try interim speech preview if browser supports it
       try {
         recognitionRef.current?.start();
-      } catch (err) {
-        console.error('Failed to start speech recognition:', err);
+      } catch (e) {}
+    } catch (err: any) {
+      console.error('Failed to access microphone:', err);
+      setSpeechError(
+        'Microphone permission denied. Please allow microphone access in your browser address bar.'
+      );
+      setIsListening(false);
+    }
+  }
+
+  async function stopRecordingAndSend() {
+    setIsListening(false);
+
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {});
+    }
+    setMicVolume(0);
+
+    try {
+      recognitionRef.current?.stop();
+    } catch (e) {}
+
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === 'inactive') {
+      if (inputText.trim()) {
+        handleSend();
       }
+      return;
+    }
+
+    recorder.onstop = async () => {
+      // Release microphone tracks
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+
+      const mimeType = recorder.mimeType || 'audio/webm';
+      const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+      audioChunksRef.current = [];
+
+      setIsProcessing(true);
+      try {
+        // Send audio to Whisper API + AWS Lambda
+        const result = await sendAudioRecordingToAI(audioBlob);
+        const recognizedText = result.transcript || inputText || 'Voice report received.';
+
+        const userMsg: Message = {
+          id: Date.now().toString(),
+          sender: 'user',
+          text: recognizedText,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        };
+
+        const aiMsg: Message = {
+          id: (Date.now() + 1).toString(),
+          sender: 'ai',
+          text: result.reply,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          latencyMs: result.latencyMs,
+        };
+
+        setMessages((prev) => [...prev, userMsg, aiMsg]);
+        speakText(result.reply);
+        setInputText('');
+      } catch (err: any) {
+        setSpeechError('Voice processing failed: ' + (err.message || 'Error'));
+      } finally {
+        setIsProcessing(false);
+      }
+    };
+
+    try {
+      // Flush buffered audio chunks before stopping
+      if (recorder.state === 'recording') {
+        recorder.requestData();
+      }
+    } catch (e) {}
+
+    recorder.stop();
+  }
+
+  function toggleListening() {
+    if (isListening) {
+      stopRecordingAndSend();
+    } else {
+      startRecording();
     }
   }
 
@@ -151,13 +392,20 @@ export function VoiceDispatchAssistant({
 
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1.05;
+    utterance.rate = 1.0;
     utterance.pitch = 1.0;
 
-    // Pick best available English voice
+    // Pick highest quality natural/conversational voice
     const voices = window.speechSynthesis.getVoices();
     const naturalVoice = voices.find(
-      (v) => v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Samantha'))
+      (v) =>
+        v.lang.startsWith('en') &&
+        (v.name.includes('Natural') ||
+          v.name.includes('Online') ||
+          v.name.includes('Google') ||
+          v.name.includes('Neural') ||
+          v.name.includes('Samantha') ||
+          v.name.includes('Zira'))
     );
     if (naturalVoice) utterance.voice = naturalVoice;
 
@@ -253,6 +501,17 @@ export function VoiceDispatchAssistant({
 
         <div className="flex items-center gap-1.5">
           <button
+            onClick={() => setShowSettings(!showSettings)}
+            className={`p-1.5 rounded-lg border text-xs transition-colors ${
+              showSettings
+                ? 'bg-brandTeal/15 text-brandTeal border-brandTeal/30'
+                : 'bg-surface/50 text-mutedGray border-hairline hover:text-primaryText'
+            }`}
+            title="Microphone Input Settings"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+          <button
             onClick={() => setAudioEnabled(!audioEnabled)}
             className={`p-1.5 rounded-lg border text-xs transition-colors ${
               audioEnabled
@@ -272,6 +531,78 @@ export function VoiceDispatchAssistant({
           </button>
         </div>
       </div>
+
+      {/* Microphone Device Selector & Live Tester Panel */}
+      {showSettings && (
+        <div className="p-3.5 bg-surfaceElevated border-b border-hairline text-xs space-y-2.5 animate-in fade-in duration-150">
+          <div className="flex items-center justify-between">
+            <span className="font-bold text-primaryText flex items-center gap-1.5">
+              <Settings className="w-3.5 h-3.5 text-brandTeal" />
+              Microphone Input Device
+            </span>
+            <button
+              onClick={testMicrophone}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition-all ${
+                isTestingMic
+                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 animate-pulse'
+                  : 'bg-brandTeal/15 text-brandTeal border-brandTeal/30 hover:bg-brandTeal/25'
+              }`}
+            >
+              {isTestingMic ? 'Stop Test' : 'Test Selected Mic'}
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <select
+              value={selectedDeviceId}
+              onChange={(e) => {
+                setSelectedDeviceId(e.target.value);
+                if (isTestingMic) testMicrophone();
+              }}
+              className="flex-1 px-3 py-1.5 text-xs rounded-lg bg-surface border border-hairline text-primaryText focus:border-brandTeal focus:outline-none"
+            >
+              {audioDevices.length === 0 ? (
+                <option value="">Default System Microphone</option>
+              ) : (
+                audioDevices.map((d, idx) => (
+                  <option key={d.deviceId || idx} value={d.deviceId}>
+                    {d.label || `Microphone ${idx + 1}`}
+                  </option>
+                ))
+              )}
+            </select>
+            <button
+              onClick={loadAudioDevices}
+              className="p-1.5 rounded-lg border border-hairline text-mutedGray hover:text-primaryText"
+              title="Refresh Devices List"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {isTestingMic && (
+            <div className="p-2 rounded-lg bg-black/40 border border-white/10 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono font-bold text-mutedGray">LEVEL:</span>
+                <div className="w-32 h-2.5 bg-slate-800 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full transition-all duration-75 rounded-full ${
+                      micVolume > 15 ? 'bg-emerald-400' : 'bg-amber-400'
+                    }`}
+                    style={{ width: `${Math.max(4, micVolume)}%` }}
+                  />
+                </div>
+                <span className={`text-[11px] font-mono font-bold ${micVolume > 15 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {micVolume}%
+                </span>
+              </div>
+              <span className="text-[10px] text-mutedGray">
+                {micVolume > 15 ? '🎙️ Audio active!' : 'Speak to test volume'}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Messages Stream */}
       <div className="flex-1 p-4 overflow-y-auto space-y-3 min-h-[240px] max-h-[380px]">
@@ -370,25 +701,67 @@ export function VoiceDispatchAssistant({
         </div>
       </div>
 
-      {/* Dynamic Sound Wave Indicator */}
+      {/* Dynamic Sound Wave & Mic Volume Indicator */}
       {(isListening || isSpeaking) && (
-        <div className="px-4 py-1.5 bg-brandTeal/10 border-t border-brandTeal/20 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs font-semibold text-brandTeal">
+        <div className="px-4 py-2 bg-brandTeal/10 border-t border-brandTeal/20 flex items-center justify-between">
+          <div className="flex items-center gap-3 text-xs font-semibold text-brandTeal">
             <Waves className="w-4 h-4 animate-bounce" />
-            <span>{isListening ? 'Listening to speech...' : 'Speaking reply...'}</span>
+            <span>
+              {isListening
+                ? micVolume > 12
+                  ? `🎙️ Voice Detected (${micVolume}%) — Speaking...`
+                  : 'Listening to mic... (Speak clearly into your mic)'
+                : 'Speaking AI reply...'}
+            </span>
           </div>
-          <div className="flex items-center gap-1">
-            {[1, 2, 3, 4, 5, 6].map((bar) => (
-              <span
-                key={bar}
-                className="w-1 bg-brandTeal rounded-full animate-pulse"
-                style={{
-                  height: `${8 + (bar % 3) * 6}px`,
-                  animationDuration: `${0.4 + bar * 0.1}s`
-                }}
-              />
-            ))}
+
+          <div className="flex items-center gap-3">
+            {isListening && (
+              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-black/40 border border-white/10 text-[10px] font-mono">
+                <span className="text-mutedGray">MIC:</span>
+                <div className="w-14 h-2 bg-slate-800 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full transition-all duration-75 rounded-full ${
+                      micVolume > 12 ? 'bg-emerald-400' : 'bg-amber-400/80'
+                    }`}
+                    style={{ width: `${Math.max(4, micVolume)}%` }}
+                  />
+                </div>
+                <span className={micVolume > 12 ? 'text-emerald-400 font-bold' : 'text-amber-400'}>
+                  {micVolume}%
+                </span>
+              </div>
+            )}
+
+            <div className="flex items-center gap-1">
+              {[1, 2, 3, 4, 5, 6].map((bar) => (
+                <span
+                  key={bar}
+                  className="w-1 bg-brandTeal rounded-full animate-pulse"
+                  style={{
+                    height: `${8 + (bar % 3) * 6 + (isListening ? (micVolume / 100) * 8 : 0)}px`,
+                    animationDuration: `${0.4 + bar * 0.1}s`,
+                  }}
+                />
+              ))}
+            </div>
           </div>
+        </div>
+      )}
+
+      {/* Speech Error Banner */}
+      {speechError && (
+        <div className="px-4 py-2 bg-amber-500/10 border-t border-amber-500/20 flex items-center justify-between text-[11px] text-amber-300">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+            <span>{speechError}</span>
+          </div>
+          <button
+            onClick={() => setSpeechError(null)}
+            className="text-amber-400/80 hover:text-amber-200 ml-2 text-xs font-bold"
+          >
+            ✕
+          </button>
         </div>
       )}
 
@@ -396,34 +769,72 @@ export function VoiceDispatchAssistant({
       <div className="p-3 border-t border-hairline bg-surfaceCard flex items-center gap-2">
         <button
           onClick={toggleListening}
-          className={`relative p-2.5 rounded-xl transition-all duration-200 ${
+          className={`relative p-2.5 rounded-xl transition-all duration-200 flex items-center gap-1.5 ${
             isListening
-              ? 'bg-rose-500 text-white shadow-[0_0_15px_rgba(244,63,94,0.6)] animate-pulse'
+              ? 'bg-rose-500 text-white shadow-[0_0_20px_rgba(244,63,94,0.7)] animate-pulse'
               : 'bg-brandTeal/15 text-brandTeal hover:bg-brandTeal/25 border border-brandTeal/30'
           }`}
-          title={isListening ? 'Stop Listening' : 'Speak (Push-to-Talk)'}
+          title={isListening ? 'Stop Recording & Send to Whisper' : 'Start Recording Voice (Click to Speak)'}
         >
-          {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+          {isListening ? (
+            <>
+              <Square className="w-4 h-4 fill-current" />
+              <span className="text-[10px] font-mono font-bold pr-0.5">
+                {String(Math.floor(recordSeconds / 60)).padStart(2, '0')}:
+                {String(recordSeconds % 60).padStart(2, '0')}
+              </span>
+            </>
+          ) : (
+            <Mic className="w-4 h-4" />
+          )}
         </button>
 
         <input
           type="text"
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-          placeholder={isListening ? 'Listening to microphone...' : 'Type or speak emergency command...'}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              if (isListening) {
+                stopRecordingAndSend();
+              } else {
+                handleSend();
+              }
+            }
+          }}
+          placeholder={
+            isListening
+              ? `🔴 Recording audio (${recordSeconds}s)... Speak now, then click Done or Stop to transcribe!`
+              : 'Type or speak emergency command...'
+          }
           disabled={isProcessing}
-          className="flex-1 px-3 py-2 text-xs rounded-xl bg-surface/70 border border-hairline focus:border-brandTeal focus:outline-none text-primaryText placeholder:text-mutedGray"
+          className={`flex-1 px-3 py-2 text-xs rounded-xl border focus:outline-none transition-colors ${
+            isListening
+              ? 'bg-rose-950/20 border-rose-500/40 text-primaryText placeholder:text-rose-300/70'
+              : 'bg-surface/70 border-hairline focus:border-brandTeal text-primaryText placeholder:text-mutedGray'
+          }`}
         />
 
-        <button
-          onClick={() => handleSend()}
-          disabled={!inputText.trim() || isProcessing}
-          className="p-2.5 rounded-xl bg-brandTeal text-slate-950 font-bold hover:bg-brandTeal/90 disabled:opacity-40 disabled:hover:bg-brandTeal transition-all shadow-sm"
-          title="Send Command"
-        >
-          <Send className="w-4 h-4" />
-        </button>
+        {isListening ? (
+          <button
+            onClick={() => stopRecordingAndSend()}
+            disabled={isProcessing}
+            className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold transition-all shadow-md flex items-center gap-1.5 text-xs animate-pulse"
+            title="Stop Speaking & Transcribe with Whisper"
+          >
+            <Check className="w-4 h-4 stroke-[2.5]" />
+            <span className="hidden sm:inline">Done Speaking</span>
+          </button>
+        ) : (
+          <button
+            onClick={() => handleSend()}
+            disabled={!inputText.trim() || isProcessing}
+            className="p-2.5 rounded-xl bg-brandTeal text-slate-950 font-bold hover:bg-brandTeal/90 disabled:opacity-40 disabled:hover:bg-brandTeal transition-all shadow-sm"
+            title="Send Command"
+          >
+            <Send className="w-4 h-4" />
+          </button>
+        )}
       </div>
     </div>
   );

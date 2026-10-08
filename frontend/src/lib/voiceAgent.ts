@@ -53,6 +53,45 @@ export async function sendVoiceTranscriptToAI(userText: string): Promise<VoiceAg
 }
 
 /**
+ * Sends real microphone recorded audio blob to Whisper for high-accuracy STT + AI response
+ */
+export async function sendAudioRecordingToAI(
+  audioBlob: Blob
+): Promise<{ transcript: string; reply: string; latencyMs: number }> {
+  const startTime = performance.now();
+  try {
+    const formData = new FormData();
+    formData.append('file', audioBlob, 'recording.webm');
+
+    const response = await fetch(VOICE_AGENT_ENDPOINT, {
+      method: 'POST',
+      body: formData,
+    });
+
+    const elapsed = Math.round(performance.now() - startTime);
+
+    if (!response.ok) {
+      throw new Error(`Voice microservice HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return {
+      transcript: data.transcript || '',
+      reply: data.reply || 'Voice agent replied with empty text.',
+      latencyMs: elapsed,
+    };
+  } catch (error: any) {
+    console.error('Audio processing failed:', error);
+    const elapsed = Math.round(performance.now() - startTime);
+    return {
+      transcript: '',
+      reply: "I'm sorry, could not process audio recording.",
+      latencyMs: elapsed,
+    };
+  }
+}
+
+/**
  * Checks the connectivity and health of the Voice Agent microservice
  */
 export async function checkVoiceAgentHealth(): Promise<VoiceAgentHealth> {
