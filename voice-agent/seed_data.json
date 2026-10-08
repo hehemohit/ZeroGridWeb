@@ -1,0 +1,150 @@
+{
+  "nodes": [
+    {
+      "PK": "NODE#SUB_VIRAR_EAST_01",
+      "SK": "METADATA",
+      "node_id": "SUB_VIRAR_EAST_01",
+      "name": "Virar East Main Substation",
+      "type": "SUBSTATION",
+      "status": "CRITICAL",
+      "voltage_kv": 33.0,
+      "current_load_pct": 92.5,
+      "water_depth_cm": 45,
+      "coordinates": [
+        19.456,
+        72.812
+      ],
+      "critical_facilities_connected": [
+        "HOSPITAL_SANJEEVANI",
+        "PUMP_STATION_04"
+      ],
+      "version": 1
+    },
+    {
+      "PK": "NODE#XFMR_WARD4_02",
+      "SK": "METADATA",
+      "node_id": "XFMR_WARD4_02",
+      "name": "Ward 4 Step-Down Transformer",
+      "type": "TRANSFORMER",
+      "status": "OVERLOADED",
+      "voltage_kv": 11.0,
+      "current_load_pct": 84.0,
+      "water_depth_cm": 15,
+      "coordinates": [
+        19.458,
+        72.815
+      ],
+      "critical_facilities_connected": [
+        "PUMP_STATION_04"
+      ],
+      "version": 1
+    },
+    {
+      "PK": "NODE#NODE_HOSPITAL_09",
+      "SK": "METADATA",
+      "node_id": "NODE_HOSPITAL_09",
+      "name": "Sanjeevani Hospital Critical Feeder Point",
+      "type": "TRANSFORMER",
+      "status": "ONLINE",
+      "voltage_kv": 11.0,
+      "current_load_pct": 65.0,
+      "water_depth_cm": 5,
+      "coordinates": [
+        19.454,
+        72.818
+      ],
+      "critical_facilities_connected": [
+        "HOSPITAL_SANJEEVANI_ICU",
+        "TRAUMA_CENTER"
+      ],
+      "version": 1
+    },
+    {
+      "PK": "NODE#SUB_VASAI_WEST_03",
+      "SK": "METADATA",
+      "node_id": "SUB_VASAI_WEST_03",
+      "name": "Vasai West Auxiliary Backup Substation",
+      "type": "SUBSTATION",
+      "status": "ONLINE",
+      "voltage_kv": 33.0,
+      "current_load_pct": 42.0,
+      "water_depth_cm": 0,
+      "coordinates": [
+        19.432,
+        72.801
+      ],
+      "critical_facilities_connected": [
+        "VASAI_CIVIL_HOSPITAL"
+      ],
+      "version": 1
+    }
+  ],
+  "edges": [
+    {
+      "PK": "NODE#SUB_VIRAR_EAST_01",
+      "SK": "EDGE#XFMR_WARD4_02",
+      "target_node_id": "XFMR_WARD4_02",
+      "line_id": "FEEDER_33KV_L1",
+      "capacity_mva": 15.0,
+      "current_load_mva": 13.8,
+      "status": "OVERLOADED",
+      "impedance_ohm": 0.42,
+      "is_switchable": true
+    },
+    {
+      "PK": "NODE#XFMR_WARD4_02",
+      "SK": "EDGE#SUB_VIRAR_EAST_01",
+      "target_node_id": "SUB_VIRAR_EAST_01",
+      "line_id": "FEEDER_33KV_L1",
+      "capacity_mva": 15.0,
+      "current_load_mva": 13.8,
+      "status": "OVERLOADED",
+      "impedance_ohm": 0.42,
+      "is_switchable": true
+    },
+    {
+      "PK": "NODE#SUB_VIRAR_EAST_01",
+      "SK": "EDGE#NODE_HOSPITAL_09",
+      "target_node_id": "NODE_HOSPITAL_09",
+      "line_id": "FEEDER_11KV_MED1",
+      "capacity_mva": 8.0,
+      "current_load_mva": 5.2,
+      "status": "STABLE",
+      "impedance_ohm": 0.28,
+      "is_switchable": true
+    },
+    {
+      "PK": "NODE#NODE_HOSPITAL_09",
+      "SK": "EDGE#SUB_VIRAR_EAST_01",
+      "target_node_id": "SUB_VIRAR_EAST_01",
+      "line_id": "FEEDER_11KV_MED1",
+      "capacity_mva": 8.0,
+      "current_load_mva": 5.2,
+      "status": "STABLE",
+      "impedance_ohm": 0.28,
+      "is_switchable": true
+    },
+    {
+      "PK": "NODE#SUB_VASAI_WEST_03",
+      "SK": "EDGE#NODE_HOSPITAL_09",
+      "target_node_id": "NODE_HOSPITAL_09",
+      "line_id": "TIE_LINE_33KV_BACKUP",
+      "capacity_mva": 12.0,
+      "current_load_mva": 0.0,
+      "status": "STANDBY",
+      "impedance_ohm": 0.55,
+      "is_switchable": true
+    },
+    {
+      "PK": "NODE#NODE_HOSPITAL_09",
+      "SK": "EDGE#SUB_VASAI_WEST_03",
+      "target_node_id": "SUB_VASAI_WEST_03",
+      "line_id": "TIE_LINE_33KV_BACKUP",
+      "capacity_mva": 12.0,
+      "current_load_mva": 0.0,
+      "status": "STANDBY",
+      "impedance_ohm": 0.55,
+      "is_switchable": true
+    }
+  ]
+}

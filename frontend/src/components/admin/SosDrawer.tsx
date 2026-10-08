@@ -22,6 +22,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { AdminUserUI } from './UserManagementModal';
+import { AgentZeroOrchestratorWidget } from './AgentZeroOrchestratorWidget';
 import { api } from '@/lib/api';
 
 export interface NoteItem {
@@ -333,6 +334,19 @@ export function SosDrawer({
                   ZeroGrid Decentralized Mesh packet received via 868MHz relay gateway.
                 </p>
               </div>
+
+              {/* Agent Zero Autonomous Multi-Agent Orchestrator (DynamoDB Graph + Groq LPUs) */}
+              <AgentZeroOrchestratorWidget
+                incidentId={sos.rawId || sos.id}
+                incidentType={sos.severity === 'CRITICAL' ? 'SUBSTATION_WATER_INGRESS' : 'GRID_SURGE_RISK'}
+                severity={sos.severity}
+                coordinates={sos.coordinates}
+                waterDepthCm={sos.waterDepthCm ?? (sos.severity === 'CRITICAL' ? 45 : 20)}
+                message={sos.message || `Incident reported at ${sos.location}`}
+                onApplyAdvisoryToNotes={(advisoryText) => {
+                  onSetNoteInput(noteInput ? `${noteInput}\n\n${advisoryText}` : advisoryText);
+                }}
+              />
 
               {/* AWS Strands Agent Situation Brief Card */}
               <div className="p-3 sm:p-4 bg-surfaceCard rounded-16dp border border-brandTeal/30 shadow-glow-teal">

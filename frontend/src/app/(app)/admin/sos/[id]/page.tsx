@@ -40,6 +40,7 @@ import {
   Calendar,
   ChevronRight
 } from 'lucide-react';
+import { AgentZeroOrchestratorWidget } from '@/components/admin/AgentZeroOrchestratorWidget';
 
 interface IncidentNote {
   authorId: string;
@@ -189,7 +190,7 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
   const [error, setError] = useState<string | null>(null);
 
   // Active tab state
-  const [activeTab, setActiveTab] = useState<'TELEMETRY' | 'FAMILY' | 'HISTORY' | 'AI_BRIEF'>('TELEMETRY');
+  const [activeTab, setActiveTab] = useState<'TELEMETRY' | 'AGENT_ZERO' | 'FAMILY' | 'HISTORY' | 'AI_BRIEF'>('TELEMETRY');
   const [historyFilter, setHistoryFilter] = useState<'ALL' | 'EMERGENCY' | 'COMPLAINTS'>('ALL');
 
   // Action states
@@ -675,6 +676,21 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
           </button>
 
           <button
+            onClick={() => setActiveTab('AGENT_ZERO')}
+            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 ${
+              activeTab === 'AGENT_ZERO'
+                ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 shadow-md font-bold shadow-cyan-500/30'
+                : 'text-cyan-300 hover:text-white hover:bg-cyan-950/40 border border-cyan-500/30'
+            }`}
+          >
+            <Zap className="w-4 h-4 text-cyan-400" />
+            <span>Agent Zero Orchestrator</span>
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 font-bold">
+              MULTI-AGENT
+            </span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('FAMILY')}
             className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 ${
               activeTab === 'FAMILY'
@@ -712,6 +728,24 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
         </div>
 
         {/* ================= SECTION 3: Tab Content Panels ================= */}
+
+        {/* ─── TAB 0: Agent Zero Autonomous Multi-Agent Orchestrator ─── */}
+        {activeTab === 'AGENT_ZERO' && (
+          <div className="space-y-6">
+            <AgentZeroOrchestratorWidget
+              incidentId={incident.id}
+              incidentType={incident.category || (incident.isEmergencySos ? 'SUBSTATION_WATER_INGRESS' : 'CIVIC_HAZARD')}
+              severity={incident.isEmergencySos ? 'CRITICAL' : 'HIGH'}
+              coordinates={incident.location ? [incident.location.lat, incident.location.lng] : null}
+              waterDepthCm={incident.waterDepthCm ?? 30}
+              message={incident.message || `Incident ${incident.id} reported`}
+              onApplyAdvisoryToNotes={(advisoryText) => {
+                setNoteInput((prev) => (prev ? `${prev}\n\n${advisoryText}` : advisoryText));
+                setActiveTab('TELEMETRY');
+              }}
+            />
+          </div>
+        )}
 
         {/* ─── TAB 1: Live Telemetry & Mission Notes ─── */}
         {activeTab === 'TELEMETRY' && (

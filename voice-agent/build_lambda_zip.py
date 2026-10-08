@@ -48,8 +48,15 @@ def build_lambda_zip():
         print(f"[X] Dependency installation failed: {result.stderr}")
         return False
 
-    print("[*] Copying main.py to package root...")
-    shutil.copy2(MAIN_FILE, os.path.join(STAGING_DIR, "main.py"))
+    print("[*] Copying application source files to package root...")
+    for filename in ["main.py", "grid_graph.py", "agents.py", "seed_data.json"]:
+        src_path = os.path.join(SCRIPT_DIR, filename)
+        if os.path.exists(src_path):
+            shutil.copy2(src_path, os.path.join(STAGING_DIR, filename))
+            print(f"    -> Copied {filename}")
+        else:
+            print(f"    [!] Warning: {filename} not found in {SCRIPT_DIR}")
+
 
     print(f"[*] Compressing package into {ZIP_OUTPUT} ...")
     with zipfile.ZipFile(ZIP_OUTPUT, "w", zipfile.ZIP_DEFLATED) as zipf:
