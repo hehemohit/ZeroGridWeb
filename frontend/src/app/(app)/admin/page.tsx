@@ -26,6 +26,7 @@ import {
 import { MapCanvas } from '@/components/admin/MapCanvas';
 import { SosDrawer, SosEventUI, NoteItem } from '@/components/admin/SosDrawer';
 import { UserManagementModal, AdminUserUI } from '@/components/admin/UserManagementModal';
+import { CrisisCommandModal } from '@/components/admin/CrisisCommandModal';
 
 interface Toast {
   message: string;
@@ -123,6 +124,7 @@ function AdminDashboardContent() {
   const [drawerSosId, setDrawerSosId] = useState<string | null>(null);
   const [selectedSosDetails, setSelectedSosDetails] = useState<SosEventUI | null>(null);
   const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
+  const [isCrisisCommandOpen, setIsCrisisCommandOpen] = useState(false);
   const [activeSosTab, setActiveSosTab] = useState<'FEED' | 'HISTORY'>('FEED');
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -532,6 +534,7 @@ const handleToggleDetourMode = useCallback(() => {
           onMarkerDoubleClick={(id) => { setSelectedSosId(id); setDrawerSosId(id); }}
           onOpenDetails={(id) => { setSelectedSosId(id); setDrawerSosId(id); }}
           onClosePreview={() => { setSelectedSosId(null); setSelectedHqId(null); }}
+          onOpenCrisisCommand={() => setIsCrisisCommandOpen(true)}
         />
 
         {/* LOWER: Emergency SOS Feed Console */}
@@ -600,6 +603,20 @@ const handleToggleDetourMode = useCallback(() => {
                   </button>
                 </div>
               )}
+
+              {/* ⚡ Autonomous Predictive Crisis Command Button */}
+              <button
+                onClick={() => setIsCrisisCommandOpen(true)}
+                title="Open Autonomous Predictive Crisis Command Center (AWS Strands)"
+                className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-gradient-to-r from-teal-500/20 via-brandTeal/30 to-emerald-500/20 text-brandTeal border border-brandTeal/50 hover:border-brandTeal hover:shadow-glow-teal transition-all shadow-sm"
+              >
+                <Zap className="w-3.5 h-3.5 text-brandTeal animate-pulse" />
+                <span className="hidden sm:inline">Predictive Command</span>
+                <span className="sm:hidden">Command</span>
+                <span className="hidden md:inline-block text-[9px] bg-brandTeal/20 text-brandTeal px-1 rounded font-mono">
+                  AWS STRANDS
+                </span>
+              </button>
 
               <button
                 onClick={handleAutoAssignNearestAdmin}
@@ -863,6 +880,13 @@ const handleToggleDetourMode = useCallback(() => {
         onDemoteAdmin={handleDemoteAdmin}
         currentUserId={currentUser?.id}
         currentUserEmail={currentUser?.email}
+      />
+
+      <CrisisCommandModal
+        isOpen={isCrisisCommandOpen}
+        onClose={() => setIsCrisisCommandOpen(false)}
+        selectedSosId={selectedSosId}
+        onShowToast={(msg, type) => showToast(msg, type)}
       />
     </div>
   );

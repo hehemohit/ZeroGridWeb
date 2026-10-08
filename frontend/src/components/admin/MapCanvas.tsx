@@ -3,6 +3,7 @@
 import React from 'react';
 import { MapPin, Info, Shield, User, X, ChevronRight, Clock, Building2, Cpu, Activity } from 'lucide-react';
 import { SosLiveMap, SosLiveMapProps } from './SosLiveMap';
+import { TidalTelemetryStrip } from './TidalTelemetryStrip';
 
 interface MapCanvasProps extends SosLiveMapProps {
   activeSosCount: number;
@@ -32,6 +33,7 @@ export function MapCanvas({
   onMarkerClick,
   onMarkerDoubleClick,
   onHqMarkerClick,
+  onOpenCrisisCommand,
   onOpenDetails,
   onClosePreview,
 }: MapCanvasProps) {
@@ -64,8 +66,10 @@ export function MapCanvas({
           </span>
         </div>
 
-        {/* Badges */}
+        {/* Badges & Telemetry Strip */}
         <div className="flex items-center gap-2 sm:gap-3 text-xs text-mutedGray flex-wrap">
+          <TidalTelemetryStrip onOpenCrisisCommand={onOpenCrisisCommand} compact={true} />
+
           {systemStats?.cpu && (
             <span className="font-mono text-[11px] text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded border border-yellow-400/20 font-semibold flex items-center gap-1.5" title="Prometheus Live Process CPU Usage">
               <Cpu className="w-3.5 h-3.5 text-yellow-400" />
@@ -107,6 +111,7 @@ export function MapCanvas({
           onMarkerClick={onMarkerClick}
           onMarkerDoubleClick={onMarkerDoubleClick}
           onHqMarkerClick={onHqMarkerClick}
+          onOpenCrisisCommand={onOpenCrisisCommand}
         />
 
         {/* Mini Quick-Info Card Overlay for Selected SOS */}

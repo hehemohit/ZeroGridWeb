@@ -113,16 +113,25 @@ function analyzeTidalTrajectory(currentDate, stepMinutes = 5, lookAheadHours = 1
   };
 }
 
+const marineCache = new Map();
+const MARINE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
 /**
  * Fetch Open-Meteo Marine wave telemetry for additional coastal swell context
  */
 async function fetchMarineTelemetry(lat, lng) {
+  const key = `${Number(lat).toFixed(2)},${Number(lng).toFixed(2)}`;
+  const cached = marineCache.get(key);
+  if (cached && Date.now() - cached.timestamp < MARINE_CACHE_TTL_MS) {
+    return cached.data;
+  }
+
   const url = 'https://marine-api.open-meteo.com/v1/marine';
   const params = {
     latitude: lat,
     longitude: lng,
     hourly: 'wave_height,wave_direction,wave_period',
-    forecast_hours: 6,
+    forecast_days: 1,
     timezone: 'auto'
   };
 
@@ -132,17 +141,21 @@ async function fetchMarineTelemetry(lat, lng) {
     const currentWaveHeight = hourly?.wave_height?.[0] ?? null;
     const wavePeriod = hourly?.wave_period?.[0] ?? null;
 
-    return {
+    const data = {
       waveHeightMeters: currentWaveHeight !== null ? Number(currentWaveHeight.toFixed(2)) : 0.45,
       wavePeriodSeconds: wavePeriod !== null ? Number(wavePeriod.toFixed(1)) : 6.0,
       marineSource: 'Open-Meteo Marine SWAN Model'
     };
+    marineCache.set(key, { data, timestamp: Date.now() });
+    return data;
   } catch (err) {
-    return {
+    const fallback = {
       waveHeightMeters: 0.45,
       wavePeriodSeconds: 6.0,
       marineSource: 'Fallback Baseline Marine Swell'
     };
+    marineCache.set(key, { data: fallback, timestamp: Date.now() });
+    return fallback;
   }
 }
 

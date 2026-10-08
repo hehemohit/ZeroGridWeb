@@ -10,6 +10,7 @@ import {
 import { Loader2, Building2, Route, Droplets } from 'lucide-react';
 import type { SosEventUI } from './SosDrawer';
 import { generateHqHexHoneycomb, isPointInPolygon } from '@/utils/hexUtils';
+import { TidalTelemetryStrip } from './TidalTelemetryStrip';
 
 // Types
 export interface HqMarkerItem {
@@ -46,6 +47,8 @@ export interface SosLiveMapProps {
   onMarkerDoubleClick?: (id: string) => void;
   /** Called when user clicks an HQ map marker */
   onHqMarkerClick?: (hqId: string) => void;
+  /** Open Predictive Crisis Command Center Modal */
+  onOpenCrisisCommand?: () => void;
 }
 
 // Dark / Tactical Map Style
@@ -1131,7 +1134,8 @@ export function SosLiveMap({
   onDetourMapClick,
   onMarkerClick,
   onMarkerDoubleClick,
-  onHqMarkerClick
+  onHqMarkerClick,
+  onOpenCrisisCommand
 }: SosLiveMapProps) {
   const [mapReady, setMapReady] = useState(false);
   const handleMapReady = useCallback(() => setMapReady(true), []);
@@ -1192,16 +1196,23 @@ export function SosLiveMap({
         </Map>
 
         {mapReady && (
-          <MapHUD
-            sosEvents={sosEvents}
-            headquarters={headquarters}
-            detourMode={detourMode}
-            isDetourLoading={isDetourLoading}
-            detourOrigin={detourOrigin}
-            detourDest={detourDest}
-            detourResult={detourResult}
-            onToggleDetour={onToggleDetour}
-          />
+          <>
+            <MapHUD
+              sosEvents={sosEvents}
+              headquarters={headquarters}
+              detourMode={detourMode}
+              isDetourLoading={isDetourLoading}
+              detourOrigin={detourOrigin}
+              detourDest={detourDest}
+              detourResult={detourResult}
+              onToggleDetour={onToggleDetour}
+            />
+
+            {/* Top-Right: Atmospheric Coastal Tidal Telemetry Strip */}
+            <div className="absolute top-3 right-3 z-20 pointer-events-auto">
+              <TidalTelemetryStrip onOpenCrisisCommand={onOpenCrisisCommand} />
+            </div>
+          </>
         )}
       </APIProvider>
     </>
