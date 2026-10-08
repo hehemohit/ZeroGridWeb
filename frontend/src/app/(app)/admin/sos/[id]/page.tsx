@@ -36,7 +36,8 @@ import {
   UserCheck,
   Compass,
   AlertOctagon,
-  Calendar
+  Calendar,
+  ChevronRight
 } from 'lucide-react';
 
 interface IncidentNote {
@@ -163,14 +164,18 @@ interface DossierResponse {
   };
 }
 
-interface SituationBriefResponse {
-  brief?: {
-    municipalActions?: string[];
-    trafficDiversion?: string;
-    agentAdvisory?: string;
-    generatedAt?: string;
-    model?: string;
-  };
+interface SituationBriefData {
+  municipalActions?: string[];
+  trafficDiversion?: string;
+  agentAdvisory?: string;
+  activeTier?: number;
+  engine?: string;
+  generatedAt?: string;
+  model?: string;
+}
+
+interface SituationBriefResponse extends SituationBriefData {
+  brief?: SituationBriefData;
 }
 
 export default function AdminSosDossierPage({ params }: { params: Promise<{ id: string }> }) {
@@ -189,17 +194,17 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
   // Action states
   const [actionLoading, setActionLoading] = useState(false);
   const [noteInput, setNoteInput] = useState('');
-  const [brief, setBrief] = useState<SituationBriefResponse['brief'] | null>(null);
+  const [brief, setBrief] = useState<SituationBriefData | null>(null);
   const [briefLoading, setBriefLoading] = useState(false);
 
-  // Load Dossier
+  // Load Dossier with automatic short displayId resolution
   const fetchDossier = async () => {
     try {
       setLoading(true);
       setError(null);
       let targetId = id;
 
-      // If id is a short displayId (e.g. "sos-d613" or not 24 hex chars)
+      // If id is a short display tag (e.g. "sos-d613" or not 24 hex chars)
       if (targetId.startsWith('sos-') || targetId.length !== 24) {
         try {
           const feedRes = await api.get<{ sosEvents?: any[]; sos?: any[] }>('/api/admin/sos?status=ACTIVE');
@@ -281,11 +286,17 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
   const handleGenerateBrief = async () => {
     try {
       setBriefLoading(true);
-      const res = await api.post<SituationBriefResponse>(`/api/sos/${activeSosId}/brief`, {});
-      if (res?.brief) {
-        setBrief(res.brief);
+      const res = await api.post<any>(`/api/sos/${activeSosId}/brief`, {});
+      const resolved = (res?.brief && (res.brief.agentAdvisory || res.brief.municipalActions))
+        ? res.brief
+        : res;
+      if (resolved && (resolved.agentAdvisory || resolved.municipalActions || resolved.trafficDiversion)) {
+        setBrief(resolved);
+      } else {
+        alert('Could not synthesize situational brief. Please try again.');
       }
     } catch (err: any) {
+      console.error('[AdminSosDossier] Brief error:', err);
       alert(err?.message || 'Failed to generate situation brief');
     } finally {
       setBriefLoading(false);
@@ -306,27 +317,31 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#070B14] flex flex-col items-center justify-center p-6 text-slate-300">
+      <div className="flex-1 flex flex-col items-center justify-center p-6 bg-canvas text-primaryText transition-colors duration-200">
         <div className="relative">
           <div className="w-16 h-16 rounded-full border-4 border-brandTeal/20 border-t-brandTeal animate-spin" />
           <Shield className="w-6 h-6 text-brandTeal absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
         </div>
-        <p className="mt-4 font-mono text-sm tracking-wide text-brandTeal">INITIALIZING INCIDENT DOSSIER STREAM...</p>
-        <p className="text-xs text-mutedGray mt-1">Aggregating family link graph, telemetry & audit logs</p>
+        <p className="mt-5 font-mono text-xs sm:text-sm tracking-widest text-brandTeal uppercase font-bold">
+          INITIALIZING INCIDENT DOSSIER STREAM...
+        </p>
+        <p className="text-xs text-mutedGray mt-1">Aggregating family network, sensor telemetry & audit logs</p>
       </div>
     );
   }
 
   if (error || !dossier) {
     return (
-      <div className="min-h-screen bg-[#070B14] flex flex-col items-center justify-center p-6 text-slate-300">
-        <div className="max-w-md w-full bg-cardDark/80 border border-crimsonRed/40 rounded-2xl p-6 text-center space-y-4">
-          <AlertOctagon className="w-12 h-12 text-crimsonRed mx-auto" />
-          <h2 className="text-lg font-bold text-white">Incident Dossier Unavailable</h2>
-          <p className="text-xs text-mutedGray">{error || 'Could not find the requested incident beacon.'}</p>
+      <div className="flex-1 flex flex-col items-center justify-center p-6 bg-canvas text-primaryText transition-colors duration-200">
+        <div className="max-w-md w-full bg-surfaceCard border border-hairline rounded-2xl p-6 sm:p-8 text-center space-y-4 shadow-panel-dark">
+          <div className="w-12 h-12 rounded-2xl bg-alertRed/10 border border-alertRed/20 flex items-center justify-center mx-auto">
+            <AlertOctagon className="w-6 h-6 text-alertRed" />
+          </div>
+          <h2 className="text-lg font-bold text-primaryText">Incident Dossier Unavailable</h2>
+          <p className="text-xs text-mutedGray leading-relaxed">{error || 'Could not find or decode the requested incident beacon.'}</p>
           <button
             onClick={() => router.push('/admin')}
-            className="px-4 py-2 rounded-xl bg-surfaceDark border border-borderDark/60 hover:border-brandTeal text-xs font-semibold text-white transition flex items-center gap-2 mx-auto"
+            className="px-4 py-2.5 rounded-xl bg-surfaceElevated border border-hairline hover:border-brandTeal text-xs font-semibold text-primaryText hover:text-brandTeal transition flex items-center gap-2 mx-auto shadow-xs"
           >
             <ArrowLeft className="w-4 h-4" /> Return to Mission Grid
           </button>
@@ -339,56 +354,56 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
   const isEmergency = incident.isEmergencySos;
 
   return (
-    <div className="min-h-screen bg-[#070B14] text-slate-200">
-      {/* Top Mission Control Command Bar */}
-      <header className="sticky top-0 z-40 bg-[#0A0F1D]/90 backdrop-blur-md border-b border-borderDark/40 px-4 sm:px-8 py-3.5 flex flex-wrap items-center justify-between gap-4">
+    <div className="flex-1 flex flex-col min-w-0 h-full overflow-y-auto bg-canvas text-primaryText transition-colors duration-200">
+      {/* ================= Sticky Top Command Bar ================= */}
+      <header className="sticky top-0 z-30 bg-surface/85 backdrop-blur-md border-b border-hairline px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-3 shadow-xs transition-colors">
         <div className="flex items-center gap-3">
           <button
             onClick={() => router.push('/admin')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surfaceDark/60 border border-borderDark/60 hover:border-brandTeal/60 text-xs text-slate-300 hover:text-white transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surfaceCard border border-hairline hover:border-brandTeal/60 text-xs font-medium text-secondaryText hover:text-primaryText transition shadow-xs"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Crisis Grid</span>
           </button>
 
-          <div className="h-5 w-px bg-borderDark/60" />
+          <div className="h-5 w-px bg-hairline" />
 
           <div>
-            <div className="flex items-center gap-2">
-              <span className="font-mono font-bold text-sm text-white tracking-wide">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-mono font-bold text-xs sm:text-sm text-primaryText tracking-wide">
                 #INCIDENT-{incident.id.slice(-6).toUpperCase()}
               </span>
 
               {/* Status Badge */}
               <span
-                className={`px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase flex items-center gap-1 border ${
+                className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase flex items-center gap-1.5 border font-mono ${
                   incident.status === 'ACTIVE'
-                    ? 'bg-crimsonRed/15 text-crimsonRed border-crimsonRed/30 animate-pulse'
+                    ? 'bg-alertRed/10 text-alertRed border-alertRed/30'
                     : incident.status === 'ACKNOWLEDGED'
-                    ? 'bg-alertAmber/15 text-alertAmber border-alertAmber/30'
-                    : 'bg-brandTeal/15 text-brandTeal border-brandTeal/30'
+                    ? 'bg-amber-500/10 text-amber-500 dark:text-amber-400 border-amber-500/30'
+                    : 'bg-brandTeal/10 text-brandTeal border-brandTeal/30'
                 }`}
               >
-                {incident.status === 'ACTIVE' && <span className="w-1.5 h-1.5 rounded-full bg-crimsonRed animate-ping" />}
+                {incident.status === 'ACTIVE' && <span className="w-1.5 h-1.5 rounded-full bg-alertRed animate-ping" />}
                 {incident.status}
               </span>
 
               {/* Classification Badge */}
               <span
-                className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase flex items-center gap-1 border ${
+                className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase flex items-center gap-1.5 border font-mono ${
                   isEmergency
-                    ? 'bg-crimsonRed/20 text-rose-400 border-crimsonRed/40'
-                    : 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30'
+                    ? 'bg-alertRed/10 text-alertRed border-alertRed/30'
+                    : 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/30'
                 }`}
               >
                 {isEmergency ? (
                   <>
-                    <ShieldAlert className="w-3 h-3 text-crimsonRed" />
+                    <ShieldAlert className="w-3 h-3 text-alertRed" />
                     EMERGENCY SOS
                   </>
                 ) : (
                   <>
-                    <Droplets className="w-3 h-3 text-cyan-400" />
+                    <Droplets className="w-3 h-3 text-cyan-600 dark:text-cyan-400" />
                     CIVIC COMPLAINT
                   </>
                 )}
@@ -406,10 +421,10 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
             <button
               onClick={handleAcknowledge}
               disabled={actionLoading}
-              className="px-3.5 py-1.5 rounded-lg bg-alertAmber/20 hover:bg-alertAmber/30 border border-alertAmber/40 text-alertAmber text-xs font-semibold flex items-center gap-1.5 transition disabled:opacity-50"
+              className="px-3.5 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs font-semibold flex items-center gap-1.5 transition disabled:opacity-50 shadow-xs"
             >
               {actionLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-              Acknowledge Beacon
+              <span>Acknowledge</span>
             </button>
           )}
 
@@ -417,300 +432,333 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
             <button
               onClick={handleResolve}
               disabled={actionLoading}
-              className="px-3.5 py-1.5 rounded-lg bg-brandTeal hover:bg-brandTeal/90 text-[#070B14] text-xs font-bold flex items-center gap-1.5 transition disabled:opacity-50 shadow-sm shadow-brandTeal/20"
+              className="px-3.5 py-2 rounded-xl bg-brandTeal hover:bg-brandTealGlow text-[#070B14] text-xs font-bold flex items-center gap-1.5 transition disabled:opacity-50 shadow-sm shadow-brandTeal/20"
             >
               {actionLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCheck className="w-3.5 h-3.5" />}
-              Mark Resolved
+              <span>Mark Resolved</span>
             </button>
           )}
 
           <button
             onClick={fetchDossier}
-            className="p-1.5 rounded-lg bg-surfaceDark/60 border border-borderDark/60 hover:border-brandTeal/60 text-slate-400 hover:text-white transition"
-            title="Refresh Dossier"
+            className="p-2 rounded-xl bg-surfaceCard border border-hairline hover:border-brandTeal/50 text-mutedGray hover:text-primaryText transition shadow-xs"
+            title="Refresh Incident Dossier"
           >
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
         </div>
       </header>
 
-      {/* Main Container */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-8 py-6 space-y-6">
+      {/* ================= Main Scrollable Workspace Container ================= */}
+      <main className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 flex-1">
+        
         {/* ================= SECTION 1: 4 Top KPI Dossier Cards ================= */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Card 1: User Identity & Trust */}
-          <div className="bg-[#0C1324]/80 border border-borderDark/60 rounded-xl p-4 shadow-sm backdrop-blur-sm relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-brandTeal/5 rounded-full blur-xl pointer-events-none" />
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-mono uppercase text-mutedGray tracking-wider flex items-center gap-1">
-                <User className="w-3 h-3 text-brandTeal" /> Civilian Profile
-              </span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-surfaceDark border border-borderDark text-slate-300 font-mono">
-                {user?.role || 'CITIZEN'}
-              </span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          
+          {/* Card 1: Civilian Profile */}
+          <div className="bg-surfaceCard border border-hairline hover:border-hairlineBright rounded-2xl p-5 shadow-xs transition-all duration-200 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[11px] font-mono uppercase text-mutedGray tracking-wider flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5 text-brandTeal" /> Civilian Profile
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-md bg-surfaceElevated border border-hairline text-secondaryText font-mono font-medium">
+                  {user?.role || 'CITIZEN'}
+                </span>
+              </div>
+
+              <h3 className="font-bold text-primaryText text-base sm:text-lg truncate">
+                {user?.displayName || 'Unknown Reporter'}
+              </h3>
+              <p className="text-xs text-mutedGray truncate mt-0.5">{user?.email}</p>
             </div>
 
-            <h3 className="font-bold text-white text-base truncate">{user?.displayName || 'Unknown Reporter'}</h3>
-            <p className="text-xs text-mutedGray truncate mt-0.5">{user?.email}</p>
+            <div className="mt-4 pt-3 border-t border-hairline space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-mutedGray font-mono">Phone:</span>
+                {user?.phoneNumber ? (
+                  <a
+                    href={`tel:${user.phoneNumber}`}
+                    className="text-brandTeal hover:underline font-mono font-semibold flex items-center gap-1"
+                  >
+                    <Phone className="w-3 h-3" /> {user.phoneNumber}
+                  </a>
+                ) : (
+                  <span className="text-dimGray font-mono text-[11px]">Unregistered</span>
+                )}
+              </div>
 
-            <div className="mt-3 pt-3 border-t border-borderDark/40 flex items-center justify-between text-xs">
-              <span className="text-mutedGray font-mono">Phone:</span>
-              {user?.phoneNumber ? (
-                <a
-                  href={`tel:${user.phoneNumber}`}
-                  className="text-brandTeal hover:underline font-mono flex items-center gap-1"
-                >
-                  <Phone className="w-3 h-3" /> {user.phoneNumber}
-                </a>
-              ) : (
-                <span className="text-slate-500 text-[11px]">Unregistered</span>
-              )}
-            </div>
-
-            <div className="mt-2 flex items-center justify-between text-xs">
-              <span className="text-mutedGray font-mono">History Ratio:</span>
-              <span className="font-mono text-slate-200">
-                <span className="text-crimsonRed font-bold">{history.stats.emergencySosCount} SOS</span> /{' '}
-                <span className="text-cyan-400 font-bold">{history.stats.civicComplaintCount} Complaints</span>
-              </span>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-mutedGray font-mono">History Ratio:</span>
+                <span className="font-mono text-secondaryText">
+                  <strong className="text-alertRed font-bold">{history.stats.emergencySosCount} SOS</strong> /{' '}
+                  <strong className="text-cyan-600 dark:text-cyan-400 font-bold">{history.stats.civicComplaintCount} Complaints</strong>
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* Card 2: Incident Intent & Category */}
-          <div className={`bg-[#0C1324]/80 border rounded-xl p-4 shadow-sm backdrop-blur-sm relative overflow-hidden ${
-            isEmergency ? 'border-crimsonRed/30' : 'border-cyan-500/30'
+          {/* Card 2: Incident Classification & Intent */}
+          <div className={`bg-surfaceCard border rounded-2xl p-5 shadow-xs transition-all duration-200 flex flex-col justify-between ${
+            isEmergency ? 'border-alertRed/30' : 'border-cyan-500/30'
           }`}>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-mono uppercase text-mutedGray tracking-wider flex items-center gap-1">
-                {isEmergency ? (
-                  <ShieldAlert className="w-3 h-3 text-crimsonRed" />
-                ) : (
-                  <Droplets className="w-3 h-3 text-cyan-400" />
-                )}
-                Incident Intent
-              </span>
-              <span
-                className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold ${
-                  isEmergency ? 'bg-crimsonRed/20 text-rose-300' : 'bg-cyan-500/20 text-cyan-300'
-                }`}
-              >
-                {incident.category}
-              </span>
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[11px] font-mono uppercase text-mutedGray tracking-wider flex items-center gap-1.5">
+                  {isEmergency ? (
+                    <ShieldAlert className="w-3.5 h-3.5 text-alertRed" />
+                  ) : (
+                    <Droplets className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
+                  )}
+                  Incident Intent
+                </span>
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded-md font-mono font-bold uppercase ${
+                    isEmergency
+                      ? 'bg-alertRed/15 text-alertRed'
+                      : 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400'
+                  }`}
+                >
+                  {incident.category}
+                </span>
+              </div>
+
+              <h3 className="font-bold text-primaryText text-base sm:text-lg leading-snug">
+                {incident.intentLabel}
+              </h3>
+              <p className="text-xs text-secondaryText mt-1 line-clamp-2 leading-relaxed">
+                {isEmergency
+                  ? 'High-priority distress alert. Imminent human safety triage.'
+                  : 'Municipal drainage / flood hazard report logged for maintenance.'}
+              </p>
             </div>
 
-            <h3 className="font-bold text-white text-base truncate">{incident.intentLabel}</h3>
-            <p className="text-xs text-mutedGray mt-0.5">
-              {isEmergency
-                ? 'High-priority distress alert. Imminent human safety triage.'
-                : 'Municipal drainage / flood hazard report logged for maintenance.'}
-            </p>
+            <div className="mt-4 pt-3 border-t border-hairline space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-mutedGray font-mono">Water Depth:</span>
+                <span className="font-mono font-bold text-primaryText flex items-center gap-1">
+                  <Droplets className="w-3 h-3 text-cyan-500" />
+                  {incident.waterDepthCm} cm
+                </span>
+              </div>
 
-            <div className="mt-3 pt-3 border-t border-borderDark/40 flex items-center justify-between text-xs">
-              <span className="text-mutedGray font-mono">Water Depth:</span>
-              <span className="font-mono font-bold text-slate-200 flex items-center gap-1">
-                <Droplets className="w-3 h-3 text-cyan-400" />
-                {incident.waterDepthCm} cm
-              </span>
-            </div>
-
-            <div className="mt-2 flex items-center justify-between text-xs">
-              <span className="text-mutedGray font-mono">Passability:</span>
-              <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-surfaceDark text-slate-300">
-                {incident.passability.replace(/_/g, ' ')}
-              </span>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-mutedGray font-mono">Passability:</span>
+                <span className="font-mono text-[11px] px-2 py-0.5 rounded-md bg-surfaceElevated border border-hairline text-secondaryText">
+                  {incident.passability.replace(/_/g, ' ')}
+                </span>
+              </div>
             </div>
           </div>
 
           {/* Card 3: Hardware & Sensor Telemetry */}
-          <div className="bg-[#0C1324]/80 border border-borderDark/60 rounded-xl p-4 shadow-sm backdrop-blur-sm relative overflow-hidden">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-mono uppercase text-mutedGray tracking-wider flex items-center gap-1">
-                <Activity className="w-3 h-3 text-brandTeal" /> Sensor Telemetry
-              </span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-surfaceDark border border-borderDark text-brandTeal font-mono">
-                {incident.transport}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-3 mt-1">
-              <div className="flex items-center gap-1.5">
-                <Battery className={`w-5 h-5 ${
-                  (incident.batteryPercentage ?? 100) < 20 ? 'text-crimsonRed animate-pulse' : 'text-brandTeal'
-                }`} />
-                <span className="text-base font-bold font-mono text-white">
-                  {incident.batteryPercentage !== null && incident.batteryPercentage !== undefined
-                    ? `${incident.batteryPercentage}%`
-                    : 'N/A'}
+          <div className="bg-surfaceCard border border-hairline hover:border-hairlineBright rounded-2xl p-5 shadow-xs transition-all duration-200 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[11px] font-mono uppercase text-mutedGray tracking-wider flex items-center gap-1.5">
+                  <Activity className="w-3.5 h-3.5 text-brandTeal" /> Sensor Telemetry
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-md bg-surfaceElevated border border-hairline text-brandTeal font-mono font-bold">
+                  {incident.transport}
                 </span>
               </div>
-              <div className="h-4 w-px bg-borderDark/60" />
-              <div className="flex items-center gap-1.5 text-xs text-mutedGray font-mono">
-                <Radio className="w-3.5 h-3.5 text-brandTeal" />
-                {incident.relayedByMule ? 'Data Mule Relayed' : 'Direct Signal'}
+
+              <div className="flex items-center gap-3 mt-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Battery className={`w-5 h-5 ${
+                    (incident.batteryPercentage ?? 100) < 20 ? 'text-alertRed animate-pulse' : 'text-brandTeal'
+                  }`} />
+                  <span className="text-lg font-bold font-mono text-primaryText">
+                    {incident.batteryPercentage !== null && incident.batteryPercentage !== undefined
+                      ? `${incident.batteryPercentage}%`
+                      : 'N/A'}
+                  </span>
+                </div>
+                <div className="h-4 w-px bg-hairline" />
+                <div className="flex items-center gap-1.5 text-xs text-secondaryText font-mono">
+                  <Radio className="w-3.5 h-3.5 text-brandTeal" />
+                  {incident.relayedByMule ? 'Mule Relayed' : 'Direct Signal'}
+                </div>
               </div>
             </div>
 
-            <div className="mt-3 pt-3 border-t border-borderDark/40 flex items-center justify-between text-xs">
-              <span className="text-mutedGray font-mono">Packet ID:</span>
-              <span className="font-mono text-slate-300 text-[11px]">
-                {incident.packetId || 'STD-IP-BROADCAST'}
-              </span>
-            </div>
+            <div className="mt-4 pt-3 border-t border-hairline space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-mutedGray font-mono">Packet ID:</span>
+                <span className="font-mono text-secondaryText text-[11px] truncate max-w-[130px]">
+                  {incident.packetId || 'STD-IP-BROADCAST'}
+                </span>
+              </div>
 
-            <div className="mt-2 flex items-center justify-between text-xs">
-              <span className="text-mutedGray font-mono">Relay Status:</span>
-              <span className="font-mono text-[11px] text-brandTeal">
-                {incident.relayedByMule ? 'Offline Mesh Synced' : 'Cloud Direct'}
-              </span>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-mutedGray font-mono">Relay Status:</span>
+                <span className="font-mono text-[11px] text-brandTeal font-medium">
+                  {incident.relayedByMule ? 'Offline Mesh Synced' : 'Cloud Direct'}
+                </span>
+              </div>
             </div>
           </div>
 
           {/* Card 4: Location Coordinates */}
-          <div className="bg-[#0C1324]/80 border border-borderDark/60 rounded-xl p-4 shadow-sm backdrop-blur-sm relative overflow-hidden">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-mono uppercase text-mutedGray tracking-wider flex items-center gap-1">
-                <MapPin className="w-3 h-3 text-alertAmber" /> Beacon Pin
-              </span>
-              {incident.location && (
-                <a
-                  href={`https://www.google.com/maps?q=${incident.location.lat},${incident.location.lng}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[10px] text-brandTeal hover:underline flex items-center gap-0.5 font-mono"
-                >
-                  Maps <ExternalLink className="w-2.5 h-2.5" />
-                </a>
-              )}
+          <div className="bg-surfaceCard border border-hairline hover:border-hairlineBright rounded-2xl p-5 shadow-xs transition-all duration-200 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[11px] font-mono uppercase text-mutedGray tracking-wider flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-amber-500" /> Beacon Pin
+                </span>
+                {incident.location && (
+                  <a
+                    href={`https://www.google.com/maps?q=${incident.location.lat},${incident.location.lng}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] text-brandTeal hover:underline flex items-center gap-0.5 font-mono font-medium"
+                  >
+                    Maps <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
+                )}
+              </div>
+
+              <p className="font-mono text-primaryText text-sm sm:text-base font-semibold truncate">
+                {incident.location ? `${incident.location.lat.toFixed(5)}, ${incident.location.lng.toFixed(5)}` : 'Location Unknown'}
+              </p>
+              <p className="text-xs text-mutedGray mt-0.5 font-mono">
+                Accuracy: {incident.accuracyMeters ? `±${incident.accuracyMeters}m` : 'Cell Triangulated'}
+              </p>
             </div>
 
-            <p className="font-mono text-white text-sm font-semibold truncate">
-              {incident.location ? `${incident.location.lat.toFixed(5)}, ${incident.location.lng.toFixed(5)}` : 'Location Unknown'}
-            </p>
-            <p className="text-xs text-mutedGray mt-0.5 font-mono">
-              Accuracy: {incident.accuracyMeters ? `±${incident.accuracyMeters}m` : 'Cell Triangulated'}
-            </p>
+            <div className="mt-4 pt-3 border-t border-hairline space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-mutedGray font-mono">Assigned Officer:</span>
+                <span className="font-mono text-secondaryText truncate max-w-[120px]">
+                  {incident.assignedAdmin?.displayName || 'Unassigned'}
+                </span>
+              </div>
 
-            <div className="mt-3 pt-3 border-t border-borderDark/40 flex items-center justify-between text-xs">
-              <span className="text-mutedGray font-mono">Assigned Officer:</span>
-              <span className="font-mono text-slate-200 truncate max-w-[120px]">
-                {incident.assignedAdmin?.displayName || 'Unassigned'}
-              </span>
-            </div>
-
-            <div className="mt-2 flex items-center justify-between text-xs">
-              <span className="text-mutedGray font-mono">Family Circle:</span>
-              <span className="font-mono text-brandTeal font-bold">
-                {familyNetwork.totalLinked} Members Linked
-              </span>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-mutedGray font-mono">Family Circle:</span>
+                <span className="font-mono text-brandTeal font-bold">
+                  {familyNetwork.totalLinked} Members Linked
+                </span>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Message Banner if Present */}
+        {/* ================= Distress Message Callout ================= */}
         {incident.message && (
-          <div className="bg-[#0D1528] border border-brandTeal/30 rounded-xl p-4 flex items-start gap-3">
-            <FileText className="w-5 h-5 text-brandTeal flex-shrink-0 mt-0.5" />
-            <div>
-              <span className="text-[10px] font-mono uppercase text-brandTeal tracking-wider">Civilian Distress Message:</span>
-              <p className="text-sm text-slate-100 font-medium mt-0.5">"{incident.message}"</p>
+          <div className="bg-surfaceCard border border-brandTeal/30 rounded-2xl p-4.5 shadow-xs flex items-start gap-3.5 transition-colors">
+            <div className="w-9 h-9 rounded-xl bg-brandTeal/15 text-brandTeal flex items-center justify-center flex-shrink-0 mt-0.5">
+              <FileText className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <span className="text-[10px] font-mono uppercase text-brandTeal tracking-wider font-bold">Civilian Distress Message:</span>
+              <p className="text-sm text-primaryText font-medium mt-0.5 leading-relaxed">
+                "{incident.message}"
+              </p>
             </div>
           </div>
         )}
 
-        {/* ================= SECTION 2: Tab Navigation ================= */}
-        <div className="flex border-b border-borderDark/60 gap-2 sm:gap-6 overflow-x-auto">
+        {/* ================= SECTION 2: Modern Segmented Tab Bar ================= */}
+        <div className="bg-surface border border-hairline rounded-2xl p-1.5 flex flex-wrap gap-1.5 shadow-xs transition-colors">
           <button
             onClick={() => setActiveTab('TELEMETRY')}
-            className={`pb-3 text-xs sm:text-sm font-semibold flex items-center gap-2 border-b-2 transition whitespace-nowrap ${
+            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 ${
               activeTab === 'TELEMETRY'
-                ? 'border-brandTeal text-brandTeal'
-                : 'border-transparent text-mutedGray hover:text-slate-200'
+                ? 'bg-brandTeal text-[#070B14] shadow-sm font-bold shadow-brandTeal/20'
+                : 'text-mutedGray hover:text-primaryText hover:bg-surfaceCard'
             }`}
           >
-            <Activity className="w-4 h-4" /> Live Telemetry & Mission Notes ({incident.notes.length})
+            <Activity className="w-4 h-4" />
+            <span>Live Telemetry & Notes ({incident.notes.length})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('FAMILY')}
-            className={`pb-3 text-xs sm:text-sm font-semibold flex items-center gap-2 border-b-2 transition whitespace-nowrap ${
+            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 ${
               activeTab === 'FAMILY'
-                ? 'border-brandTeal text-brandTeal'
-                : 'border-transparent text-mutedGray hover:text-slate-200'
+                ? 'bg-brandTeal text-[#070B14] shadow-sm font-bold shadow-brandTeal/20'
+                : 'text-mutedGray hover:text-primaryText hover:bg-surfaceCard'
             }`}
           >
-            <Users className="w-4 h-4" /> Family Network & Dependents ({familyNetwork.totalLinked})
+            <Users className="w-4 h-4" />
+            <span>Family Network & Dependents ({familyNetwork.totalLinked})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('HISTORY')}
-            className={`pb-3 text-xs sm:text-sm font-semibold flex items-center gap-2 border-b-2 transition whitespace-nowrap ${
+            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 ${
               activeTab === 'HISTORY'
-                ? 'border-brandTeal text-brandTeal'
-                : 'border-transparent text-mutedGray hover:text-slate-200'
+                ? 'bg-brandTeal text-[#070B14] shadow-sm font-bold shadow-brandTeal/20'
+                : 'text-mutedGray hover:text-primaryText hover:bg-surfaceCard'
             }`}
           >
-            <Clock className="w-4 h-4" /> Historical Dispatches ({history.stats.totalEvents})
+            <Clock className="w-4 h-4" />
+            <span>Historical Dispatches ({history.stats.totalEvents})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('AI_BRIEF')}
-            className={`pb-3 text-xs sm:text-sm font-semibold flex items-center gap-2 border-b-2 transition whitespace-nowrap ${
+            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 ${
               activeTab === 'AI_BRIEF'
-                ? 'border-brandTeal text-brandTeal'
-                : 'border-transparent text-mutedGray hover:text-slate-200'
+                ? 'bg-brandTeal text-[#070B14] shadow-sm font-bold shadow-brandTeal/20'
+                : 'text-mutedGray hover:text-primaryText hover:bg-surfaceCard'
             }`}
           >
-            <Sparkles className="w-4 h-4 text-alertAmber" /> Autonomous Situation Brief
+            <Sparkles className="w-4 h-4 text-amber-500" />
+            <span>Autonomous Situation Brief</span>
           </button>
         </div>
 
         {/* ================= SECTION 3: Tab Content Panels ================= */}
 
-        {/* ─── TAB 1: Live Telemetry & Notes ─── */}
+        {/* ─── TAB 1: Live Telemetry & Mission Notes ─── */}
         {activeTab === 'TELEMETRY' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Left 2 Cols: Mission Log & Notes */}
-            <div className="lg:col-span-2 space-y-4">
-              <div className="bg-[#0C1324]/80 border border-borderDark/60 rounded-xl p-5 shadow-sm">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-bold text-white text-sm flex items-center gap-2">
+            <div className="lg:col-span-2 space-y-6">
+              <div className="bg-surfaceCard border border-hairline rounded-2xl p-5 sm:p-6 shadow-xs space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-hairline">
+                  <h3 className="font-bold text-primaryText text-sm sm:text-base flex items-center gap-2">
                     <FileText className="w-4 h-4 text-brandTeal" /> Responders Mission Log
                   </h3>
                   <span className="text-xs text-mutedGray font-mono">{incident.notes.length} total entries</span>
                 </div>
 
                 {/* Notes Stream */}
-                <div className="space-y-3 max-h-[360px] overflow-y-auto pr-1">
+                <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
                   {incident.notes.length === 0 ? (
-                    <div className="text-center py-8 text-mutedGray text-xs">
-                      No field notes recorded yet. Add initial assessment below.
+                    <div className="text-center py-10 text-mutedGray text-xs bg-surfaceElevated rounded-xl border border-dashed border-hairline">
+                      No field notes recorded yet. Post initial assessment below.
                     </div>
                   ) : (
                     incident.notes.map((note, idx) => (
-                      <div key={idx} className="bg-surfaceDark/50 border border-borderDark/40 rounded-lg p-3 text-xs space-y-1">
-                        <div className="flex items-center justify-between text-mutedGray font-mono text-[10px]">
-                          <span>Responder Ref: {note.authorId?.slice(-6) || 'HQ Officer'}</span>
+                      <div key={idx} className="bg-surfaceElevated border border-hairline rounded-xl p-3.5 text-xs space-y-1.5 shadow-xs">
+                        <div className="flex items-center justify-between text-mutedGray font-mono text-[11px]">
+                          <span className="font-semibold text-secondaryText">
+                            Officer Ref: {note.authorId?.slice(-6) || 'HQ Dispatch'}
+                          </span>
                           <span>{new Date(note.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                         </div>
-                        <p className="text-slate-200 font-medium">{note.text}</p>
+                        <p className="text-primaryText font-medium leading-relaxed">{note.text}</p>
                       </div>
                     ))
                   )}
                 </div>
 
                 {/* Add Note Form */}
-                <form onSubmit={handleAddNote} className="mt-4 pt-4 border-t border-borderDark/40 flex gap-2">
+                <form onSubmit={handleAddNote} className="pt-3 border-t border-hairline flex gap-2 sm:gap-3">
                   <input
                     type="text"
                     value={noteInput}
                     onChange={(e) => setNoteInput(e.target.value)}
                     placeholder="Type dispatch update or field assessment..."
-                    className="flex-1 bg-surfaceDark border border-borderDark/60 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-brandTeal"
+                    className="flex-1 bg-surface border border-hairline focus:border-brandTeal focus:ring-1 focus:ring-brandTeal rounded-xl px-4 py-2.5 text-xs sm:text-sm text-primaryText placeholder:text-mutedGray outline-none transition shadow-xs"
                   />
                   <button
                     type="submit"
                     disabled={actionLoading || !noteInput.trim()}
-                    className="px-4 py-2 bg-brandTeal text-[#070B14] rounded-lg text-xs font-bold hover:bg-brandTeal/90 transition flex items-center gap-1.5 disabled:opacity-50"
+                    className="px-4.5 py-2.5 bg-brandTeal text-[#070B14] rounded-xl text-xs sm:text-sm font-bold hover:bg-brandTealGlow transition flex items-center gap-1.5 disabled:opacity-50 shadow-xs"
                   >
                     <Send className="w-3.5 h-3.5" /> Post
                   </button>
@@ -718,19 +766,21 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
               </div>
 
               {/* Acknowledged Responders List */}
-              <div className="bg-[#0C1324]/80 border border-borderDark/60 rounded-xl p-5 shadow-sm">
-                <h4 className="font-bold text-white text-xs uppercase font-mono text-mutedGray mb-3">
+              <div className="bg-surfaceCard border border-hairline rounded-2xl p-5 sm:p-6 shadow-xs space-y-3">
+                <h4 className="font-bold text-xs uppercase font-mono text-mutedGray tracking-wider">
                   Safety Acknowledgments ({incident.acknowledgedByUsers.length})
                 </h4>
                 {incident.acknowledgedByUsers.length === 0 ? (
-                  <p className="text-xs text-mutedGray">No relative or responder has acknowledged safety yet.</p>
+                  <p className="text-xs text-mutedGray bg-surfaceElevated rounded-xl p-4 border border-dashed border-hairline text-center">
+                    No relative or field responder has acknowledged safety yet.
+                  </p>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     {incident.acknowledgedByUsers.map((ack, idx) => (
-                      <div key={idx} className="bg-surfaceDark/40 border border-borderDark/40 rounded-lg p-2.5 flex items-center justify-between text-xs">
+                      <div key={idx} className="bg-surfaceElevated border border-hairline rounded-xl p-3 flex items-center justify-between text-xs shadow-xs">
                         <div className="flex items-center gap-2">
                           <CheckCircle2 className="w-4 h-4 text-brandTeal" />
-                          <span className="font-medium text-slate-200">{ack.displayName || 'Family Responder'}</span>
+                          <span className="font-semibold text-primaryText">{ack.displayName || 'Family Responder'}</span>
                         </div>
                         <span className="text-[10px] text-mutedGray font-mono">
                           {new Date(ack.acknowledgedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -743,36 +793,36 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
             </div>
 
             {/* Right Col: Environmental Diagnostics */}
-            <div className="space-y-4">
-              <div className="bg-[#0C1324]/80 border border-borderDark/60 rounded-xl p-5 shadow-sm space-y-4">
-                <h3 className="font-bold text-white text-sm flex items-center gap-2">
+            <div className="space-y-6">
+              <div className="bg-surfaceCard border border-hairline rounded-2xl p-5 sm:p-6 shadow-xs space-y-4">
+                <h3 className="font-bold text-primaryText text-sm sm:text-base flex items-center gap-2 pb-3 border-b border-hairline">
                   <Compass className="w-4 h-4 text-brandTeal" /> Environmental Triangulation
                 </h3>
 
-                <div className="space-y-3 text-xs">
-                  <div className="flex justify-between items-center py-2 border-b border-borderDark/30">
+                <div className="space-y-1 text-xs">
+                  <div className="flex justify-between items-center py-2.5 border-b border-hairline">
                     <span className="text-mutedGray">Flood Height:</span>
-                    <span className="font-mono font-bold text-cyan-400">{incident.waterDepthCm} cm recorded</span>
+                    <span className="font-mono font-bold text-cyan-600 dark:text-cyan-400">{incident.waterDepthCm} cm recorded</span>
                   </div>
 
-                  <div className="flex justify-between items-center py-2 border-b border-borderDark/30">
+                  <div className="flex justify-between items-center py-2.5 border-b border-hairline">
                     <span className="text-mutedGray">Vehicle Clearance:</span>
-                    <span className="font-mono text-slate-200">{incident.passability.replace(/_/g, ' ')}</span>
+                    <span className="font-mono text-primaryText font-medium">{incident.passability.replace(/_/g, ' ')}</span>
                   </div>
 
-                  <div className="flex justify-between items-center py-2 border-b border-borderDark/30">
+                  <div className="flex justify-between items-center py-2.5 border-b border-hairline">
                     <span className="text-mutedGray">Network Carrier:</span>
-                    <span className="font-mono text-slate-200">{incident.transport}</span>
+                    <span className="font-mono text-primaryText font-medium">{incident.transport}</span>
                   </div>
 
-                  <div className="flex justify-between items-center py-2 border-b border-borderDark/30">
+                  <div className="flex justify-between items-center py-2.5 border-b border-hairline">
                     <span className="text-mutedGray">Battery Gauge:</span>
-                    <span className="font-mono text-slate-200">{incident.batteryPercentage ?? 'Unknown'}%</span>
+                    <span className="font-mono text-primaryText font-bold">{incident.batteryPercentage ?? 'Unknown'}%</span>
                   </div>
 
-                  <div className="flex justify-between items-center py-2 border-b border-borderDark/30">
+                  <div className="flex justify-between items-center py-2.5 border-b border-hairline">
                     <span className="text-mutedGray">Mule Peer Relay:</span>
-                    <span className="font-mono text-brandTeal">{incident.relayedByMule ? 'YES' : 'NO'}</span>
+                    <span className="font-mono text-brandTeal font-bold">{incident.relayedByMule ? 'YES' : 'NO'}</span>
                   </div>
                 </div>
 
@@ -782,7 +832,7 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
                     href={`https://www.google.com/maps/dir/?api=1&destination=${incident.location.lat},${incident.location.lng}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="w-full py-2.5 rounded-lg bg-surfaceDark border border-borderDark/60 hover:border-brandTeal text-xs font-semibold text-white flex items-center justify-center gap-2 transition"
+                    className="w-full py-2.5 rounded-xl bg-surfaceElevated border border-hairline hover:border-brandTeal text-xs font-bold text-primaryText hover:text-brandTeal flex items-center justify-center gap-2 transition shadow-xs"
                   >
                     <Compass className="w-4 h-4 text-brandTeal" /> Navigate Rescue Team
                   </a>
@@ -795,34 +845,34 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
         {/* ─── TAB 2: Family Network & Dependents ─── */}
         {activeTab === 'FAMILY' && (
           <div className="space-y-6">
-            {/* Header info */}
-            <div className="bg-[#0C1324]/80 border border-borderDark/60 rounded-xl p-5 shadow-sm flex flex-wrap items-center justify-between gap-4">
+            {/* Header info card */}
+            <div className="bg-surfaceCard border border-hairline rounded-2xl p-5 sm:p-6 shadow-xs flex flex-wrap items-center justify-between gap-4">
               <div>
-                <h3 className="font-bold text-white text-base flex items-center gap-2">
-                  <HeartHandshake className="w-5 h-5 text-rose-400" /> Family Circle & Linked Dependents
+                <h3 className="font-bold text-primaryText text-base sm:text-lg flex items-center gap-2">
+                  <HeartHandshake className="w-5 h-5 text-rose-500" /> Family Circle & Linked Dependents
                 </h3>
-                <p className="text-xs text-mutedGray mt-1">
-                  Bi-directional parent-child links registered under ZeroGrid Family Safety Mesh.
+                <p className="text-xs text-secondaryText mt-1">
+                  Bi-directional family linkages registered under ZeroGrid Emergency Safety Mesh.
                 </p>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="px-3 py-1 rounded-lg bg-surfaceDark border border-borderDark text-xs font-mono text-slate-200">
+              <div className="flex items-center gap-2.5">
+                <span className="px-3 py-1.5 rounded-xl bg-surfaceElevated border border-hairline text-xs font-mono text-secondaryText font-medium">
                   {familyNetwork.parents.length} Parents
                 </span>
-                <span className="px-3 py-1 rounded-lg bg-surfaceDark border border-borderDark text-xs font-mono text-brandTeal font-bold">
+                <span className="px-3 py-1.5 rounded-xl bg-surfaceElevated border border-hairline text-xs font-mono text-brandTeal font-bold">
                   {familyNetwork.dependents.length} Dependents
                 </span>
               </div>
             </div>
 
             {/* Dependents / Children */}
-            <div>
-              <h4 className="text-xs font-bold uppercase font-mono text-brandTeal tracking-wider mb-3 flex items-center gap-1.5">
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold uppercase font-mono text-brandTeal tracking-wider flex items-center gap-1.5">
                 <Users className="w-4 h-4" /> Linked Children & Dependents ({familyNetwork.dependents.length})
               </h4>
 
               {familyNetwork.dependents.length === 0 ? (
-                <div className="bg-[#0C1324]/40 border border-borderDark/40 rounded-xl p-6 text-center text-xs text-mutedGray">
+                <div className="bg-surfaceCard border border-dashed border-hairline rounded-2xl p-8 text-center text-xs text-mutedGray">
                   No dependent accounts registered for this civilian.
                 </div>
               ) : (
@@ -830,39 +880,39 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
                   {familyNetwork.dependents.map((dep) => (
                     <div
                       key={dep.linkId}
-                      className="bg-[#0C1324]/80 border border-borderDark/60 rounded-xl p-4 shadow-sm hover:border-brandTeal/40 transition space-y-3"
+                      className="bg-surfaceCard border border-hairline hover:border-brandTeal/40 rounded-2xl p-5 shadow-xs transition-all duration-200 space-y-3"
                     >
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-brandTeal/15 text-brandTeal flex items-center justify-center font-bold text-xs">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-brandTeal/15 text-brandTeal flex items-center justify-center font-bold text-sm">
                             {dep.user.displayName.charAt(0).toUpperCase()}
                           </div>
                           <div>
-                            <p className="font-bold text-white text-sm">{dep.user.displayName}</p>
+                            <p className="font-bold text-primaryText text-sm truncate">{dep.user.displayName}</p>
                             <span className="text-[10px] text-mutedGray font-mono">{dep.user.role}</span>
                           </div>
                         </div>
 
                         <span
-                          className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold ${
+                          className={`text-[10px] px-2 py-0.5 rounded-md font-mono font-bold ${
                             dep.status === 'ACCEPTED'
-                              ? 'bg-brandTeal/20 text-brandTeal border border-brandTeal/30'
-                              : 'bg-alertAmber/20 text-alertAmber border border-alertAmber/30'
+                              ? 'bg-brandTeal/15 text-brandTeal border border-brandTeal/30'
+                              : 'bg-amber-500/15 text-amber-500 border border-amber-500/30'
                           }`}
                         >
                           {dep.status}
                         </span>
                       </div>
 
-                      <div className="space-y-1.5 text-xs pt-2 border-t border-borderDark/40">
+                      <div className="space-y-1.5 text-xs pt-3 border-t border-hairline">
                         <div className="flex items-center justify-between text-mutedGray">
                           <span>Email:</span>
-                          <span className="text-slate-200 font-mono text-[11px] truncate max-w-[160px]">{dep.user.email}</span>
+                          <span className="text-secondaryText font-mono text-[11px] truncate max-w-[170px]">{dep.user.email}</span>
                         </div>
                         {dep.user.phoneNumber && (
                           <div className="flex items-center justify-between text-mutedGray">
                             <span>Phone:</span>
-                            <a href={`tel:${dep.user.phoneNumber}`} className="text-brandTeal hover:underline font-mono">
+                            <a href={`tel:${dep.user.phoneNumber}`} className="text-brandTeal hover:underline font-mono font-semibold">
                               {dep.user.phoneNumber}
                             </a>
                           </div>
@@ -870,7 +920,7 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
                         {dep.user.lastKnownLocation && (
                           <div className="flex items-center justify-between text-mutedGray">
                             <span>Last Ping:</span>
-                            <span className="text-slate-200 font-mono text-[10px]">
+                            <span className="text-secondaryText font-mono text-[10px]">
                               {dep.user.lastLocationAt ? new Date(dep.user.lastLocationAt).toLocaleTimeString() : 'Recent'}
                             </span>
                           </div>
@@ -883,13 +933,13 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
             </div>
 
             {/* Parents / Guardians */}
-            <div>
-              <h4 className="text-xs font-bold uppercase font-mono text-mutedGray tracking-wider mb-3 flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-slate-400" /> Linked Parents & Guardians ({familyNetwork.parents.length})
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold uppercase font-mono text-mutedGray tracking-wider flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-mutedGray" /> Linked Parents & Guardians ({familyNetwork.parents.length})
               </h4>
 
               {familyNetwork.parents.length === 0 ? (
-                <div className="bg-[#0C1324]/40 border border-borderDark/40 rounded-xl p-6 text-center text-xs text-mutedGray">
+                <div className="bg-surfaceCard border border-dashed border-hairline rounded-2xl p-8 text-center text-xs text-mutedGray">
                   No parent links registered for this account.
                 </div>
               ) : (
@@ -897,39 +947,39 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
                   {familyNetwork.parents.map((par) => (
                     <div
                       key={par.linkId}
-                      className="bg-[#0C1324]/80 border border-borderDark/60 rounded-xl p-4 shadow-sm hover:border-brandTeal/40 transition space-y-3"
+                      className="bg-surfaceCard border border-hairline hover:border-brandTeal/40 rounded-2xl p-5 shadow-xs transition-all duration-200 space-y-3"
                     >
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-slate-700 text-slate-200 flex items-center justify-center font-bold text-xs">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-surfaceElevated border border-hairline text-secondaryText flex items-center justify-center font-bold text-sm">
                             {par.user.displayName.charAt(0).toUpperCase()}
                           </div>
                           <div>
-                            <p className="font-bold text-white text-sm">{par.user.displayName}</p>
+                            <p className="font-bold text-primaryText text-sm truncate">{par.user.displayName}</p>
                             <span className="text-[10px] text-mutedGray font-mono">Guardian</span>
                           </div>
                         </div>
 
                         <span
-                          className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold ${
+                          className={`text-[10px] px-2 py-0.5 rounded-md font-mono font-bold ${
                             par.status === 'ACCEPTED'
-                              ? 'bg-brandTeal/20 text-brandTeal border border-brandTeal/30'
-                              : 'bg-alertAmber/20 text-alertAmber border border-alertAmber/30'
+                              ? 'bg-brandTeal/15 text-brandTeal border border-brandTeal/30'
+                              : 'bg-amber-500/15 text-amber-500 border border-amber-500/30'
                           }`}
                         >
                           {par.status}
                         </span>
                       </div>
 
-                      <div className="space-y-1.5 text-xs pt-2 border-t border-borderDark/40">
+                      <div className="space-y-1.5 text-xs pt-3 border-t border-hairline">
                         <div className="flex items-center justify-between text-mutedGray">
                           <span>Email:</span>
-                          <span className="text-slate-200 font-mono text-[11px] truncate max-w-[160px]">{par.user.email}</span>
+                          <span className="text-secondaryText font-mono text-[11px] truncate max-w-[170px]">{par.user.email}</span>
                         </div>
                         {par.user.phoneNumber && (
                           <div className="flex items-center justify-between text-mutedGray">
                             <span>Phone:</span>
-                            <a href={`tel:${par.user.phoneNumber}`} className="text-brandTeal hover:underline font-mono">
+                            <a href={`tel:${par.user.phoneNumber}`} className="text-brandTeal hover:underline font-mono font-semibold">
                               {par.user.phoneNumber}
                             </a>
                           </div>
@@ -942,29 +992,29 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
             </div>
 
             {/* Emergency Contacts */}
-            <div>
-              <h4 className="text-xs font-bold uppercase font-mono text-alertAmber tracking-wider mb-3 flex items-center gap-1.5">
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold uppercase font-mono text-amber-500 tracking-wider flex items-center gap-1.5">
                 <Phone className="w-4 h-4" /> Emergency Phone Contacts ({familyNetwork.emergencyContacts.length})
               </h4>
 
               {familyNetwork.emergencyContacts.length === 0 ? (
-                <div className="bg-[#0C1324]/40 border border-borderDark/40 rounded-xl p-6 text-center text-xs text-mutedGray">
+                <div className="bg-surfaceCard border border-dashed border-hairline rounded-2xl p-8 text-center text-xs text-mutedGray">
                   No emergency contacts configured by civilian.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {familyNetwork.emergencyContacts.map((contact) => (
-                    <div key={contact.id} className="bg-[#0C1324]/80 border border-borderDark/60 rounded-xl p-3.5 flex items-center justify-between">
+                    <div key={contact.id} className="bg-surfaceCard border border-hairline rounded-2xl p-4 flex items-center justify-between shadow-xs">
                       <div>
-                        <p className="font-bold text-white text-xs">{contact.name}</p>
+                        <p className="font-bold text-primaryText text-sm">{contact.name}</p>
                         <span className="text-[10px] text-mutedGray font-mono">{contact.relationship}</span>
                       </div>
                       <a
                         href={`tel:${contact.phoneNumber}`}
-                        className="p-2 rounded-lg bg-surfaceDark border border-borderDark/60 hover:border-brandTeal text-brandTeal transition"
+                        className="p-2.5 rounded-xl bg-surfaceElevated border border-hairline hover:border-brandTeal text-brandTeal transition shadow-xs"
                         title="Call Contact"
                       >
-                        <Phone className="w-3.5 h-3.5" />
+                        <Phone className="w-4 h-4" />
                       </a>
                     </div>
                   ))}
@@ -978,14 +1028,14 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
         {activeTab === 'HISTORY' && (
           <div className="space-y-6">
             {/* Filter Pills & Summary */}
-            <div className="bg-[#0C1324]/80 border border-borderDark/60 rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
-              <div className="flex items-center gap-2">
+            <div className="bg-surfaceCard border border-hairline rounded-2xl p-4 sm:p-5 flex flex-wrap items-center justify-between gap-4 shadow-xs">
+              <div className="flex items-center gap-2 flex-wrap">
                 <button
                   onClick={() => setHistoryFilter('ALL')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                  className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition ${
                     historyFilter === 'ALL'
-                      ? 'bg-brandTeal text-[#070B14]'
-                      : 'bg-surfaceDark text-mutedGray hover:text-white'
+                      ? 'bg-brandTeal text-[#070B14] font-bold shadow-xs'
+                      : 'bg-surfaceElevated border border-hairline text-secondaryText hover:text-primaryText'
                   }`}
                 >
                   All Reports ({history.stats.totalEvents})
@@ -993,22 +1043,22 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
 
                 <button
                   onClick={() => setHistoryFilter('EMERGENCY')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+                  className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 ${
                     historyFilter === 'EMERGENCY'
-                      ? 'bg-crimsonRed text-white'
-                      : 'bg-surfaceDark text-mutedGray hover:text-white'
+                      ? 'bg-alertRed text-white font-bold shadow-xs'
+                      : 'bg-surfaceElevated border border-hairline text-secondaryText hover:text-primaryText'
                   }`}
                 >
                   <ShieldAlert className="w-3.5 h-3.5" />
-                  Critical SOS Only ({history.stats.emergencySosCount})
+                  Critical SOS ({history.stats.emergencySosCount})
                 </button>
 
                 <button
                   onClick={() => setHistoryFilter('COMPLAINTS')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+                  className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 ${
                     historyFilter === 'COMPLAINTS'
-                      ? 'bg-cyan-500 text-white'
-                      : 'bg-surfaceDark text-mutedGray hover:text-white'
+                      ? 'bg-cyan-600 text-white font-bold shadow-xs'
+                      : 'bg-surfaceElevated border border-hairline text-secondaryText hover:text-primaryText'
                   }`}
                 >
                   <Droplets className="w-3.5 h-3.5" />
@@ -1018,40 +1068,40 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
 
               <div className="text-xs font-mono text-mutedGray">
                 Resolved Rate:{' '}
-                <span className="text-brandTeal font-bold">
+                <strong className="text-brandTeal font-bold">
                   {history.stats.totalEvents > 0
                     ? `${Math.round((history.stats.resolvedCount / history.stats.totalEvents) * 100)}%`
                     : '100%'}
-                </span>
+                </strong>
               </div>
             </div>
 
             {/* Timeline Cards */}
             <div className="space-y-3">
               {filteredTimeline.length === 0 ? (
-                <div className="bg-[#0C1324]/40 border border-borderDark/40 rounded-xl p-8 text-center text-xs text-mutedGray">
+                <div className="bg-surfaceCard border border-dashed border-hairline rounded-2xl p-10 text-center text-xs text-mutedGray">
                   No past dispatches found matching this filter.
                 </div>
               ) : (
                 filteredTimeline.map((item) => (
                   <div
                     key={item.id}
-                    className={`bg-[#0C1324]/80 border rounded-xl p-4 transition shadow-sm ${
+                    className={`bg-surfaceCard border rounded-2xl p-5 transition shadow-xs space-y-3 ${
                       item.isCurrentIncident
                         ? 'border-brandTeal ring-1 ring-brandTeal/30'
                         : item.isEmergencySos
-                        ? 'border-crimsonRed/30 hover:border-crimsonRed/50'
-                        : 'border-borderDark/60 hover:border-cyan-500/40'
+                        ? 'border-alertRed/30 hover:border-alertRed/60'
+                        : 'border-hairline hover:border-cyan-500/40'
                     }`}
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
                         {/* Intent Icon */}
                         <div
-                          className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                          className={`w-8 h-8 rounded-xl flex items-center justify-center ${
                             item.isEmergencySos
-                              ? 'bg-crimsonRed/20 text-rose-400'
-                              : 'bg-cyan-500/20 text-cyan-400'
+                              ? 'bg-alertRed/15 text-alertRed'
+                              : 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400'
                           }`}
                         >
                           {item.isEmergencySos ? (
@@ -1062,22 +1112,24 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
                         </div>
 
                         <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-white text-xs">{item.category}</span>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-primaryText text-xs sm:text-sm">{item.category}</span>
                             <span
-                              className={`text-[9px] px-2 py-0.5 rounded-full font-mono font-bold uppercase ${
-                                item.isEmergencySos ? 'bg-crimsonRed/20 text-rose-300' : 'bg-cyan-500/20 text-cyan-300'
+                              className={`text-[9px] px-2 py-0.5 rounded-md font-mono font-bold uppercase ${
+                                item.isEmergencySos
+                                  ? 'bg-alertRed/15 text-alertRed'
+                                  : 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400'
                               }`}
                             >
                               {item.isEmergencySos ? 'Emergency SOS' : 'Civic Hazard'}
                             </span>
                             {item.isCurrentIncident && (
-                              <span className="text-[9px] px-2 py-0.5 rounded-full bg-brandTeal/20 text-brandTeal font-mono font-bold">
+                              <span className="text-[9px] px-2 py-0.5 rounded-md bg-brandTeal/15 text-brandTeal font-mono font-bold">
                                 CURRENT INCIDENT
                               </span>
                             )}
                           </div>
-                          <span className="text-[10px] text-mutedGray font-mono flex items-center gap-1 mt-0.5">
+                          <span className="text-[11px] text-mutedGray font-mono flex items-center gap-1 mt-0.5">
                             <Calendar className="w-3 h-3" />
                             {new Date(item.createdAt).toLocaleString()}
                           </span>
@@ -1086,12 +1138,12 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
 
                       {/* Status */}
                       <span
-                        className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold uppercase ${
+                        className={`text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold uppercase ${
                           item.status === 'RESOLVED'
-                            ? 'bg-brandTeal/15 text-brandTeal border border-brandTeal/30'
+                            ? 'bg-brandTeal/10 text-brandTeal border border-brandTeal/30'
                             : item.status === 'ACKNOWLEDGED'
-                            ? 'bg-alertAmber/15 text-alertAmber border border-alertAmber/30'
-                            : 'bg-crimsonRed/15 text-crimsonRed border border-crimsonRed/30'
+                            ? 'bg-amber-500/10 text-amber-500 border border-amber-500/30'
+                            : 'bg-alertRed/10 text-alertRed border border-alertRed/30'
                         }`}
                       >
                         {item.status}
@@ -1099,19 +1151,19 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
                     </div>
 
                     {item.message && (
-                      <p className="text-xs text-slate-300 font-medium mt-2.5 pl-9">
+                      <p className="text-xs sm:text-sm text-secondaryText font-medium pl-11 leading-relaxed">
                         "{item.message}"
                       </p>
                     )}
 
-                    <div className="mt-3 pt-2 pl-9 border-t border-borderDark/30 flex flex-wrap items-center gap-4 text-[11px] font-mono text-mutedGray">
-                      <span>Water Depth: <strong className="text-slate-200">{item.waterDepthCm} cm</strong></span>
-                      <span>Passability: <strong className="text-slate-200">{item.passability.replace(/_/g, ' ')}</strong></span>
-                      <span>Transport: <strong className="text-slate-200">{item.transport}</strong></span>
+                    <div className="pt-3 pl-11 border-t border-hairline flex flex-wrap items-center gap-4 text-[11px] font-mono text-mutedGray">
+                      <span>Water Depth: <strong className="text-primaryText">{item.waterDepthCm} cm</strong></span>
+                      <span>Passability: <strong className="text-primaryText">{item.passability.replace(/_/g, ' ')}</strong></span>
+                      <span>Transport: <strong className="text-primaryText">{item.transport}</strong></span>
                       {item.batteryPercentage !== null && item.batteryPercentage !== undefined && (
-                        <span>Battery: <strong className="text-slate-200">{item.batteryPercentage}%</strong></span>
+                        <span>Battery: <strong className="text-primaryText">{item.batteryPercentage}%</strong></span>
                       )}
-                      <span>Notes: <strong className="text-slate-200">{item.notesCount}</strong></span>
+                      <span>Notes: <strong className="text-primaryText">{item.notesCount}</strong></span>
                     </div>
                   </div>
                 ))
@@ -1122,13 +1174,13 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
 
         {/* ─── TAB 4: Autonomous Situation Brief ─── */}
         {activeTab === 'AI_BRIEF' && (
-          <div className="bg-[#0C1324]/80 border border-borderDark/60 rounded-xl p-6 shadow-sm space-y-5">
-            <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="bg-surfaceCard border border-hairline rounded-2xl p-6 shadow-xs space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-hairline">
               <div>
-                <h3 className="font-bold text-white text-base flex items-center gap-2">
+                <h3 className="font-bold text-primaryText text-base sm:text-lg flex items-center gap-2">
                   <Bot className="w-5 h-5 text-brandTeal" /> Autonomous Situation Brief
                 </h3>
-                <p className="text-xs text-mutedGray mt-0.5">
+                <p className="text-xs text-secondaryText mt-0.5">
                   Powered by ZeroGrid Multi-Tier AI (Bedrock &rarr; Groq Llama-3 &rarr; Deterministic Hydrodynamics).
                 </p>
               </div>
@@ -1136,42 +1188,51 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
               <button
                 onClick={handleGenerateBrief}
                 disabled={briefLoading}
-                className="px-4 py-2 bg-brandTeal text-[#070B14] rounded-lg text-xs font-bold hover:bg-brandTeal/90 transition flex items-center gap-1.5 disabled:opacity-50"
+                className="px-4.5 py-2.5 bg-brandTeal text-[#070B14] rounded-xl text-xs sm:text-sm font-bold hover:bg-brandTealGlow transition flex items-center gap-2 disabled:opacity-50 shadow-xs"
               >
                 {briefLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                Generate Incident Brief
+                <span>Generate Incident Brief</span>
               </button>
             </div>
 
             {brief ? (
-              <div className="space-y-4 pt-4 border-t border-borderDark/40">
+              <div className="space-y-4">
+                {brief.engine && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-mono px-3 py-1.5 rounded-xl bg-surfaceElevated border border-brandTeal/30 text-brandTeal font-bold flex items-center gap-1.5 shadow-xs">
+                      <Zap className="w-3.5 h-3.5 text-brandTeal" />
+                      {brief.engine}
+                    </span>
+                  </div>
+                )}
+
                 {brief.agentAdvisory && (
-                  <div className="bg-surfaceDark/60 border border-brandTeal/30 rounded-xl p-4">
-                    <span className="text-[10px] font-mono uppercase text-brandTeal tracking-wider flex items-center gap-1">
+                  <div className="bg-surfaceElevated border border-brandTeal/30 rounded-2xl p-4.5 shadow-xs">
+                    <span className="text-[10px] font-mono uppercase text-brandTeal tracking-wider font-bold flex items-center gap-1.5">
                       <Zap className="w-3.5 h-3.5" /> Agent Strategic Advisory
                     </span>
-                    <p className="text-xs text-slate-200 mt-1 leading-relaxed">{brief.agentAdvisory}</p>
+                    <p className="text-xs sm:text-sm text-primaryText mt-1.5 leading-relaxed">{brief.agentAdvisory}</p>
                   </div>
                 )}
 
                 {brief.trafficDiversion && (
-                  <div className="bg-surfaceDark/60 border border-alertAmber/30 rounded-xl p-4">
-                    <span className="text-[10px] font-mono uppercase text-alertAmber tracking-wider flex items-center gap-1">
+                  <div className="bg-surfaceElevated border border-amber-500/30 rounded-2xl p-4.5 shadow-xs">
+                    <span className="text-[10px] font-mono uppercase text-amber-500 tracking-wider font-bold flex items-center gap-1.5">
                       <Compass className="w-3.5 h-3.5" /> Traffic Diversion Route
                     </span>
-                    <p className="text-xs text-slate-200 mt-1 leading-relaxed">{brief.trafficDiversion}</p>
+                    <p className="text-xs sm:text-sm text-primaryText mt-1.5 leading-relaxed">{brief.trafficDiversion}</p>
                   </div>
                 )}
 
                 {brief.municipalActions && brief.municipalActions.length > 0 && (
-                  <div className="bg-surfaceDark/60 border border-cyan-500/30 rounded-xl p-4">
-                    <span className="text-[10px] font-mono uppercase text-cyan-400 tracking-wider flex items-center gap-1">
+                  <div className="bg-surfaceElevated border border-cyan-500/30 rounded-2xl p-4.5 shadow-xs">
+                    <span className="text-[10px] font-mono uppercase text-cyan-600 dark:text-cyan-400 tracking-wider font-bold flex items-center gap-1.5">
                       <CheckCircle2 className="w-3.5 h-3.5" /> Recommended Municipal Actions
                     </span>
-                    <ul className="mt-2 space-y-1.5 text-xs text-slate-300">
+                    <ul className="mt-2.5 space-y-2 text-xs sm:text-sm text-secondaryText">
                       {brief.municipalActions.map((action, i) => (
-                        <li key={i} className="flex items-start gap-2">
-                          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 mt-1.5 flex-shrink-0" />
+                        <li key={i} className="flex items-start gap-2.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 mt-2 flex-shrink-0" />
                           <span>{action}</span>
                         </li>
                       ))}
@@ -1180,8 +1241,8 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
                 )}
               </div>
             ) : (
-              <div className="text-center py-12 text-mutedGray text-xs">
-                Click "Generate Incident Brief" to activate real-time LLM incident analysis & response routing.
+              <div className="text-center py-12 text-mutedGray text-xs bg-surfaceElevated rounded-2xl border border-dashed border-hairline">
+                Click "Generate Incident Brief" to activate real-time LLM incident analysis & strategic dispatch routing.
               </div>
             )}
           </div>

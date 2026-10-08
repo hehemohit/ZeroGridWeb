@@ -434,17 +434,32 @@ async function getDetourRoute(req, res) {
 async function generateSituationBrief(req, res) {
   try {
     const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'Invalid SOS event ID' });
+    let sos = null;
+
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      sos = await SosEvent.findById(id).lean();
     }
 
-    const sos = await SosEvent.findById(id).lean();
+    if (!sos) {
+      const cleanSuffix = String(id).replace(/^sos-/, '').trim();
+      sos = await SosEvent.findOne({
+        $or: [
+          { packetId: id },
+          { packetId: cleanSuffix },
+          { $expr: { $regexMatch: { input: { $toString: '$_id' }, regex: cleanSuffix + '$', options: 'i' } } }
+        ]
+      }).lean();
+    }
+
     if (!sos) {
       return res.status(404).json({ message: 'SOS event not found' });
     }
 
     const brief = await strandsRouterAgent.getSituationBrief(sos);
-    return res.status(200).json(brief);
+    return res.status(200).json({
+      ...brief,
+      brief
+    });
   } catch (error) {
     console.error('[SOS] generateSituationBrief error:', error);
     return res.status(500).json({ message: 'Failed to generate situation brief' });
