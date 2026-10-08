@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+
+# Environment variables (contains secret API keys)
+.env
+
+# Build outputs
+voice-agent-lambda.zip
+lambda_build_staging/
+lambda_package_temp/
+test_pkg/

@@ -22,9 +22,11 @@ import {
   Droplets,
   ExternalLink,
   ChevronRight,
-  Send
+  Send,
+  Mic
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { VoiceDispatchAssistant } from '@/components/voice/VoiceDispatchAssistant';
 
 interface CrisisCommandModalProps {
   isOpen: boolean;
@@ -49,7 +51,7 @@ export function CrisisCommandModal({
   onShowToast,
   onSelectCoordinates
 }: CrisisCommandModalProps) {
-  const [activeTab, setActiveTab] = useState<'TIMELINE' | 'DISPATCH' | 'AUDIT' | 'SITREP'>('TIMELINE');
+  const [activeTab, setActiveTab] = useState<'TIMELINE' | 'DISPATCH' | 'AUDIT' | 'SITREP' | 'VOICE'>('TIMELINE');
 
   // --- Tab 1: Timeline State ---
   const [hotspotsList, setHotspotsList] = useState<any[]>([]);
@@ -351,6 +353,19 @@ export function CrisisCommandModal({
           >
             <FileText className="w-4 h-4" />
             <span>4. NDMA Situation Report</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('VOICE')}
+            className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-semibold border-b-2 transition-all whitespace-nowrap ${
+              activeTab === 'VOICE'
+                ? 'border-brandTeal text-brandTeal bg-brandTeal/10'
+                : 'border-transparent text-secondaryText hover:text-primaryText'
+            }`}
+          >
+            <Mic className="w-4 h-4 text-emerald-400 animate-pulse" />
+            <span>5. Voice Dispatch AI</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
           </button>
         </div>
 
@@ -867,6 +882,33 @@ export function CrisisCommandModal({
               <div className="p-5 rounded-xl bg-surfaceElevated border border-hairline font-mono text-xs text-slate-200 leading-relaxed whitespace-pre-wrap max-h-[500px] overflow-y-auto shadow-inner">
                 {sitRepData?.markdownReport || 'Loading official NDMA SitRep generation...'}
               </div>
+            </div>
+          )}
+
+          {/* ═════════════ TAB 5: VOICE DISPATCH AI ═════════════ */}
+          {activeTab === 'VOICE' && (
+            <div className="space-y-4">
+              <div className="p-4 rounded-xl bg-surfaceCard/90 border border-hairline flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <h4 className="text-sm font-bold text-primaryText flex items-center gap-2">
+                    <span>Tactical Voice Dispatch Assistant</span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-brandTeal/15 text-brandTeal border border-brandTeal/30">
+                      AWS Lambda · Groq 120B · HTTPS
+                    </span>
+                  </h4>
+                  <p className="text-xs text-mutedGray mt-0.5">
+                    Speak natural incident reports, query bottleneck status, or issue emergency broadcast commands hands-free.
+                  </p>
+                </div>
+              </div>
+
+              <VoiceDispatchAssistant
+                className="max-w-3xl mx-auto shadow-2xl"
+                title="Crisis Command Voice AI"
+                onInjectNote={(text) => {
+                  onShowToast?.('Voice note captured for tactical dispatch log', 'success');
+                }}
+              />
             </div>
           )}
 

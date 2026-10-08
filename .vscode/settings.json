@@ -1,0 +1,3 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/voice-agent/.venv/Scripts/python.exe"
+}

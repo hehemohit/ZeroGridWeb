@@ -4,6 +4,7 @@ import React, { useEffect, useState, use, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { api } from '@/lib/api';
+import { FloatingVoiceButton } from '@/components/voice/FloatingVoiceButton';
 import {
   ArrowLeft,
   Shield,
@@ -1248,6 +1249,11 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
           </div>
         )}
       </main>
+
+      {/* Tactical Voice Dispatch Assistant */}
+      <FloatingVoiceButton
+        onInjectNote={(note) => setNoteInput((prev) => (prev ? `${prev} ${note}` : note))}
+      />
     </div>
   );
 }
