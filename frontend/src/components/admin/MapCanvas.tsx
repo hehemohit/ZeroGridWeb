@@ -178,8 +178,9 @@ export function MapCanvas({
             {/* Action Button to Open Full Details Drawer */}
             <button
               onClick={() => {
-                if (onOpenDetails) onOpenDetails(selectedSos.id);
-                else if (onMarkerDoubleClick) onMarkerDoubleClick(selectedSos.id);
+                const targetId = selectedSos.rawId || selectedSos.id;
+                if (onOpenDetails) onOpenDetails(targetId);
+                else if (onMarkerDoubleClick) onMarkerDoubleClick(targetId);
               }}
               className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-brandTeal hover:bg-brandTealGlow text-white text-xs font-bold transition-all shadow-sm group"
             >

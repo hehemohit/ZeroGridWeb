@@ -531,8 +531,16 @@ const handleToggleDetourMode = useCallback(() => {
           onDetourMapClick={handleDetourMapClick}
           onMarkerClick={(id) => { setSelectedSosId(id); setSelectedHqId(null); }}
           onHqMarkerClick={(id) => { setSelectedHqId(id); setSelectedSosId(null); }}
-          onMarkerDoubleClick={(id) => { setSelectedSosId(id); setDrawerSosId(id); }}
-          onOpenDetails={(id) => { setSelectedSosId(id); setDrawerSosId(id); }}
+          onMarkerDoubleClick={(id) => {
+            const target = sosEvents.find(s => s.id === id || s.rawId === id);
+            setSelectedSosId(id);
+            router.push(`/admin/sos/${target?.rawId || id}`);
+          }}
+          onOpenDetails={(id) => {
+            const target = sosEvents.find(s => s.id === id || s.rawId === id);
+            setSelectedSosId(id);
+            router.push(`/admin/sos/${target?.rawId || id}`);
+          }}
           onClosePreview={() => { setSelectedSosId(null); setSelectedHqId(null); }}
           onOpenCrisisCommand={() => setIsCrisisCommandOpen(true)}
         />
@@ -714,7 +722,11 @@ const handleToggleDetourMode = useCallback(() => {
                 {optimizedRouteData.optimizedRoute.map((step: any) => (
                   <div
                     key={step.step}
-                    onClick={() => { setSelectedSosId(step.sosId); setDrawerSosId(step.sosId); }}
+                    onClick={() => {
+                      const target = sosEvents.find(s => s.id === step.sosId || s.rawId === step.sosId);
+                      setSelectedSosId(step.sosId);
+                      router.push(`/admin/sos/${target?.rawId || step.sosId}`);
+                    }}
                     className="p-2.5 bg-surfaceCard hover:bg-surface border border-hairline rounded-lg cursor-pointer transition-colors space-y-1.5 group"
                   >
                     <div className="flex items-center justify-between text-xs">
@@ -772,7 +784,7 @@ const handleToggleDetourMode = useCallback(() => {
                     <div
                       key={sos.rawId || sos.id}
                       onClick={() => setSelectedSosId(sos.id)}
-                      onDoubleClick={() => { setSelectedSosId(sos.id); setDrawerSosId(sos.id); }}
+                      onDoubleClick={() => { setSelectedSosId(sos.id); router.push(`/admin/sos/${sos.id}`); }}
                       className={`p-3 sm:p-3.5 rounded-xl sm:rounded-2xl transition-all cursor-pointer text-left relative flex flex-col justify-between shadow-sm ${isAuthority
                         ? 'bg-brandTeal/5 hover:bg-brandTeal/10 border border-brandTeal/20'
                         : 'bg-surfaceCard hover:bg-surfaceElevated border border-hairline'
@@ -835,7 +847,7 @@ const handleToggleDetourMode = useCallback(() => {
                           {sos.peerNodesInRange} Peered
                         </span>
                         <button
-                          onClick={(e) => { e.stopPropagation(); setSelectedSosId(sos.id); setDrawerSosId(sos.id); }}
+                          onClick={(e) => { e.stopPropagation(); setSelectedSosId(sos.id); router.push(`/admin/sos/${sos.id}`); }}
                           className="text-brandTeal font-medium flex items-center gap-0.5 hover:underline"
                         >
                           Details <ChevronRight className="w-2.5 h-2.5 sm:w-3 sm:h-3" />

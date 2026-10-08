@@ -34,16 +34,13 @@ interface CrisisCommandModalProps {
   onSelectCoordinates?: (lat: number, lng: number) => void;
 }
 
-const SAMPLE_HOTSPOTS = [
-  { name: 'Virar West Datt Mandir Road', ward: 'Ward A (Virar)', lat: 19.4534, lng: 72.8061, category: 'LOW_LYING_BOWL' },
-  { name: 'Nalasopara Railway Subway', ward: 'Ward C (Nalasopara West)', lat: 19.4182, lng: 72.8228, category: 'UNDERPASS' },
-  { name: 'Vasai East Evershine Underpass', ward: 'Ward G (Vasai East)', lat: 19.3833, lng: 72.8415, category: 'UNDERPASS' },
-  { name: 'Vasai West Stella / Ambadi Road', ward: 'Ward D (Vasai West)', lat: 19.3789, lng: 72.8125, category: 'LOW_LYING_BOWL' },
-  { name: 'Milan Subway', ward: 'Ward H/West (Santacruz)', lat: 19.0837, lng: 72.8423, category: 'UNDERPASS' },
-  { name: 'Andheri Subway', ward: 'Ward K/West (Andheri)', lat: 19.1197, lng: 72.8471, category: 'UNDERPASS' },
-  { name: 'Kurla LBS Marg / Mithi Culvert', ward: 'Ward L (Kurla West)', lat: 19.0688, lng: 72.8792, category: 'RAILWAY_CULVERT' },
-  { name: 'Hindmata Flyover Basin', ward: 'Ward F/South (Dadar)', lat: 19.0116, lng: 72.8428, category: 'LOW_LYING_BOWL' }
-];
+const DEFAULT_HOTSPOT = {
+  name: 'Virar West Datt Mandir Road',
+  ward: 'Ward A (Virar)',
+  lat: 19.4534,
+  lng: 72.8061,
+  category: 'LOW_LYING_BOWL'
+};
 
 export function CrisisCommandModal({
   isOpen,
@@ -55,7 +52,8 @@ export function CrisisCommandModal({
   const [activeTab, setActiveTab] = useState<'TIMELINE' | 'DISPATCH' | 'AUDIT' | 'SITREP'>('TIMELINE');
 
   // --- Tab 1: Timeline State ---
-  const [selectedHotspot, setSelectedHotspot] = useState(SAMPLE_HOTSPOTS[0]);
+  const [hotspotsList, setHotspotsList] = useState<any[]>([]);
+  const [selectedHotspot, setSelectedHotspot] = useState(DEFAULT_HOTSPOT);
   const [waterDepthCm, setWaterDepthCm] = useState(84);
   const [dewateringPumpDeployed, setDewateringPumpDeployed] = useState(false);
   const [simulateHighTide, setSimulateHighTide] = useState(false);
@@ -82,6 +80,7 @@ export function CrisisCommandModal({
   // Fetch initial timeline data when opened
   useEffect(() => {
     if (isOpen) {
+      loadHotspots();
       fetchDrainageTimeline();
       fetchClusters();
       fetchAuditFeed();
@@ -89,13 +88,30 @@ export function CrisisCommandModal({
     }
   }, [isOpen, selectedHotspot, dewateringPumpDeployed, simulateHighTide]);
 
+  async function loadHotspots() {
+    try {
+      const res: any = await api.get('/api/admin/predictive/hotspots');
+      if (res.success && Array.isArray(res.hotspots) && res.hotspots.length > 0) {
+        const formatted = res.hotspots.map((h: any) => ({
+          name: h.name,
+          ward: h.ward,
+          lat: h.location?.coordinates?.[1] || 19.4534,
+          lng: h.location?.coordinates?.[0] || 72.8061,
+          category: h.category,
+          criticalWaterThresholdCm: h.criticalWaterThresholdCm
+        }));
+        setHotspotsList(formatted);
+      }
+    } catch (e) {}
+  }
+
   // Tab 1: Fetch Timeline
   async function fetchDrainageTimeline() {
     try {
       setIsTimelineLoading(true);
       const res: any = await api.post('/api/admin/predictive/drainage-timeline', {
-        lat: selectedHotspot.lat,
-        lng: selectedHotspot.lng,
+        lat: selectedHotspot?.lat || 19.4534,
+        lng: selectedHotspot?.lng || 72.8061,
         waterDepthCm,
         dewateringPumpDeployed,
         overrideTideMeters: simulateHighTide ? 4.25 : undefined,
@@ -131,52 +147,18 @@ export function CrisisCommandModal({
     }
   }
 
-  // Tab 2: Fetch Clusters
+  // Tab 2: Fetch Clusters from real database
   async function fetchClusters() {
     try {
       setIsClustersLoading(true);
       const res: any = await api.get('/api/admin/predictive/clusters');
-      if (res.success) {
-        if (res.clusters && res.clusters.length > 0) {
-          setClusters(res.clusters);
-        } else {
-          // Drill demonstration clusters for immediate testing
-          setClusters([
-            {
-              clusterId: 'cluster_1',
-              ward: 'Virar West Sector A',
-              beaconCount: 9,
-              trappedEst: 22,
-              centroid: { lat: 19.4534, lng: 72.8061 },
-              maxDepthCm: 84,
-              primaryCategory: 'WATERLOGGING',
-              nearestHq: { name: 'Vasai-Virar Disaster Base Alpha', distanceKm: 1.4 }
-            },
-            {
-              clusterId: 'cluster_2',
-              ward: 'Nalasopara West Subway Corridor',
-              beaconCount: 6,
-              trappedEst: 14,
-              centroid: { lat: 19.4182, lng: 72.8228 },
-              maxDepthCm: 95,
-              primaryCategory: 'SUBMERGED_UNDERPASS',
-              nearestHq: { name: 'Nalasopara Fire Command', distanceKm: 0.9 }
-            },
-            {
-              clusterId: 'cluster_3',
-              ward: 'Santacruz Milan Subway',
-              beaconCount: 5,
-              trappedEst: 11,
-              centroid: { lat: 19.0837, lng: 72.8423 },
-              maxDepthCm: 70,
-              primaryCategory: 'UNDERPASS',
-              nearestHq: { name: 'BMC Western Disaster Unit', distanceKm: 2.2 }
-            }
-          ]);
-        }
+      if (res.success && Array.isArray(res.clusters)) {
+        setClusters(res.clusters);
+      } else {
+        setClusters([]);
       }
     } catch (err) {
-      // Fallback drill clusters
+      setClusters([]);
     } finally {
       setIsClustersLoading(false);
     }
@@ -190,53 +172,50 @@ export function CrisisCommandModal({
     }
   }
 
-  // Tab 3: Fetch Audit Feed
+  // Tab 3: Fetch Audit Feed from real active SOS events in database
   async function fetchAuditFeed() {
     try {
       setIsAuditLoading(true);
-      // Audit sample active items
-      const sampleAudits = [
-        {
-          id: 'sos-9901',
-          name: 'Virar West Datt Mandir Road',
-          waterDepthCm: 84,
-          category: 'WATERLOGGING',
-          userRole: 'CITIZEN',
-          peerCount: 3,
-          confidenceScore: 92,
-          classification: 'VERIFIED_CONSENSUS',
-          weatherConsistent: true,
-          isFlaggedSpam: false,
-          rationale: 'Confirmed: 3 peer distress beacons within 200m (+30%); Known chronic saucer bowl (+10%)'
-        },
-        {
-          id: 'sos-9902',
-          name: 'Nalasopara Railway Culvert',
-          waterDepthCm: 65,
-          category: 'DRAINAGE_OVERFLOW',
-          userRole: 'AUTHORITY',
-          peerCount: 2,
-          confidenceScore: 95,
-          classification: 'VERIFIED_CONSENSUS',
-          weatherConsistent: true,
-          isFlaggedSpam: false,
-          rationale: 'Verified authority dispatch (+15%); 2 corroborating peer beacons (+30%)'
-        },
-        {
-          id: 'sos-9903',
-          name: 'Isolated Highway Kilometer 44',
-          waterDepthCm: 90,
-          category: 'WATERLOGGING',
-          userRole: 'CITIZEN',
-          peerCount: 0,
-          confidenceScore: 10,
-          classification: 'FLAGGED_SPAM',
-          weatherConsistent: false,
-          isFlaggedSpam: true,
-          rationale: 'Anomaly penalty: Reported 90cm depth during zero rainfall and 0 peer corroboration (-40%)'
-        }
-      ];
-      setAuditList(sampleAudits);
+      const res: any = await api.get('/api/admin/sos?status=ACTIVE&limit=15').catch(() => null);
+      const events = res?.events || [];
+      if (events.length === 0) {
+        setAuditList([]);
+        return;
+      }
+
+      const audited = await Promise.all(
+        events.map(async (ev: any) => {
+          try {
+            const auditRes: any = await api.post('/api/admin/predictive/audit-credibility', {
+              sosId: ev.rawId || ev.id,
+              lat: ev.location?.coordinates?.[1],
+              lng: ev.location?.coordinates?.[0],
+              waterDepthCm: ev.waterDepthCm || 40,
+              category: ev.category || 'WATERLOGGING',
+              userRole: ev.user?.role || 'CITIZEN'
+            });
+            const a = auditRes.audit || {};
+            return {
+              id: ev.rawId || ev.id,
+              name: ev.message || `Incident at [${ev.location?.coordinates?.[1]?.toFixed(3)}, ${ev.location?.coordinates?.[0]?.toFixed(3)}]`,
+              waterDepthCm: ev.waterDepthCm || 0,
+              category: ev.category || 'WATERLOGGING',
+              userRole: ev.user?.role || 'CITIZEN',
+              peerCount: a.peerCount || 0,
+              confidenceScore: a.confidenceScore ?? 75,
+              classification: a.classification || 'PROBABLE_INCIDENT',
+              weatherConsistent: a.weatherConsistent ?? true,
+              isFlaggedSpam: a.isFlaggedSpam ?? false,
+              rationale: a.rationale || 'Audited against live rainfall and peer consensus radius.'
+            };
+          } catch {
+            return null;
+          }
+        })
+      );
+      setAuditList(audited.filter(Boolean));
+    } catch {
+      setAuditList([]);
     } finally {
       setIsAuditLoading(false);
     }
@@ -389,14 +368,15 @@ export function CrisisCommandModal({
                       Target Bottleneck
                     </label>
                     <select
-                      value={selectedHotspot.name}
+                      value={selectedHotspot?.name}
                       onChange={(e) => {
-                        const h = SAMPLE_HOTSPOTS.find(item => item.name === e.target.value);
+                        const list = hotspotsList.length > 0 ? hotspotsList : [DEFAULT_HOTSPOT];
+                        const h = list.find((item: any) => item.name === e.target.value);
                         if (h) setSelectedHotspot(h);
                       }}
                       className="bg-surfaceElevated border border-hairline rounded-lg px-3 py-1.5 text-xs text-primaryText focus:border-brandTeal focus:outline-none"
                     >
-                      {SAMPLE_HOTSPOTS.map(h => (
+                      {(hotspotsList.length > 0 ? hotspotsList : [DEFAULT_HOTSPOT]).map((h: any) => (
                         <option key={h.name} value={h.name}>
                           [{h.category}] {h.name} ({h.ward})
                         </option>
@@ -639,67 +619,79 @@ export function CrisisCommandModal({
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {clusters.map((cluster: any) => {
-                  const isDispatched = dispatchedClusters[cluster.clusterId];
-                  return (
-                    <div
-                      key={cluster.clusterId}
-                      className="p-4 rounded-xl bg-surfaceCard/90 border border-hairline hover:border-brandTeal/40 transition-all flex flex-col justify-between space-y-3"
-                    >
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-mono font-bold text-brandTeal bg-brandTeal/15 px-2 py-0.5 rounded border border-brandTeal/30">
-                            {cluster.clusterId.toUpperCase()}
-                          </span>
-                          <span className="text-[10px] font-mono text-alertRed font-bold bg-alertRedBg px-2 py-0.5 rounded border border-alertRedBorder">
-                            {cluster.primaryCategory}
-                          </span>
-                        </div>
-
-                        <h4 className="text-xs font-bold text-white">{cluster.ward}</h4>
-
-                        <div className="grid grid-cols-2 gap-2 text-xs font-mono bg-surfaceElevated p-2 rounded-lg border border-hairline">
-                          <div>
-                            <span className="text-[10px] text-mutedGray block">BEACONS</span>
-                            <span className="font-bold text-white">{cluster.beaconCount} nodes</span>
-                          </div>
-                          <div>
-                            <span className="text-[10px] text-mutedGray block">TRAPPED EST.</span>
-                            <span className="font-bold text-amber-300">~{cluster.trappedEst} persons</span>
-                          </div>
-                          <div>
-                            <span className="text-[10px] text-mutedGray block">MAX DEPTH</span>
-                            <span className="font-bold text-blue-300">{cluster.maxDepthCm} cm</span>
-                          </div>
-                          <div>
-                            <span className="text-[10px] text-mutedGray block">RADIUS</span>
-                            <span className="font-bold text-white">400 m</span>
-                          </div>
-                        </div>
-
-                        <div className="text-[11px] text-mutedGray flex items-center gap-1.5">
-                          <Compass className="w-3.5 h-3.5 text-brandTeal" />
-                          <span>Matched Base: <strong>{cluster.nearestHq?.name}</strong> ({cluster.nearestHq?.distanceKm} km)</span>
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={() => handleDispatchCluster(cluster.clusterId, cluster.nearestHq?.name)}
-                        disabled={isDispatched}
-                        className={`w-full py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-md ${
-                          isDispatched
-                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                            : 'bg-brandTeal hover:bg-brandTealGlow text-canvas'
-                        }`}
+              {clusters.length === 0 ? (
+                <div className="p-12 rounded-xl bg-surfaceCard/90 border border-hairline text-center flex flex-col items-center justify-center space-y-3">
+                  <div className="w-12 h-12 rounded-xl bg-brandTeal/10 border border-brandTeal/30 flex items-center justify-center text-brandTeal">
+                    <Compass className="w-6 h-6 animate-pulse" />
+                  </div>
+                  <h4 className="text-sm font-bold text-white">No Spatial Distress Clusters Detected</h4>
+                  <p className="text-xs text-mutedGray max-w-md leading-relaxed">
+                    Zero multi-beacon clusters meet the active threshold (≥2 distress beacons within 500m radius). The spatial dispatcher is continuously monitoring live distress telemetry.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {clusters.map((cluster: any) => {
+                    const isDispatched = dispatchedClusters[cluster.clusterId];
+                    return (
+                      <div
+                        key={cluster.clusterId}
+                        className="p-4 rounded-xl bg-surfaceCard/90 border border-hairline hover:border-brandTeal/40 transition-all flex flex-col justify-between space-y-3"
                       >
-                        {isDispatched ? <CheckCircle className="w-3.5 h-3.5" /> : <Truck className="w-3.5 h-3.5" />}
-                        <span>{isDispatched ? 'Asset Dispatched (Ingress Active)' : 'Dispatch Asset & Ingress Route'}</span>
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-mono font-bold text-brandTeal bg-brandTeal/15 px-2 py-0.5 rounded border border-brandTeal/30">
+                              {cluster.clusterId.toUpperCase()}
+                            </span>
+                            <span className="text-[10px] font-mono text-alertRed font-bold bg-alertRedBg px-2 py-0.5 rounded border border-alertRedBorder">
+                              {cluster.primaryCategory}
+                            </span>
+                          </div>
+
+                          <h4 className="text-xs font-bold text-white">{cluster.ward}</h4>
+
+                          <div className="grid grid-cols-2 gap-2 text-xs font-mono bg-surfaceElevated p-2 rounded-lg border border-hairline">
+                            <div>
+                              <span className="text-[10px] text-mutedGray block">BEACONS</span>
+                              <span className="font-bold text-white">{cluster.beaconCount} nodes</span>
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-mutedGray block">TRAPPED EST.</span>
+                              <span className="font-bold text-amber-300">~{cluster.trappedEst} persons</span>
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-mutedGray block">MAX DEPTH</span>
+                              <span className="font-bold text-blue-300">{cluster.maxDepthCm} cm</span>
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-mutedGray block">RADIUS</span>
+                              <span className="font-bold text-white">400 m</span>
+                            </div>
+                          </div>
+
+                          <div className="text-[11px] text-mutedGray flex items-center gap-1.5">
+                            <Compass className="w-3.5 h-3.5 text-brandTeal" />
+                            <span>Matched Base: <strong>{cluster.nearestHq?.name}</strong> ({cluster.nearestHq?.distanceKm} km)</span>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => handleDispatchCluster(cluster.clusterId, cluster.nearestHq?.name)}
+                          disabled={isDispatched}
+                          className={`w-full py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-md ${
+                            isDispatched
+                              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                              : 'bg-brandTeal hover:bg-brandTealGlow text-canvas'
+                          }`}
+                        >
+                          {isDispatched ? <CheckCircle className="w-3.5 h-3.5" /> : <Truck className="w-3.5 h-3.5" />}
+                          <span>{isDispatched ? 'Asset Dispatched (Ingress Active)' : 'Dispatch Asset & Ingress Route'}</span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -716,61 +708,73 @@ export function CrisisCommandModal({
               </div>
 
               {/* Verified Incidents Table */}
-              <div className="space-y-3">
-                {auditList.map((item: any) => (
-                  <div
-                    key={item.id}
-                    className="p-3.5 rounded-xl bg-surfaceCard/90 border border-hairline flex flex-col md:flex-row md:items-center justify-between gap-3"
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-white">{item.name}</span>
-                        <span className="text-[10px] font-mono text-mutedGray">[{item.category}]</span>
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
-                            item.confidenceScore >= 85
-                              ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                              : item.confidenceScore >= 50
-                              ? 'bg-blue-500/15 text-blue-300 border-blue-500/30'
-                              : 'bg-red-500/20 text-red-300 border-red-500/40 animate-pulse'
-                          }`}
-                        >
-                          {item.confidenceScore >= 85 ? '🛡️ VERIFIED CONSENSUS' : item.confidenceScore >= 50 ? '📡 PROBABLE' : '⚠️ FLAGGED SPAM'}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-mutedGray leading-relaxed">{item.rationale}</p>
-                    </div>
-
-                    <div className="flex items-center gap-4 text-xs font-mono flex-shrink-0">
-                      <div className="text-right">
-                        <span className="text-[10px] text-mutedGray block">CONFIDENCE</span>
-                        <span className={`text-base font-bold ${item.confidenceScore >= 85 ? 'text-emerald-400' : item.confidenceScore >= 50 ? 'text-blue-400' : 'text-red-400'}`}>
-                          {item.confidenceScore}%
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => {
-                            if (onShowToast) onShowToast(`Marked ${item.id} as Verified Authority Record`, 'success');
-                          }}
-                          className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-surfaceElevated hover:bg-surfaceCard text-brandTeal border border-hairline"
-                        >
-                          Verify
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (onShowToast) onShowToast(`Suppressed ${item.id} from tactical live map`, 'info');
-                          }}
-                          className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20"
-                        >
-                          Suppress
-                        </button>
-                      </div>
-                    </div>
+              {auditList.length === 0 ? (
+                <div className="p-12 rounded-xl bg-surfaceCard/90 border border-hairline text-center flex flex-col items-center justify-center space-y-3">
+                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                    <ShieldCheck className="w-6 h-6" />
                   </div>
-                ))}
-              </div>
+                  <h4 className="text-sm font-bold text-white">No Distress Beacons Requiring Audit</h4>
+                  <p className="text-xs text-mutedGray max-w-md leading-relaxed">
+                    Zero unverified or spam-flagged citizen telemetry records in the live database. Newly arriving distress beacons will appear here with peer-consensus confidence ratings.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {auditList.map((item: any) => (
+                    <div
+                      key={item.id}
+                      className="p-3.5 rounded-xl bg-surfaceCard/90 border border-hairline flex flex-col md:flex-row md:items-center justify-between gap-3"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-white">{item.name}</span>
+                          <span className="text-[10px] font-mono text-mutedGray">[{item.category}]</span>
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                              item.confidenceScore >= 85
+                                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                : item.confidenceScore >= 50
+                                ? 'bg-blue-500/15 text-blue-300 border-blue-500/30'
+                                : 'bg-red-500/20 text-red-300 border-red-500/40 animate-pulse'
+                            }`}
+                          >
+                            {item.confidenceScore >= 85 ? '🛡️ VERIFIED CONSENSUS' : item.confidenceScore >= 50 ? '📡 PROBABLE' : '⚠️ FLAGGED SPAM'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-mutedGray leading-relaxed">{item.rationale}</p>
+                      </div>
+
+                      <div className="flex items-center gap-4 text-xs font-mono flex-shrink-0">
+                        <div className="text-right">
+                          <span className="text-[10px] text-mutedGray block">CONFIDENCE</span>
+                          <span className={`text-base font-bold ${item.confidenceScore >= 85 ? 'text-emerald-400' : item.confidenceScore >= 50 ? 'text-blue-400' : 'text-red-400'}`}>
+                            {item.confidenceScore}%
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              if (onShowToast) onShowToast(`Marked ${item.id} as Verified Authority Record`, 'success');
+                            }}
+                            className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-surfaceElevated hover:bg-surfaceCard text-brandTeal border border-hairline"
+                          >
+                            Verify
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (onShowToast) onShowToast(`Suppressed ${item.id} from tactical live map`, 'info');
+                            }}
+                            className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20"
+                          >
+                            Suppress
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Anomaly Testing Sandbox */}
               <div className="p-4 rounded-xl bg-surfaceCard/90 border border-brandTeal/30 space-y-3">

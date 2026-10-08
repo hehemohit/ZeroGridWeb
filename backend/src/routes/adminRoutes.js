@@ -10,7 +10,8 @@ const {
   autoAssignNearestAdmin,
   clearAllSosEvents,
   optimizeAdminRoute,
-  getSystemStats
+  getSystemStats,
+  getSosDossier
 } = require('../controllers/adminController');
 
 const router = express.Router();
@@ -56,6 +57,7 @@ router.get('/system-stats', getSystemStats);
 
 // GET /api/admin/sos?status=ACTIVE — live SOS event list for the map
 router.get('/sos/history', getSosHistory);
+router.get('/sos/:id/dossier', getSosDossier);
 router.get('/sos', getActiveSosEvents);
 
 // POST /api/admin/sos/auto-assign — Auto-assign active SOS events to nearest admin responder

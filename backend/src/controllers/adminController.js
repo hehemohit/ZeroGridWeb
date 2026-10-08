@@ -2,6 +2,8 @@ const mongoose = require('mongoose');
 const SosEvent = require('../models/SosEvent');
 const User = require('../models/User');
 const Headquarters = require('../models/Headquarters');
+const ParentChildLink = require('../models/ParentChildLink');
+const Contact = require('../models/Contact');
 
 /** Helper to get io instance from app (set in server.js) */
 function getIo(req) {
@@ -840,6 +842,241 @@ async function getSystemStats(req, res) {
   }
 }
 
+/**
+ * GET /api/admin/sos/:id/dossier
+ * Full 360-degree incident dossier for Mission Control deep-dive:
+ * 1. Current Incident telemetry, status, sensors, location.
+ * 2. User profile, identity verification, coordinates.
+ * 3. Family Network (ParentChildLink) with parent and dependent nodes & statuses.
+ * 4. Emergency Contacts.
+ * 5. Historical Dispatches classified into Emergency SOS vs Civic Complaints.
+ */
+async function getSosDossier(req, res) {
+  try {
+    const { id } = req.params;
+
+    if (!id || typeof id !== 'string') {
+      return res.status(400).json({ message: 'Missing SOS event ID parameter.' });
+    }
+
+    let sos = null;
+
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      sos = await SosEvent.findById(id)
+        .populate('triggeredBy', 'displayName email phoneNumber role accountType photoUrl lastKnownLocation lastLocationAt createdAt')
+        .populate('assignedAdmin', 'displayName email photoUrl');
+    }
+
+    // Fallback: If not found or if ID is a short displayId (e.g. "sos-d613", "d613") or packetId
+    if (!sos) {
+      const cleanSuffix = id.replace(/^sos-/, '').trim();
+      sos = await SosEvent.findOne({
+        $or: [
+          { packetId: id },
+          { packetId: cleanSuffix },
+          { $expr: { $regexMatch: { input: { $toString: '$_id' }, regex: cleanSuffix + '$', options: 'i' } } }
+        ]
+      })
+        .populate('triggeredBy', 'displayName email phoneNumber role accountType photoUrl lastKnownLocation lastLocationAt createdAt')
+        .populate('assignedAdmin', 'displayName email photoUrl');
+    }
+
+    if (!sos) {
+      return res.status(404).json({ message: 'SOS event not found.' });
+    }
+
+    const user = sos.triggeredBy;
+    const userId = user?._id || user?.id;
+
+    let familyNetwork = {
+      totalLinked: 0,
+      parents: [],
+      dependents: [],
+      emergencyContacts: []
+    };
+
+    let formattedHistory = [];
+    let stats = {
+      totalEvents: 0,
+      emergencySosCount: 0,
+      civicComplaintCount: 0,
+      activeCount: 0,
+      acknowledgedCount: 0,
+      resolvedCount: 0
+    };
+
+    const EMERGENCY_CATEGORIES = ['MEDICAL', 'DISASTER', 'TRAPPED', 'SECURITY'];
+
+    if (userId) {
+      // 1. Fetch family links
+      const links = await ParentChildLink.find({
+        $or: [{ parentId: userId }, { childId: userId }]
+      })
+        .populate('parentId', 'displayName email phoneNumber role photoUrl lastKnownLocation lastLocationAt')
+        .populate('childId', 'displayName email phoneNumber role photoUrl lastKnownLocation lastLocationAt')
+        .sort({ createdAt: -1 });
+
+      const parents = [];
+      const dependents = [];
+
+      links.forEach((l) => {
+        const isChild = l.childId && l.childId._id?.toString() === userId.toString();
+        if (isChild && l.parentId) {
+          parents.push({
+            linkId: l._id,
+            status: l.status,
+            requestedAt: l.requestedAt,
+            respondedAt: l.respondedAt,
+            user: {
+              id: l.parentId._id,
+              displayName: l.parentId.displayName,
+              email: l.parentId.email,
+              phoneNumber: l.parentId.phoneNumber,
+              role: l.parentId.role,
+              photoUrl: l.parentId.photoUrl,
+              lastKnownLocation: l.parentId.lastKnownLocation,
+              lastLocationAt: l.parentId.lastLocationAt
+            }
+          });
+        } else if (!isChild && l.childId) {
+          dependents.push({
+            linkId: l._id,
+            status: l.status,
+            requestedAt: l.requestedAt,
+            respondedAt: l.respondedAt,
+            user: {
+              id: l.childId._id,
+              displayName: l.childId.displayName,
+              email: l.childId.email,
+              phoneNumber: l.childId.phoneNumber,
+              role: l.childId.role,
+              photoUrl: l.childId.photoUrl,
+              lastKnownLocation: l.childId.lastKnownLocation,
+              lastLocationAt: l.childId.lastLocationAt
+            }
+          });
+        }
+      });
+
+      // 2. Fetch emergency contacts
+      const contacts = await Contact.find({ ownerId: userId }).sort({ createdAt: -1 });
+
+      familyNetwork = {
+        totalLinked: parents.length + dependents.length,
+        parents,
+        dependents,
+        emergencyContacts: contacts.map((c) => ({
+          id: c._id,
+          name: c.name,
+          phoneNumber: c.phoneNumber,
+          relationship: c.relationship || 'Emergency Contact'
+        }))
+      };
+
+      // 3. Fetch user's historical dispatches
+      const historyEvents = await SosEvent.find({ triggeredBy: userId })
+        .sort({ createdAt: -1 })
+        .select('category waterDepthCm passability batteryPercentage status message createdAt updatedAt transport relayedByMule packetId location accuracyMeters notes acknowledgedByUsers');
+
+      formattedHistory = historyEvents.map((e) => {
+        const isEmerg = EMERGENCY_CATEGORIES.includes(e.category);
+        return {
+          id: e._id.toString(),
+          category: e.category,
+          isEmergencySos: isEmerg,
+          status: e.status,
+          message: e.message || '',
+          waterDepthCm: e.waterDepthCm || 0,
+          passability: e.passability || 'ALL_PASSABLE',
+          transport: e.transport || 'ONLINE',
+          relayedByMule: !!e.relayedByMule,
+          packetId: e.packetId || null,
+          batteryPercentage: e.batteryPercentage,
+          location: e.location?.coordinates
+            ? { lng: e.location.coordinates[0], lat: e.location.coordinates[1] }
+            : null,
+          accuracyMeters: e.accuracyMeters,
+          createdAt: e.createdAt,
+          updatedAt: e.updatedAt,
+          notesCount: e.notes ? e.notes.length : 0,
+          acknowledgedCount: e.acknowledgedByUsers ? e.acknowledgedByUsers.length : 0,
+          isCurrentIncident: e._id.toString() === sos._id.toString()
+        };
+      });
+
+      stats = {
+        totalEvents: formattedHistory.length,
+        emergencySosCount: formattedHistory.filter((h) => h.isEmergencySos).length,
+        civicComplaintCount: formattedHistory.filter((h) => !h.isEmergencySos).length,
+        activeCount: formattedHistory.filter((h) => h.status === 'ACTIVE').length,
+        acknowledgedCount: formattedHistory.filter((h) => h.status === 'ACKNOWLEDGED').length,
+        resolvedCount: formattedHistory.filter((h) => h.status === 'RESOLVED').length
+      };
+    }
+
+    const isCurrentEmerg = EMERGENCY_CATEGORIES.includes(sos.category);
+
+    return res.status(200).json({
+      incident: {
+        id: sos._id.toString(),
+        status: sos.status,
+        category: sos.category,
+        isEmergencySos: isCurrentEmerg,
+        intentLabel: isCurrentEmerg ? 'Critical Emergency SOS' : 'Civic Hazard / Infrastructure Report',
+        location: sos.location?.coordinates
+          ? { lng: sos.location.coordinates[0], lat: sos.location.coordinates[1] }
+          : null,
+        accuracyMeters: sos.accuracyMeters,
+        waterDepthCm: sos.waterDepthCm || 0,
+        passability: sos.passability || 'ALL_PASSABLE',
+        batteryPercentage: sos.batteryPercentage,
+        transport: sos.transport || 'ONLINE',
+        relayedByMule: !!sos.relayedByMule,
+        packetId: sos.packetId || null,
+        message: sos.message || '',
+        notes: (sos.notes || []).map((n) => ({
+          authorId: n.authorId,
+          text: n.text,
+          timestamp: n.timestamp
+        })),
+        acknowledgedByUsers: sos.acknowledgedByUsers || [],
+        assignedAdmin: sos.assignedAdmin
+          ? {
+              id: sos.assignedAdmin._id || sos.assignedAdmin.id,
+              displayName: sos.assignedAdmin.displayName || sos.assignedAdmin.email,
+              email: sos.assignedAdmin.email,
+              photoUrl: sos.assignedAdmin.photoUrl
+            }
+          : null,
+        createdAt: sos.createdAt,
+        updatedAt: sos.updatedAt
+      },
+      user: user
+        ? {
+            id: user._id || user.id,
+            displayName: user.displayName || 'Unknown Citizen',
+            email: user.email || 'No email registered',
+            phoneNumber: user.phoneNumber || null,
+            role: user.role || 'CITIZEN',
+            accountType: user.accountType || 'STANDARD',
+            photoUrl: user.photoUrl || null,
+            lastKnownLocation: user.lastKnownLocation || null,
+            lastLocationAt: user.lastLocationAt || null,
+            createdAt: user.createdAt
+          }
+        : null,
+      familyNetwork,
+      history: {
+        stats,
+        timeline: formattedHistory
+      }
+    });
+  } catch (error) {
+    console.error('[Admin Controller] getSosDossier error:', error);
+    return res.status(500).json({ message: 'Failed to compile incident dossier.' });
+  }
+}
+
 module.exports = {
   getActiveSosEvents,
   getSosHistory,
@@ -849,5 +1086,7 @@ module.exports = {
   autoAssignNearestAdmin,
   clearAllSosEvents,
   optimizeAdminRoute,
-  getSystemStats
+  getSystemStats,
+  getSosDossier
 };
+
