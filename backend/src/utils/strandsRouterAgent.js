@@ -1,5 +1,6 @@
 const axios = require('axios');
 const SosEvent = require('../models/SosEvent');
+const groqService = require('./groqService');
 
 // Lazy-load Strands SDK
 let StrandsAgent = null;
@@ -431,6 +432,7 @@ async function getDetour(originLat, originLng, destLat, destLng) {
 
   const hasAwsCreds = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY;
 
+  // Tier 1: Try AWS Strands Bedrock if credentials are present
   if (StrandsAgent && StrandsBedrockModel && hasAwsCreds) {
     try {
       const model = new StrandsBedrockModel({
@@ -464,18 +466,63 @@ Synthesize the final emergency response routing advisory as JSON.`;
       const cleanJson = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
       const parsed = JSON.parse(cleanJson);
       if (parsed.recommendedRouteGeoJson && parsed.agentAdvisory) {
-        return parsed;
+        return {
+          ...parsed,
+          activeTier: 1,
+          engine: 'Tier 1: AWS Bedrock (Claude 3.5 Sonnet)'
+        };
       }
     } catch (llmErr) {
-      console.warn('[StrandsRouterAgent] AWS Strands Bedrock invocation error, using verified detour:', llmErr.message);
+      console.warn(`[StrandsRouterAgent] Tier 1 AWS Bedrock error (${llmErr.message}). Cascading to Tier 2 Groq...`);
     }
   }
 
-  return deterministicDetour;
+  // Tier 2: Try Groq LPU
+  if (groqService.isAvailable()) {
+    try {
+      const groqRes = await groqService.chatCompletion({
+        systemPrompt: `You are an Urban Flood & Heatwave Routing Specialist for ZeroGrid, India's disaster mesh response platform.
+You are given active flood hazards and verified candidate road detour geometries.
+Confirm the safest bypass route and provide actionable advisory.
+Respond with pure JSON only, no markdown formatting:
+{
+  "warningMessage": "string",
+  "avoidedHazards": ["string"],
+  "agentAdvisory": "string"
+}`,
+        userPrompt: `Origin: [${originLat}, ${originLng}], Destination: [${destLat}, ${destLng}]
+Active Flood Hazards: ${JSON.stringify(hazards)}
+Verified Safe Detour Geometry: ${JSON.stringify(deterministicDetour.recommendedRouteGeoJson)}
+Avoided Hazards: ${JSON.stringify(deterministicDetour.avoidedHazards)}
+
+Synthesize the final emergency response routing advisory as JSON.`
+      });
+
+      if (groqRes && groqRes.agentAdvisory) {
+        return {
+          ...deterministicDetour,
+          warningMessage: groqRes.warningMessage || deterministicDetour.warningMessage,
+          avoidedHazards: groqRes.avoidedHazards || deterministicDetour.avoidedHazards,
+          agentAdvisory: groqRes.agentAdvisory,
+          activeTier: 2,
+          engine: 'Tier 2: Groq LPU (GPT-OSS)'
+        };
+      }
+    } catch (groqErr) {
+      console.warn(`[StrandsRouterAgent] Tier 2 Groq detour error (${groqErr.message}). Cascading to Tier 3 Geometric Engine.`);
+    }
+  }
+
+  // Tier 3: Deterministic Geometric Engine
+  return {
+    ...deterministicDetour,
+    activeTier: 3,
+    engine: 'Tier 3: Deterministic Geometric Engine'
+  };
 }
 
 /**
- * Generate an AWS Strands Agent situation brief for an incident.
+ * Generate situation brief for an incident across Tier 1 (Bedrock), Tier 2 (Groq), Tier 3 (Deterministic).
  */
 async function getSituationBrief(incident) {
   const depth = incident.waterDepthCm || 0;
@@ -484,6 +531,7 @@ async function getSituationBrief(incident) {
 
   const hasAwsCreds = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY;
 
+  // Tier 1: Try AWS Bedrock
   if (StrandsAgent && StrandsBedrockModel && hasAwsCreds) {
     try {
       const model = new StrandsBedrockModel({
@@ -518,14 +566,53 @@ Generate municipal intervention action points, traffic diversions, and tactical 
       const cleanJson = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
       const parsed = JSON.parse(cleanJson);
       if (parsed.municipalActions && parsed.agentAdvisory) {
-        return parsed;
+        return {
+          ...parsed,
+          activeTier: 1,
+          engine: 'Tier 1: AWS Bedrock (Claude 3.5 Sonnet)'
+        };
       }
     } catch (llmErr) {
-      console.warn('[StrandsRouterAgent] Strands Brief Bedrock invocation error, using fallback:', llmErr.message);
+      console.warn(`[StrandsRouterAgent] Tier 1 Bedrock brief error (${llmErr.message}). Cascading to Tier 2 Groq...`);
     }
   }
 
-  // Deterministic Expert System Fallback for Urban Flood / Heatwave / Power Disruption
+  // Tier 2: Try Groq LPU
+  if (groqService.isAvailable()) {
+    try {
+      const groqRes = await groqService.chatCompletion({
+        systemPrompt: `You are ZeroGrid's Tactical Disaster Intelligence Agent.
+Generate an actionable municipal and emergency response brief for an incident.
+Return ONLY valid JSON:
+{
+  "municipalActions": ["string"],
+  "trafficDiversion": "string",
+  "agentAdvisory": "string"
+}`,
+        userPrompt: `Incident Details:
+- Category: ${category}
+- Reported Water Depth: ${depth} cm
+- Passability: ${passability}
+- Coordinates: ${JSON.stringify(incident.location?.coordinates || [])}
+- Relayed By Mule: ${incident.relayedByMule ? 'YES (Mesh Store-and-Forward)' : 'NO (Direct Cellular/WiFi)'}
+- Message: ${incident.message || 'No additional note'}
+
+Generate municipal intervention action points, traffic diversions, and tactical advisory.`
+      });
+
+      if (groqRes && groqRes.municipalActions && groqRes.agentAdvisory) {
+        return {
+          ...groqRes,
+          activeTier: 2,
+          engine: 'Tier 2: Groq LPU (GPT-OSS)'
+        };
+      }
+    } catch (groqErr) {
+      console.warn(`[StrandsRouterAgent] Tier 2 Groq brief error (${groqErr.message}). Cascading to Tier 3 Deterministic Expert System.`);
+    }
+  }
+
+  // Tier 3: Deterministic Expert System Fallback for Urban Flood / Heatwave / Power Disruption
   const actions = [];
   let diversion = 'No immediate regional detour mandated; maintain emergency vehicle lane.';
   let advisory = `Hazard category: ${category}. Water depth: ${depth}cm.`;
@@ -561,7 +648,9 @@ Generate municipal intervention action points, traffic diversions, and tactical 
   return {
     municipalActions: actions,
     trafficDiversion: diversion,
-    agentAdvisory: advisory
+    agentAdvisory: advisory,
+    activeTier: 3,
+    engine: 'Tier 3: Deterministic Expert System'
   };
 }
 

@@ -302,7 +302,11 @@ export function CrisisCommandModal({
                 <span className="hidden md:inline-block text-[10px] font-mono px-2 py-0.5 rounded bg-brandTeal/15 text-brandTeal border border-brandTeal/30 font-bold">
                   AWS STRANDS AGENTS SDK
                 </span>
-                <span className="hidden sm:inline-block text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30">
+                <span className="hidden lg:inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30 font-semibold">
+                  <Zap className="w-3 h-3 text-amber-400" />
+                  GROQ LPU FALLBACK
+                </span>
+                <span className="hidden xl:inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30">
                   COASTAL TIDES v2.4
                 </span>
               </div>
@@ -472,8 +476,38 @@ export function CrisisCommandModal({
                 <div className="p-4 rounded-xl bg-surfaceCard/90 border border-hairline space-y-4">
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-hairline/60 pb-3">
                     <div>
-                      <span className="text-[10px] uppercase font-mono text-mutedGray tracking-wider">Engine Resolution</span>
-                      <h3 className="text-sm font-bold text-brandTeal">{timelineData.engine}</h3>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] uppercase font-mono text-mutedGray tracking-wider">Engine Resolution</span>
+                        {timelineData.activeTier && (
+                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-mono font-bold border ${
+                            timelineData.activeTier === 1
+                              ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                              : timelineData.activeTier === 2
+                              ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                              : 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30'
+                          }`}>
+                            {timelineData.activeTier === 1 ? 'TIER 1 (PRIMARY)' : timelineData.activeTier === 2 ? 'TIER 2 (EDGE LLM)' : 'TIER 3 (OFFLINE)'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        {timelineData.activeTier === 1 ? (
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        ) : timelineData.activeTier === 2 ? (
+                          <Zap className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                        ) : (
+                          <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                        )}
+                        <h3 className={`text-sm font-bold font-mono ${
+                          timelineData.activeTier === 1
+                            ? 'text-emerald-300'
+                            : timelineData.activeTier === 2
+                            ? 'text-amber-300'
+                            : 'text-brandTeal'
+                        }`}>
+                          {timelineData.engine}
+                        </h3>
+                      </div>
                     </div>
                     <div className="flex items-center gap-4 text-xs font-mono">
                       <div>
@@ -785,9 +819,22 @@ export function CrisisCommandModal({
             <div className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-hairline">
                 <div>
-                  <h3 className="text-sm font-bold text-white font-display">
-                    National Disaster Management Authority (NDMA) SitRep
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-white font-display">
+                      National Disaster Management Authority (NDMA) SitRep
+                    </h3>
+                    {sitRepData?.activeTier && (
+                      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold border ${
+                        sitRepData.activeTier === 1
+                          ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                          : sitRepData.activeTier === 2
+                          ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                          : 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30'
+                      }`}>
+                        {sitRepData.activeTier === 1 ? 'TIER 1: BEDROCK' : sitRepData.activeTier === 2 ? 'TIER 2: GROQ' : 'TIER 3: DETERMINISTIC'}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-mutedGray">
                     Standardized formal incident report ready for municipal commissioner review and official dispatch
                   </p>

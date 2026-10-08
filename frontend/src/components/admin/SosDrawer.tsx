@@ -17,7 +17,9 @@ import {
   Sparkles,
   Droplets,
   AlertTriangle,
-  Bot
+  Bot,
+  Zap,
+  ShieldCheck
 } from 'lucide-react';
 import { AdminUserUI } from './UserManagementModal';
 import { api } from '@/lib/api';
@@ -96,6 +98,8 @@ export function SosDrawer({
     municipalActions?: string[];
     trafficDiversion?: string;
     agentAdvisory?: string;
+    engine?: string;
+    activeTier?: number;
   } | null>(null);
   const [isBriefLoading, setIsBriefLoading] = useState(false);
   const [briefError, setBriefError] = useState<string | null>(null);
@@ -372,6 +376,24 @@ export function SosDrawer({
 
                 {brief && (
                   <div className="space-y-2.5 mt-2 text-xs">
+                    {brief.engine && (
+                      <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-[#080d17] border border-hairline text-[10px] font-mono">
+                        <span className="text-mutedGray font-bold uppercase">Reasoning Engine:</span>
+                        <span className={`inline-flex items-center gap-1 font-bold ${
+                          brief.activeTier === 1
+                            ? 'text-emerald-300'
+                            : brief.activeTier === 2
+                            ? 'text-amber-300'
+                            : 'text-brandTeal'
+                        }`}>
+                          {brief.activeTier === 1 && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
+                          {brief.activeTier === 2 && <Zap className="w-3 h-3 text-amber-400 animate-pulse" />}
+                          {brief.activeTier === 3 && <ShieldCheck className="w-3 h-3 text-brandTeal" />}
+                          {brief.engine}
+                        </span>
+                      </div>
+                    )}
+
                     {brief.agentAdvisory && (
                       <div className="p-2.5 rounded-xl bg-canvas border border-hairline">
                         <span className="text-[10px] text-brandTeal block mb-0.5 font-bold uppercase tracking-wider">

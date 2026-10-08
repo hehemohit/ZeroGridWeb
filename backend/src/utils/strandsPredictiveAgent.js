@@ -12,6 +12,7 @@
 
 const weatherService = require('./weatherService');
 const tideService = require('./tideService');
+const groqService = require('./groqService');
 const FloodHotspot = require('../models/FloodHotspot');
 const SosEvent = require('../models/SosEvent');
 const Headquarters = require('../models/Headquarters');
@@ -550,7 +551,8 @@ async function computeDeterministicRecessionTimeline({
   const offlineMeshBroadcast = `[ZeroGrid ALERT] Flooding at ${hotspot.hotspotName || 'Vasai-Virar Sector'}. Depth: ${depth}cm. Sluice gates ${gatesClosed ? 'CLOSED due to high tide' : 'OPEN'}. Road opens for heavy vehicles ~${formatTime(passableDate)}, fully clear ~${formatTime(fullClearDate)}. Avoid underpass.`;
 
   return {
-    engine: 'Deterministic Hydrodynamic Expert System',
+    engine: 'Tier 3: Deterministic Hydrodynamic Expert System',
+    activeTier: 3,
     coordinates: { lat, lng },
     currentWaterDepthCm: depth,
     hotspotInfo: hotspot,
@@ -671,7 +673,7 @@ async function predictDrainageTimeline({
     } catch (e) {}
   }
 
-  // 1. Calculate deterministic baseline
+  // 1. Calculate deterministic baseline (Tier 3)
   const deterministicResult = await computeDeterministicRecessionTimeline({
     lat,
     lng,
@@ -681,8 +683,9 @@ async function predictDrainageTimeline({
   });
 
   const hasAwsCreds = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY;
+  let resolvedTier = 3;
 
-  // 2. Enhance with AWS Bedrock if credentials are present
+  // 2. Tier 1: Enhance with AWS Bedrock if credentials are present
   if (StrandsAgent && StrandsBedrockModel && hasAwsCreds) {
     try {
       const model = new StrandsBedrockModel({
@@ -717,12 +720,48 @@ Synthesize updated municipal directives and an offline mesh broadcast text. Retu
       const parsed = JSON.parse(cleanJson);
 
       if (parsed.municipalDirectives && parsed.offlineMeshBroadcast) {
-        deterministicResult.engine = 'AWS Strands Agent (Claude 3.5 Sonnet on Bedrock)';
+        deterministicResult.engine = 'Tier 1: AWS Bedrock (Claude 3.5 Sonnet)';
+        deterministicResult.activeTier = 1;
         deterministicResult.municipalDirectives = parsed.municipalDirectives;
         deterministicResult.offlineMeshBroadcast = parsed.offlineMeshBroadcast;
+        resolvedTier = 1;
       }
     } catch (err) {
-      console.warn('[StrandsPredictiveAgent] AWS Bedrock call bypassed, using deterministic engine:', err.message);
+      console.warn(`[StrandsPredictiveAgent] Tier 1 AWS Bedrock error (${err.message}). Cascading to Tier 2 Groq...`);
+    }
+  }
+
+  // 3. Tier 2: Try Groq LPU if Tier 1 was bypassed or failed
+  if (resolvedTier === 3 && groqService.isAvailable()) {
+    try {
+      const groqRes = await groqService.chatCompletion({
+        systemPrompt: `You are the ZeroGrid Autonomous Predictive Crisis Command Agent.
+You combine coastal tidal physics, meteorological rainfall, and municipal disaster management engineering.
+Analyze the incident parameters and provide concise, authoritative municipal tactical directives.
+Respond strictly in JSON matching the schema:
+{
+  "municipalDirectives": ["string"],
+  "offlineMeshBroadcast": "string"
+}`,
+        userPrompt: `Location: [${lat}, ${lng}], Current Water Depth: ${waterDepthCm}cm.
+Tide State: ${JSON.stringify(deterministicResult.tideState)}
+Rainfall State: ${JSON.stringify(deterministicResult.rainfallState)}
+Historical Bottleneck: ${JSON.stringify(deterministicResult.hotspotInfo)}
+Deterministic Timeline: ${JSON.stringify(deterministicResult.timelineStages)}
+
+Synthesize updated municipal directives and an offline mesh broadcast text.`
+      });
+
+      if (groqRes && groqRes.municipalDirectives && groqRes.offlineMeshBroadcast) {
+        deterministicResult.engine = 'Tier 2: Groq LPU (GPT-OSS)';
+        deterministicResult.activeTier = 2;
+        deterministicResult.municipalDirectives = groqRes.municipalDirectives;
+        deterministicResult.offlineMeshBroadcast = groqRes.offlineMeshBroadcast;
+        resolvedTier = 2;
+        console.log('[StrandsPredictiveAgent] Tier 2 Groq LPU synthesized successfully.');
+      }
+    } catch (groqErr) {
+      console.warn(`[StrandsPredictiveAgent] Tier 2 Groq error (${groqErr.message}). Cascading to Tier 3 Deterministic Safety Net.`);
     }
   }
 
@@ -756,12 +795,25 @@ async function generateSitRep({ targetWard = 'All Municipal Sectors', operationa
   const criticalHotspots = hotspots.filter(h => h.chronicRiskLevel === 'CRITICAL').length;
   const now = new Date();
 
+  const hasAwsCreds = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY;
+  let activeTier = 3;
+  let sitRepEngine = 'Tier 3: Deterministic Hydrodynamic Expert System';
+
+  if (StrandsAgent && StrandsBedrockModel && hasAwsCreds) {
+    activeTier = 1;
+    sitRepEngine = 'Tier 1: AWS Bedrock (Claude 3.5 Sonnet)';
+  } else if (groqService.isAvailable()) {
+    activeTier = 2;
+    sitRepEngine = 'Tier 2: Groq LPU (Llama 3.3 70B)';
+  }
+
   const sitRepMarkdown = `# NATIONAL DISASTER MANAGEMENT AUTHORITY (NDMA)
 ## SITUATION REPORT (SITREP) — COASTAL MONSOON CRISIS
 **Reference:** ZEROGRID-SR-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-01  
 **Operational Region:** ${operationalRegion}  
 **Time of Issuance:** ${now.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })} IST | ${now.toDateString()}  
 **Lead Authority:** Municipal Disaster Management Command & ZeroGrid Autonomous System  
+**Engine Synthesis:** ${sitRepEngine}
 
 ---
 
@@ -802,7 +854,7 @@ ${clustersData.clusters.length > 0 ? clustersData.clusters.map((c, i) => `
 4. **Offline Mesh Broadcast:** Trigger LoRa/BLE mesh emergency packet over 868MHz gateway for citizens without cellular coverage.
 
 ---
-*Generated autonomously by ZeroGrid Command Engine via AWS Strands Agents SDK.*`;
+*Generated autonomously by ZeroGrid Command Engine (${sitRepEngine}).*`;
 
   return {
     referenceId: `ZEROGRID-SR-${Date.now()}`,
@@ -813,7 +865,9 @@ ${clustersData.clusters.length > 0 ? clustersData.clusters.map((c, i) => `
     clustersIdentified: clustersData.clusterCount,
     markdownReport: sitRepMarkdown,
     tideSummary: tide,
-    weatherSummary: weather
+    weatherSummary: weather,
+    activeTier,
+    engine: sitRepEngine
   };
 }
 

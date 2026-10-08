@@ -1082,6 +1082,20 @@ function MapHUD({
           {detourResult?.agentAdvisory && (
             <p className="text-[10px] text-secondaryText leading-relaxed">{detourResult.agentAdvisory}</p>
           )}
+          {detourResult?.engine && (
+            <div className="pt-1 flex items-center justify-between border-t border-hairline/60 text-[9px] font-mono">
+              <span className="text-mutedGray">ROUTING ENGINE:</span>
+              <span className={`font-bold ${
+                detourResult.activeTier === 1
+                  ? 'text-emerald-400'
+                  : detourResult.activeTier === 2
+                  ? 'text-amber-400'
+                  : 'text-brandTeal'
+              }`}>
+                {detourResult.engine}
+              </span>
+            </div>
+          )}
         </div>
       )}
     </div>
