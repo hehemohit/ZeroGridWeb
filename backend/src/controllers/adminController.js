@@ -533,12 +533,18 @@ async function fetchOSRMDirections(origin, orderedWaypoints) {
       .map(p => `${p.lng.toFixed(6)},${p.lat.toFixed(6)}`)
       .join(';');
 
-    const url = `http://router.project-osrm.org/route/v1/driving/${coordString}?overview=full&geometries=polyline&steps=false`;
+    const url = `https://router.project-osrm.org/route/v1/driving/${coordString}?overview=full&geometries=polyline&steps=false`;
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-    const response = await fetch(url, { signal: controller.signal });
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'ZeroGrid-Tactical-Console/1.0 (https://github.com/hehemohit/ZeroGridWeb; disaster-mesh@zerogrid.org)',
+        'Accept': 'application/json'
+      }
+    });
     clearTimeout(timeoutId);
 
     if (!response.ok) {

@@ -46,6 +46,48 @@ function setInCache(key, data) {
   routeCache.set(key, { data, timestamp: Date.now() });
 }
 
+const geocodeCache = new Map();
+
+/**
+ * Forward-geocode a place/landmark name into { lat, lng, displayName } using OpenStreetMap Nominatim.
+ */
+async function geocodePlaceName(name) {
+  if (!name || typeof name !== 'string' || !name.trim()) return null;
+  const cleanName = name.trim();
+  const cacheKey = cleanName.toLowerCase();
+
+  const cached = geocodeCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cleanName)}&format=json&limit=1`;
+    const response = await axios.get(url, {
+      headers: OSRM_HEADERS,
+      timeout: 5000
+    });
+
+    if (response.data && response.data.length > 0) {
+      const first = response.data[0];
+      const result = {
+        lat: parseFloat(first.lat),
+        lng: parseFloat(first.lon),
+        displayName: first.display_name
+      };
+      if (geocodeCache.size > 200) {
+        const oldest = geocodeCache.keys().next().value;
+        geocodeCache.delete(oldest);
+      }
+      geocodeCache.set(cacheKey, { data: result, timestamp: Date.now() });
+      return result;
+    }
+  } catch (err) {
+    console.warn(`[Nominatim] Geocoding failed for "${cleanName}":`, err.message);
+  }
+  return null;
+}
+
 /**
  * Fetch OSRM candidate routes between origin and destination with caching.
  */
@@ -526,5 +568,6 @@ Generate municipal intervention action points, traffic diversions, and tactical 
 module.exports = {
   getDetour,
   getSituationBrief,
-  computeSafeDetourRoute
+  computeSafeDetourRoute,
+  geocodePlaceName
 };

@@ -378,16 +378,48 @@ async function bulkMuleUpload(req, res) {
 /**
  * POST /api/routes/detour
  * Computes safe route around active flood/water hazards using AWS Strands Agent.
- * Body: { originLat, originLng, destLat, destLng }
+ * Body: { originLat, originLng, destLat, destLng, origin, originName, destination, destName }
  */
 async function getDetourRoute(req, res) {
   try {
-    const { originLat, originLng, destLat, destLng } = req.body;
-    if (originLat === undefined || originLng === undefined || destLat === undefined || destLng === undefined) {
-      return res.status(400).json({ message: 'originLat, originLng, destLat, and destLng are required' });
+    let { originLat, originLng, destLat, destLng, origin, originName, destination, destName } = req.body;
+
+    // Resolve Origin by landmark / place name if coordinates were omitted
+    const targetOriginName = origin || originName;
+    if ((originLat === undefined || originLng === undefined) && targetOriginName && typeof targetOriginName === 'string') {
+      const resolvedOrigin = await strandsRouterAgent.geocodePlaceName(targetOriginName);
+      if (resolvedOrigin) {
+        originLat = resolvedOrigin.lat;
+        originLng = resolvedOrigin.lng;
+      }
     }
 
-    const detourData = await strandsRouterAgent.getDetour(originLat, originLng, destLat, destLng);
+    // Resolve Destination by landmark / place name if coordinates were omitted
+    const targetDestName = destination || destName;
+    if ((destLat === undefined || destLng === undefined) && targetDestName && typeof targetDestName === 'string') {
+      const resolvedDest = await strandsRouterAgent.geocodePlaceName(targetDestName);
+      if (resolvedDest) {
+        destLat = resolvedDest.lat;
+        destLng = resolvedDest.lng;
+      }
+    }
+
+    if (originLat === undefined || originLng === undefined || destLat === undefined || destLng === undefined) {
+      return res.status(400).json({
+        message: 'originLat, originLng, destLat, and destLng are required (or supply valid origin/destination place names)'
+      });
+    }
+
+    const oLat = parseFloat(originLat);
+    const oLng = parseFloat(originLng);
+    const dLat = parseFloat(destLat);
+    const dLng = parseFloat(destLng);
+
+    if (isNaN(oLat) || isNaN(oLng) || isNaN(dLat) || isNaN(dLng)) {
+      return res.status(400).json({ message: 'Coordinates must be valid numbers' });
+    }
+
+    const detourData = await strandsRouterAgent.getDetour(oLat, oLng, dLat, dLng);
     return res.status(200).json(detourData);
   } catch (error) {
     console.error('[Route] getDetourRoute error:', error);
@@ -662,11 +694,28 @@ async function addNoteToSos(req, res) {
  */
 async function getActiveSos(req, res) {
   try {
-    const activeEvents = await SosEvent.find({
-      status: { $in: ['ACTIVE', 'ACKNOWLEDGED'] }
-    })
+    const baseQuery = { status: { $in: ['ACTIVE', 'ACKNOWLEDGED'] } };
+
+    // Optional geo-filter: ?lat=X&lng=Y&radiusKm=10
+    // Used by the Android app to fetch only nearby hazards for local caching.
+    const { lat, lng, radiusKm } = req.query;
+    if (lat && lng && radiusKm) {
+      const parsedLat = parseFloat(lat);
+      const parsedLng = parseFloat(lng);
+      const parsedKm  = parseFloat(radiusKm);
+      if (!isNaN(parsedLat) && !isNaN(parsedLng) && !isNaN(parsedKm) && parsedKm > 0) {
+        // MongoDB $centerSphere uses radians: distance / Earth radius (6378.1 km)
+        baseQuery.location = {
+          $geoWithin: {
+            $centerSphere: [[parsedLng, parsedLat], parsedKm / 6378.1]
+          }
+        };
+      }
+    }
+
+    const activeEvents = await SosEvent.find(baseQuery)
       .sort({ createdAt: -1 })
-      .limit(30)
+      .limit(100)
       .populate({
         path: 'triggeredBy',
         select: 'displayName email phoneNumber photoUrl'
@@ -756,3 +805,4 @@ module.exports = {
   getDetourRoute,
   generateSituationBrief
 };
+
