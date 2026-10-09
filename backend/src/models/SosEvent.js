@@ -196,10 +196,16 @@ const sosEventSchema = new mongoose.Schema(
     },
     workforceDemand: {
       type: {
+        targetDepartment: String,
         requiredRole: String,
         teamCount: Number,
+        requiredTags: [String],
         equipmentNeeded: [String],
-        urgencyMinutes: Number
+        fallbackDepartment: String,
+        fallbackTags: [String],
+        urgencyMinutes: Number,
+        shortfallHandled: Boolean,
+        dispatchedMessage: String
       },
       default: null
     },

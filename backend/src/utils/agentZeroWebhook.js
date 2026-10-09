@@ -152,15 +152,26 @@ function triggerAgentZeroOrchestrationAsync(sosEvent, io) {
         }
       }
 
-      // Construct automated system note summarizing Agent Zero's directive
+      const workforce = orchestrationData.workforce_allocation || orchestrationData.resource_negotiation?.workforce_allocation;
+      const targetDepartment = workforce?.target_department || 'FLOOD_MANAGEMENT';
+      const requiredTags = workforce?.required_tags || [];
+      const fallbackTags = workforce?.fallback_tags || [];
+      const dispatchMessage = workforce?.dispatch_message || orchestrationData.dispatch_message || '';
+
+      // Construct automated system note summarizing Agent Zero's directive and requiredTags loadout
       const automatedNote = {
         authorId: sosEvent.triggeredBy || sosEvent._id,
         text: `[AGENT ZERO AUTONOMOUS DIRECTIVE]
 Threat Score: ${directive.overall_threat_score}/100
 Executive Summary: ${directive.executive_summary}
+Department: ${targetDepartment}
+Mandatory Tags: [${requiredTags.join(', ')}]
 Automated Actions: ${directive.immediate_automated_actions?.join(', ') || 'None'}
 Hospital Lifeline: ${directive.hospital_lifeline_protocol || 'Standard Backup'}
-Assigned Squad: ${assignedSquad || sosEvent.assignedSquad || 'None'}`.trim(),
+Assigned Squad: ${assignedSquad || sosEvent.assignedSquad || 'None'}
+
+[DISPATCH LOADOUT DIRECTIVE]
+${dispatchMessage || `Mandatory gear loadout: [${requiredTags.join(', ')}]`}`.trim(),
         timestamp: new Date(),
       };
 
@@ -170,6 +181,18 @@ Assigned Squad: ${assignedSquad || sosEvent.assignedSquad || 'None'}`.trim(),
       };
       if (assignedSquad) {
         updateFields.assignedSquad = assignedSquad;
+      }
+      if (workforce) {
+        updateFields.workforceDemand = {
+          targetDepartment: workforce.target_department,
+          requiredRole: workforce.demanded_count ? `${workforce.demanded_count} units` : 'SPECIALIZED_UNIT',
+          teamCount: workforce.demanded_count || 1,
+          requiredTags: workforce.required_tags || [],
+          fallbackDepartment: workforce.fallback_department_used,
+          fallbackTags: workforce.fallback_tags || [],
+          shortfallHandled: Boolean(workforce.fallback_department_used),
+          dispatchedMessage: dispatchMessage
+        };
       }
 
       // Persist advisory, affectedNodeId, and assignedSquad into MongoDB
@@ -196,6 +219,30 @@ Assigned Squad: ${assignedSquad || sosEvent.assignedSquad || 'None'}`.trim(),
           directive: directive,
           assignedSquad: assignedSquad || sosEvent.assignedSquad || 'TEAM_NDRF_ALPHA',
           orchestration: orchestrationData,
+          targetDepartment,
+          requiredTags,
+          dispatchMessage
+        });
+
+        // Broadcast specialized workforce dispatch event with mandatory requiredTags
+        io.of('/sos').emit('sos:workforce:dispatched', {
+          sosId: sosEvent._id.toString(),
+          targetDepartment,
+          fallbackDepartment: workforce?.fallback_department_used,
+          requiredTags,
+          fallbackTags,
+          dispatchMessage,
+          assignedSquad: assignedSquad || sosEvent.assignedSquad || 'TEAM_NDRF_ALPHA',
+          threatScore: directive.overall_threat_score,
+        });
+
+        // Broadcast to specific department room for targeted admin alerts
+        io.of('/sos').to(targetDepartment).emit('sos:department_alert', {
+          sosId: sosEvent._id.toString(),
+          targetDepartment,
+          requiredTags,
+          dispatchMessage,
+          threatScore: directive.overall_threat_score,
         });
 
         // Broadcast step completion to /flow page
@@ -203,14 +250,14 @@ Assigned Squad: ${assignedSquad || sosEvent.assignedSquad || 'None'}`.trim(),
           incident_id: sosEvent._id.toString(),
           step: 'SUB_AGENT_COLLABORATION',
           status: 'COMPLETED',
-          summary: 'Sub-agents formulated triage, grid stability, and dispatch requirements.',
+          summary: `Sub-agents formulated demands for ${targetDepartment} with tags: [${requiredTags.join(', ')}].`,
           timestamp: new Date().toISOString()
         });
         io.of('/sos').emit('flow:step:update', {
           incident_id: sosEvent._id.toString(),
           step: 'RESOURCE_NEGOTIATION',
           status: 'COMPLETED',
-          summary: `Allocated squad: ${assignedSquad || 'Dispatched via operational memory'}.`,
+          summary: `Allocated squad: ${assignedSquad || 'Dispatched via operational memory'}. ${workforce?.fallback_department_used ? `(Fallback: ${workforce.fallback_department_used})` : ''}`,
           timestamp: new Date().toISOString()
         });
         io.of('/sos').emit('flow:step:update', {

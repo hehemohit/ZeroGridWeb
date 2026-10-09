@@ -49,6 +49,44 @@ const userSchema = new mongoose.Schema(
       ref: 'Zone',
       default: null
     },
+    department: {
+      type: String,
+      enum: [
+        'FLOOD_MANAGEMENT',
+        'HEATWAVE_MANAGEMENT',
+        'POWER_GRID_MANAGEMENT',
+        'RESCUE_MANAGEMENT',
+        'GENERAL_DISPATCH'
+      ],
+      default: 'GENERAL_DISPATCH',
+      index: true
+    },
+    domain: {
+      type: String,
+      enum: ['FLOOD', 'HEATWAVE', 'POWER_GRID', 'RESCUE', 'GENERAL'],
+      default: 'GENERAL',
+      index: true
+    },
+    tags: {
+      type: [String],
+      default: []
+    },
+    availabilityStatus: {
+      type: String,
+      enum: ['AVAILABLE', 'ASSIGNED', 'OFF_DUTY'],
+      default: 'AVAILABLE',
+      index: true
+    },
+    activeTicketId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'SosEvent',
+      default: null,
+      index: true
+    },
+    assignedAt: {
+      type: Date,
+      default: null
+    },
     // Profile completion fields
     phoneNumber: {
       type: String,

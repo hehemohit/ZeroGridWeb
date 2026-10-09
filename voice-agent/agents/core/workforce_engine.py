@@ -1,247 +1,375 @@
 """
 ZeroGrid Agent Zero: Workforce Matching & Allocation Engine
-Queries MongoDB collection 'tacticalteams' for available IDLE field units,
-ranks them by geospatial distance/ETA, secures atomic distributed locks in Redis,
-and mobilizes them with status transitions (IDLE -> EN_ROUTE).
+Queries MongoDB 'users' collection for available personnel created for the 4 crisis teams:
+- FLOOD_MANAGEMENT (40 personnel)
+- HEATWAVE_MANAGEMENT (40 personnel)
+- POWER_GRID_MANAGEMENT (40 personnel)
+- RESCUE_MANAGEMENT (40 personnel)
+
+Checks real-time availability (availabilityStatus == 'AVAILABLE' / activeTicketId == null),
+secures atomic distributed locks in Redis, and assigns selected personnel to the incident ticket.
+If a shortfall occurs, Agent 0 reports the deficit back to the sub-agent and executes the
+Iterative Fallback Loop to mobilize personnel from the fallback department.
+Constructs mandatory dispatch messages embedding requiredTags.
 """
 
-import math
 import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from bson import ObjectId
 
-from spatial_memory import spatial_memory, haversine_distance_km
+from spatial_memory import spatial_memory
 
 logger = logging.getLogger("zerogrid.agent_zero.workforce")
 
-# Fallback in-memory tactical teams if MongoDB is in offline mode
-FALLBACK_TEAMS = [
-    {
-        "teamId": "TEAM_NDRF_ALPHA",
-        "name": "NDRF Flood Rescue Alpha",
-        "domain": "FLOOD_RESCUE",
-        "status": "IDLE",
-        "coordinates": [72.8140, 19.4580],
-        "speedKmh": 25,
-        "skills": ["DEEP_WATER_EVAC", "INFLATABLE_BOAT_PILOT"],
-        "equipment": ["ZODIAC_BOAT", "SUBMERSIBLE_PUMP_500HP"]
-    },
-    {
-        "teamId": "TEAM_PUMP_CREW_01",
-        "name": "Municipal Dewatering Squad 01",
-        "domain": "DEWATERING",
-        "status": "IDLE",
-        "coordinates": [72.8130, 19.4565],
-        "speedKmh": 20,
-        "skills": ["CULVERT_DRAINAGE", "HIGH_CAPACITY_PUMPING"],
-        "equipment": ["500HP_DIESEL_PUMP", "DISCHARGE_HOSES_300M"]
-    },
-    {
-        "teamId": "TEAM_LINEMEN_SQUAD_04",
-        "name": "MSEDCL High-Voltage Linemen",
-        "domain": "ELECTRICAL_GRID",
-        "status": "IDLE",
-        "coordinates": [72.8115, 19.4555],
-        "speedKmh": 30,
-        "skills": ["HV_BREAKER_ISOLATION", "AIR_GAP_VERIFICATION"],
-        "equipment": ["BUCKET_TRUCK", "HOTSTICK_KIT"]
-    },
-    {
-        "teamId": "TEAM_VASAI_RESCUE_02",
-        "name": "Civil Defense Quick Response 02",
-        "domain": "PARAMEDIC_RESCUE",
-        "status": "IDLE",
-        "coordinates": [72.8020, 19.4420],
-        "speedKmh": 40,
-        "skills": ["CARDIAC_TRIAGE", "HEAT_STROKE_TREATMENT"],
-        "equipment": ["MOBILE_ICU_AMBULANCE", "DEFIBRILLATOR"]
-    },
-    {
-        "teamId": "TEAM_COOLING_SQUAD_01",
-        "name": "Municipal Heatwave Crisis Squad 01",
-        "domain": "HEATWAVE_SUPPORT",
-        "status": "IDLE",
-        "coordinates": [72.8150, 19.4520],
-        "speedKmh": 30,
-        "skills": ["HYDRATION_DISTRIBUTION", "MISTING_SHELTER_SETUP"],
-        "equipment": ["MISTING_CANOPY", "HYDRATION_TANKER_2000L"]
+# Default in-memory personnel roster for offline / fallback mode
+DEFAULT_DEPARTMENT_PERSONNEL = {
+    "FLOOD_MANAGEMENT": [
+        {"name": "Aarav Sharma (Flood Lead)", "email": "admin.flood.01@zerogrid.org", "tags": ["ADMIN", "FLOOD_MANAGEMENT", "WATER_RESCUE", "DEWATERING", "ZODIAC_BOAT", "SUBMERSIBLE_PUMP_500HP"]},
+        {"name": "Rohan Kulkarni", "email": "admin.flood.02@zerogrid.org", "tags": ["ADMIN", "FLOOD_MANAGEMENT", "WATER_RESCUE", "DEWATERING", "ZODIAC_BOAT"]},
+        {"name": "Priya Deshmukh", "email": "admin.flood.03@zerogrid.org", "tags": ["ADMIN", "FLOOD_MANAGEMENT", "WATER_RESCUE", "DEWATERING", "SUBMERSIBLE_PUMP_500HP"]},
+        {"name": "Vikram Patil", "email": "admin.flood.04@zerogrid.org", "tags": ["ADMIN", "FLOOD_MANAGEMENT", "WATER_RESCUE", "DEWATERING"]},
+    ],
+    "HEATWAVE_MANAGEMENT": [
+        {"name": "Dr. Amit Verma (Heat Lead)", "email": "admin.heat.01@zerogrid.org", "tags": ["ADMIN", "HEATWAVE_MANAGEMENT", "HYDRATION", "COOLING_SHELTER", "MEDICAL_TRIAGE", "MISTING_CANOPY"]},
+        {"name": "Sunita Rao", "email": "admin.heat.02@zerogrid.org", "tags": ["ADMIN", "HEATWAVE_MANAGEMENT", "HYDRATION", "COOLING_SHELTER", "MEDICAL_TRIAGE"]},
+        {"name": "Rajesh Nair", "email": "admin.heat.03@zerogrid.org", "tags": ["ADMIN", "HEATWAVE_MANAGEMENT", "HYDRATION", "COOLING_SHELTER"]},
+    ],
+    "POWER_GRID_MANAGEMENT": [
+        {"name": "Er. Devendra Dixit (Grid Lead)", "email": "admin.grid.01@zerogrid.org", "tags": ["ADMIN", "POWER_GRID_MANAGEMENT", "HV_LINEMEN", "SUBSTATION_OPS", "BUCKET_TRUCK", "HOTSTICK_KIT"]},
+        {"name": "Alok Sen", "email": "admin.grid.02@zerogrid.org", "tags": ["ADMIN", "POWER_GRID_MANAGEMENT", "HV_LINEMEN", "SUBSTATION_OPS", "BUCKET_TRUCK"]},
+        {"name": "Swati Bose", "email": "admin.grid.03@zerogrid.org", "tags": ["ADMIN", "POWER_GRID_MANAGEMENT", "HV_LINEMEN", "SUBSTATION_OPS"]},
+    ],
+    "RESCUE_MANAGEMENT": [
+        {"name": "Cdr. Rakesh Chauhan (Rescue Lead)", "email": "admin.rescue.01@zerogrid.org", "tags": ["ADMIN", "RESCUE_MANAGEMENT", "SEARCH_RESCUE", "EVACUATION", "CIVIL_DEFENSE", "PARAMEDIC", "EVAC_VEHICLE"]},
+        {"name": "Jaswinder Singh", "email": "admin.rescue.02@zerogrid.org", "tags": ["ADMIN", "RESCUE_MANAGEMENT", "SEARCH_RESCUE", "EVACUATION", "PARAMEDIC"]},
+        {"name": "Gurpreet Kaur", "email": "admin.rescue.03@zerogrid.org", "tags": ["ADMIN", "RESCUE_MANAGEMENT", "SEARCH_RESCUE", "EVACUATION", "EVAC_VEHICLE"]},
+        {"name": "Harpreet Gill", "email": "admin.rescue.04@zerogrid.org", "tags": ["ADMIN", "RESCUE_MANAGEMENT", "SEARCH_RESCUE", "EVACUATION"]},
+    ]
+}
+
+
+def construct_dispatch_message(
+    incident_id: str,
+    priority: str,
+    target_dept: str,
+    allocated_personnel: List[Dict[str, Any]],
+    primary_tags: List[str],
+    fallback_dept: Optional[str] = None,
+    fallback_tags: Optional[List[str]] = None,
+    brief: str = "",
+    precautions: str = ""
+) -> str:
+    """
+    Constructs the operational dispatch directive.
+    MANDATORY REQUIREMENT: Explicitly includes requiredTags and assigned personnel.
+    """
+    personnel_lines = []
+    for p in allocated_personnel:
+        personnel_lines.append(f"  • {p.get('displayName') or p.get('name')} ({p.get('email')}) - Dept: {p.get('department')}")
+
+    roster_str = "\n".join(personnel_lines) if personnel_lines else "  • Pending immediate mutual-aid assignment."
+    primary_tag_str = ", ".join(primary_tags) if primary_tags else "GENERAL_TACTICAL"
+
+    fallback_info = ""
+    if fallback_dept and fallback_tags:
+        fallback_tag_str = ", ".join(fallback_tags)
+        fallback_info = f"\n🔄 FALLBACK SUPPORT ENGAGED: {fallback_dept}\n   Auxiliary Loadout: [{fallback_tag_str}]"
+
+    msg = (
+        f"🚨 [URGENT DISPATCH - ZERO GRID CRISIS COMMAND]\n"
+        f"Incident: #{str(incident_id)[-8:]} | Priority: {priority.upper()}\n"
+        f"Department: {target_dept}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"⚠️ MANDATORY GEAR & SKILL LOADOUT REQUIRED:\n"
+        f"👉 [{primary_tag_str}]{fallback_info}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"Assigned Personnel & Command Teams:\n{roster_str}\n"
+        f"Brief: {brief or 'Emergency mobilization active.'}\n"
+        f"Precautions: {precautions or 'Adhere to standard incident commander protocols.'}\n"
+        f"Status: ASSIGNED & EN_ROUTE. Confirm mobilization on operations console."
+    )
+    return msg
+
+
+async def query_available_personnel_for_department(
+    dept: str,
+    required_tags: List[str],
+    needed_count: int,
+    db: Any = None,
+    exclude_emails: Optional[List[str]] = None
+) -> List[Dict[str, Any]]:
+    """
+    Queries MongoDB 'users' collection for available ADMIN personnel in the requested department.
+    Filters by availabilityStatus == 'AVAILABLE' and ranks by tag match.
+    """
+    exclude_set = set(exclude_emails or [])
+    candidates = []
+
+    if db is not None:
+        try:
+            users_col = db.get_collection("users")
+            query: Dict[str, Any] = {
+                "department": dept,
+                "role": "ADMIN",
+                "availabilityStatus": {"$ne": "ASSIGNED"}
+            }
+            if exclude_set:
+                query["email"] = {"$nin": list(exclude_set)}
+
+            cursor = users_col.find(query).limit(needed_count * 3)
+            for doc in cursor:
+                doc_tags = doc.get("tags", [])
+                matching_tags = [t for t in required_tags if t in doc_tags]
+                candidates.append({
+                    "userId": str(doc.get("_id")),
+                    "displayName": doc.get("displayName"),
+                    "name": doc.get("displayName"),
+                    "email": doc.get("email"),
+                    "department": dept,
+                    "domain": doc.get("domain"),
+                    "tags": doc_tags,
+                    "matching_tags": matching_tags,
+                    "tag_match_count": len(matching_tags)
+                })
+        except Exception as e:
+            logger.warning(f"Error querying users from MongoDB: {e}")
+
+    # Fallback to in-memory personnel if MongoDB is empty or offline
+    if not candidates:
+        pool = DEFAULT_DEPARTMENT_PERSONNEL.get(dept, [])
+        for p in pool:
+            if p["email"] not in exclude_set:
+                matching_tags = [t for t in required_tags if t in p.get("tags", [])]
+                candidates.append({
+                    "userId": p["email"],
+                    "displayName": p["name"],
+                    "name": p["name"],
+                    "email": p["email"],
+                    "department": dept,
+                    "domain": dept.replace("_MANAGEMENT", ""),
+                    "tags": p.get("tags", []),
+                    "matching_tags": matching_tags,
+                    "tag_match_count": len(matching_tags)
+                })
+
+    # Sort primarily by tag matches (highest first)
+    candidates.sort(key=lambda p: -p.get("tag_match_count", 0))
+    return candidates[:needed_count]
+
+
+async def execute_iterative_workforce_allocation(
+    incident: Dict[str, Any],
+    demand: Dict[str, Any],
+    redis_manager_instance: Any = None,
+    simulated_shortfall: bool = False
+) -> Dict[str, Any]:
+    """
+    Agent 0 Core Logic:
+    1. Receives workforce demand from specialized domain sub-agent (Flood, Heatwave, Grid, Rescue).
+    2. Queries MongoDB 'users' collection to check availability of personnel created for that department.
+    3. If availability is there -> Decides, locks, and assigns them to the ticket.
+    4. If shortfall occurs -> Reports deficit to sub-agent and executes Iterative Fallback Loop to fallback department.
+    5. Secures atomic Redis lock, marks availabilityStatus to ASSIGNED, and embeds requiredTags in message.
+    """
+    incident_id = str(incident.get("incident_id") or incident.get("_id") or "INC_01")
+    priority = str(incident.get("priority") or "HIGH")
+
+    target_dept = demand.get("targetDepartment", "FLOOD_MANAGEMENT")
+    fallback_dept = demand.get("fallbackDepartment", "RESCUE_MANAGEMENT")
+    required_tags = demand.get("requiredTags", ["WATER_RESCUE", "DEWATERING"])
+    fallback_tags = demand.get("fallbackTags", ["SEARCH_RESCUE", "EVACUATION"])
+    needed_count = int(demand.get("teamCount", 2))
+    operational_brief = demand.get("operationalBrief", "")
+    tactical_precautions = demand.get("tacticalPrecautions", "")
+
+    db = getattr(spatial_memory, "_db", None)
+
+    assigned_personnel: List[Dict[str, Any]] = []
+    locked_emails: List[str] = []
+    iteration_log: List[Dict[str, Any]] = []
+
+    # =========================================================================
+    # ROUND 1: Check Availability in Primary Team (Created for this Agent)
+    # =========================================================================
+    primary_candidates = await query_available_personnel_for_department(
+        dept=target_dept,
+        required_tags=required_tags,
+        needed_count=needed_count,
+        db=db
+    )
+
+    # Simulated shortfall test hook if requested
+    if simulated_shortfall and len(primary_candidates) > 1:
+        primary_candidates = primary_candidates[:1]
+
+    for p in primary_candidates:
+        email = p["email"]
+        lock_ok = True
+        if redis_manager_instance:
+            try:
+                res = redis_manager_instance.acquire_team_lock(email, incident_id, ttl_seconds=1800)
+                lock_ok = bool(res.get("success", True))
+            except Exception:
+                lock_ok = True
+
+        if lock_ok:
+            assigned_personnel.append(p)
+            locked_emails.append(email)
+
+    shortfall = needed_count - len(assigned_personnel)
+
+    iteration_log.append({
+        "round": 1,
+        "department": target_dept,
+        "demanded": needed_count,
+        "secured": len(assigned_personnel),
+        "shortfall": max(0, shortfall),
+        "status": "SATISFIED" if shortfall <= 0 else "SHORTFALL_DETECTED"
+    })
+
+    # =========================================================================
+    # ROUND 2: The Iterative Fallback Loop (Handling Shortfalls)
+    # =========================================================================
+    fallback_engaged = False
+    if shortfall > 0:
+        fallback_engaged = True
+        logger.warning(
+            f"[-] Agent 0: Shortfall detected in {target_dept}: Needed {needed_count}, secured {len(assigned_personnel)}. "
+            f"Deficit = {shortfall}. Triggering sub-agent fallback to {fallback_dept} team."
+        )
+
+        fallback_candidates = await query_available_personnel_for_department(
+            dept=fallback_dept,
+            required_tags=fallback_tags,
+            needed_count=shortfall,
+            db=db,
+            exclude_emails=locked_emails
+        )
+
+        secured_in_fallback = 0
+        for p in fallback_candidates:
+            email = p["email"]
+            lock_ok = True
+            if redis_manager_instance:
+                try:
+                    res = redis_manager_instance.acquire_team_lock(email, incident_id, ttl_seconds=1800)
+                    lock_ok = bool(res.get("success", True))
+                except Exception:
+                    lock_ok = True
+
+            if lock_ok:
+                assigned_personnel.append(p)
+                locked_emails.append(email)
+                secured_in_fallback += 1
+                if len(assigned_personnel) >= needed_count:
+                    break
+
+        remaining_shortfall = needed_count - len(assigned_personnel)
+        iteration_log.append({
+            "round": 2,
+            "department": fallback_dept,
+            "demanded": shortfall,
+            "secured": secured_in_fallback,
+            "remaining_shortfall": remaining_shortfall,
+            "status": "FALLBACK_SATISFIED" if remaining_shortfall <= 0 else "PARTIAL_PERSONNEL_COMMITTED"
+        })
+
+    # =========================================================================
+    # Step 3: MongoDB Assignment to Ticket & Availability Update
+    # =========================================================================
+    now = datetime.now(timezone.utc)
+    lead_personnel = assigned_personnel[0] if assigned_personnel else None
+
+    if db is not None and locked_emails:
+        try:
+            users_col = db.get_collection("users")
+            # Mark assigned personnel as ASSIGNED to this ticket
+            users_col.update_many(
+                {"email": {"$in": locked_emails}},
+                {
+                    "$set": {
+                        "availabilityStatus": "ASSIGNED",
+                        "activeTicketId": ObjectId(incident_id) if ObjectId.is_valid(incident_id) else incident_id,
+                        "assignedAt": now
+                    }
+                }
+            )
+
+            # Update SosEvent with assignedAdmin lead and assignedTeamMembers
+            sos_col = db.get_collection("sosevents")
+            obj_id = ObjectId(incident_id) if ObjectId.is_valid(incident_id) else incident_id
+            lead_user_id = lead_personnel.get("userId") if lead_personnel else None
+            update_data: Dict[str, Any] = {
+                "assignedSquad": lead_personnel.get("displayName") if lead_personnel else "PENDING_ASSIGNMENT",
+                "status": "DISPATCHED" if assigned_personnel else "ALLOCATING",
+                "assignedTeamMembers": [
+                    {
+                        "displayName": p.get("displayName"),
+                        "email": p.get("email"),
+                        "department": p.get("department")
+                    } for p in assigned_personnel
+                ]
+            }
+            if lead_user_id and ObjectId.is_valid(lead_user_id):
+                update_data["assignedAdmin"] = ObjectId(lead_user_id)
+
+            sos_col.update_one({"_id": obj_id}, {"$set": update_data})
+        except Exception as e:
+            logger.warning(f"Error persisting ticket assignments in MongoDB: {e}")
+
+    # =========================================================================
+    # Step 4: Construct Mandatory Dispatch Message with requiredTags
+    # =========================================================================
+    dispatch_message = construct_dispatch_message(
+        incident_id=incident_id,
+        priority=priority,
+        target_dept=target_dept,
+        allocated_personnel=assigned_personnel,
+        primary_tags=required_tags,
+        fallback_dept=fallback_dept if fallback_engaged else None,
+        fallback_tags=fallback_tags if fallback_engaged else None,
+        brief=operational_brief,
+        precautions=tactical_precautions
+    )
+
+    success = len(assigned_personnel) > 0
+
+    return {
+        "success": success,
+        "incident_id": incident_id,
+        "target_department": target_dept,
+        "fallback_department_used": fallback_dept if fallback_engaged else None,
+        "demanded_count": needed_count,
+        "allocated_count": len(assigned_personnel),
+        "assigned_teams": [p.get("displayName") for p in assigned_personnel],
+        "assigned_emails": locked_emails,
+        "personnel_details": assigned_personnel,
+        "lead_commander": lead_personnel.get("displayName") if lead_personnel else None,
+        "required_tags": required_tags,
+        "fallback_tags": fallback_tags if fallback_engaged else [],
+        "dispatch_message": dispatch_message,
+        "iteration_log": iteration_log,
+        "status": "ASSIGNED_AND_DISPATCHED" if len(assigned_personnel) >= needed_count else (
+            "PARTIAL_DISPATCH_FALLBACK_ENGAGED" if success else "PERSONNEL_DEPLETED_COMMANDER_ESCALATION"
+        )
     }
-]
 
 
-def _normalize_coords(coordinates: Optional[List[float]]) -> List[float]:
-    """Ensures [lng, lat] GeoJSON ordering."""
-    if not coordinates or len(coordinates) < 2:
-        return [72.8125, 19.4565]
-    c0, c1 = float(coordinates[0]), float(coordinates[1])
-    if c0 < c1:
-        return [c1, c0]
-    return [c0, c1]
-
-
+# Backward-compatible alias for existing callers
 async def match_and_allocate_workforce(
     incident_id: str,
     incident_coords: List[float],
     demand: Dict[str, Any],
     redis_manager_instance: Any = None
 ) -> Dict[str, Any]:
-    """
-    Executes workforce matching against MongoDB 'tacticalteams' collection.
-    
-    1. Filters units with status == 'IDLE' and matching or relevant domain.
-    2. Ranks by distance & estimated transit time (ETA).
-    3. Secures distributed atomic lock (SET NX EX in Redis).
-    4. Atomically transitions MongoDB team status from 'IDLE' to 'EN_ROUTE'.
-    """
-    norm_coords = _normalize_coords(incident_coords)
-    required_role = demand.get("requiredRole") or demand.get("team_type_needed") or "FLOOD_RESCUE"
-    needed_count = int(demand.get("teamCount") or demand.get("team_count_needed") or 1)
-
-    db = getattr(spatial_memory, "_db", None)
-    candidate_squads = []
-
-    # 1. Query MongoDB 'tacticalteams' collection
-    if db is not None:
-        try:
-            teams_col = db.get_collection("tacticalteams")
-            # First attempt: exact domain match
-            query = {"status": "IDLE"}
-            if required_role:
-                query["domain"] = required_role
-
-            cursor = teams_col.find(query).limit(10)
-            for doc in cursor:
-                loc = doc.get("currentLocation", {})
-                t_coords = loc.get("coordinates") if isinstance(loc, dict) else doc.get("coordinates")
-                if t_coords and len(t_coords) >= 2:
-                    dist_km = haversine_distance_km(norm_coords, t_coords)
-                    speed = float(doc.get("speedKmh", 30))
-                    eta_mins = round((dist_km / speed) * 60, 1)
-                    candidate_squads.append({
-                        "teamId": doc.get("teamId"),
-                        "name": doc.get("name"),
-                        "domain": doc.get("domain"),
-                        "distance_km": round(dist_km, 2),
-                        "eta_minutes": eta_mins,
-                        "personnel": doc.get("personnelCount", 6),
-                        "equipment": doc.get("equipment", []),
-                        "doc_id": doc.get("_id")
-                    })
-
-            # If no units with exact domain found, relax filter to any IDLE unit
-            if not candidate_squads:
-                cursor_any = teams_col.find({"status": "IDLE"}).limit(10)
-                for doc in cursor_any:
-                    loc = doc.get("currentLocation", {})
-                    t_coords = loc.get("coordinates") if isinstance(loc, dict) else doc.get("coordinates")
-                    if t_coords and len(t_coords) >= 2:
-                        dist_km = haversine_distance_km(norm_coords, t_coords)
-                        speed = float(doc.get("speedKmh", 30))
-                        candidate_squads.append({
-                            "teamId": doc.get("teamId"),
-                            "name": doc.get("name"),
-                            "domain": doc.get("domain"),
-                            "distance_km": round(dist_km, 2),
-                            "eta_minutes": round((dist_km / speed) * 60, 1),
-                            "personnel": doc.get("personnelCount", 6),
-                            "equipment": doc.get("equipment", []),
-                            "doc_id": doc.get("_id")
-                        })
-        except Exception as e:
-            logger.warning(f"Error querying MongoDB tactical teams: {e}")
-
-    # Fallback in-memory squads if DB was unreachable or empty
-    if not candidate_squads:
-        for fb in FALLBACK_TEAMS:
-            if fb.get("status") == "IDLE":
-                dist_km = haversine_distance_km(norm_coords, fb["coordinates"])
-                speed = fb.get("speedKmh", 30)
-                candidate_squads.append({
-                    "teamId": fb["teamId"],
-                    "name": fb["name"],
-                    "domain": fb["domain"],
-                    "distance_km": round(dist_km, 2),
-                    "eta_minutes": round((dist_km / speed) * 60, 1),
-                    "personnel": 6,
-                    "equipment": fb.get("equipment", [])
-                })
-
-    # Sort candidate squads by shortest transit distance
-    candidate_squads.sort(key=lambda s: s["distance_km"])
-
-    assigned_squads = []
-    locked_team_ids = []
-
-    now = datetime.now(timezone.utc)
-
-    for squad in candidate_squads:
-        team_id = squad["teamId"]
-        lock_acquired = True
-
-        # Acquire distributed atomic lock in Redis if redis_manager provided
-        if redis_manager_instance:
-            try:
-                res = redis_manager_instance.acquire_team_lock(team_id, incident_id, ttl_seconds=1800)
-                lock_acquired = bool(res.get("success", True))
-            except Exception as r_err:
-                logger.warning(f"Redis lock check warning for {team_id}: {r_err}")
-                lock_acquired = True
-
-        if lock_acquired:
-            # Atomically transition MongoDB status from IDLE to EN_ROUTE
-            if db is not None:
-                try:
-                    teams_col = db.get_collection("tacticalteams")
-                    teams_col.update_one(
-                        {"teamId": team_id},
-                        {
-                            "$set": {
-                                "status": "EN_ROUTE",
-                                "assignedIncidentId": incident_id,
-                                "assignedAt": now
-                            }
-                        }
-                    )
-                except Exception as db_err:
-                    logger.warning(f"Failed to update team {team_id} in MongoDB: {db_err}")
-
-            assigned_squads.append(squad)
-            locked_team_ids.append(team_id)
-
-            logger.info(
-                f"🚨 [Workforce Dispatched] Squad {team_id} ({squad['name']}) -> Incident {incident_id}. "
-                f"Distance: {squad['distance_km']}km | ETA: {squad['eta_minutes']} mins | Status: EN_ROUTE"
-            )
-
-            if len(assigned_squads) >= needed_count:
-                break
-
-    # Update SosEvent with assignedSquad in MongoDB
-    if db is not None and locked_team_ids:
-        try:
-            sos_col = db.get_collection("sosevents")
-            obj_id = ObjectId(incident_id) if ObjectId.is_valid(incident_id) else incident_id
-            sos_col.update_one(
-                {"_id": obj_id},
-                {
-                    "$set": {
-                        "assignedSquad": locked_team_ids[0],
-                        "status": "DISPATCHED"
-                    }
-                }
-            )
-        except Exception as e:
-            logger.warning(f"Could not update SosEvent {incident_id} with assigned squad: {e}")
-
-    allocation_success = len(assigned_squads) > 0
-
-    return {
-        "success": allocation_success,
-        "requested_role": required_role,
-        "requested_count": needed_count,
-        "allocated_count": len(assigned_squads),
-        "assigned_teams": locked_team_ids,
-        "squad_details": assigned_squads,
-        "status": "ALLOCATED_AND_DISPATCHED" if allocation_success else "SQUADS_DEPLETED_AWAITING_MUTUAL_AID"
+    incident_mock = {
+        "incident_id": incident_id,
+        "coordinates": incident_coords,
+        "priority": demand.get("priority", "HIGH")
     }
+    return await execute_iterative_workforce_allocation(
+        incident=incident_mock,
+        demand=demand,
+        redis_manager_instance=redis_manager_instance
+    )

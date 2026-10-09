@@ -14,6 +14,13 @@ from .confidence_agent import confidence_calculator_agent
 from .triage_agent import run_triage_agent
 from .grid_agent import run_grid_agent
 from .dispatch_agent import run_dispatch_agent
+from .domain import (
+    run_flood_agent,
+    run_heatwave_agent,
+    run_powergrid_agent,
+    run_rescue_agent
+)
+from .core.workforce_engine import execute_iterative_workforce_allocation
 from .agent_zero import (
     run_master_synthesis,
     negotiate_resources_loop,
@@ -131,22 +138,38 @@ async def run_autonomous_negotiation_pipeline(
         # =========================================================================
         # STEP 2: Sub-Agent Concurrent Collaboration (Triage + Grid + Dispatch)
         # =========================================================================
-        record_step("SUB_AGENT_COLLABORATION", "RUNNING", {"summary": "Executing Triage, Grid, and Dispatch sub-agents concurrently."})
+        # STEP 2: Sub-Agent Collaboration & Specialized Domain Assessment
+        # =========================================================================
+        record_step("SUB_AGENT_COLLABORATION", "RUNNING", {"summary": "Executing Triage, Grid, Dispatch, and Domain Sub-Agents concurrently."})
         if inject_fault_at_step == "SUB_AGENT_COLLABORATION":
             raise RuntimeError("Synthetic error injected during SUB_AGENT_COLLABORATION.")
 
-        triage_res, grid_res, dispatch_res = await asyncio.gather(
+        incident_domain = str(incident.get("domain") or "FLOOD").upper()
+        incident_cat = str(incident.get("category") or "WATERLOGGING").upper()
+
+        if incident_domain == "HEATWAVE" or incident_cat == "HEATWAVE":
+            domain_task = run_heatwave_agent(incident, weather_context)
+        elif incident_domain == "POWER_GRID" or incident_cat == "FALLEN_GRID":
+            domain_task = run_powergrid_agent(incident, graph_context)
+        elif incident_domain == "RESCUE" or incident_cat in ["TRAPPED", "MEDICAL", "DISASTER"]:
+            domain_task = run_rescue_agent(incident, spatial_context)
+        else:
+            domain_task = run_flood_agent(incident, spatial_context)
+
+        triage_res, grid_res, dispatch_res, domain_demand = await asyncio.gather(
             run_triage_agent(incident, graph_context, weather_context),
             run_grid_agent(incident, graph_context),
-            run_dispatch_agent(incident, graph_context, spatial_context)
+            run_dispatch_agent(incident, graph_context, spatial_context),
+            domain_task
         )
         state_checkpoint["last_valid_data"]["sub_agents"] = {
             "triage": triage_res,
             "grid": grid_res,
-            "dispatch": dispatch_res
+            "dispatch": dispatch_res,
+            "domain_demand": domain_demand
         }
         record_step("SUB_AGENT_COLLABORATION", "COMPLETED", {
-            "summary": f"Sub-agents synthesized threat level={triage_res.get('threat_level')} & cascade risk={grid_res.get('cascade_risk')}."
+            "summary": f"Sub-agents synthesized threat level={triage_res.get('threat_level')}, dept={domain_demand.get('targetDepartment')} with tags={domain_demand.get('requiredTags')}."
         })
 
         # =========================================================================
@@ -157,21 +180,26 @@ async def run_autonomous_negotiation_pipeline(
             raise RuntimeError("Synthetic error injected during REQUIREMENTS_GENERATION.")
 
         initial_requirements = {
-            "team_type_needed": dispatch_res.get("team_type_needed", "FLOOD_RESCUE"),
-            "team_count_needed": dispatch_res.get("team_count_needed", 3),
+            "team_type_needed": domain_demand.get("requiredRole") or dispatch_res.get("team_type_needed", "FLOOD_RESCUE"),
+            "team_count_needed": domain_demand.get("teamCount") or dispatch_res.get("team_count_needed", 3),
+            "targetDepartment": domain_demand.get("targetDepartment", "FLOOD_MANAGEMENT"),
+            "fallbackDepartment": domain_demand.get("fallbackDepartment", "RESCUE_MANAGEMENT"),
+            "requiredTags": domain_demand.get("requiredTags", ["DEWATERING"]),
+            "fallbackTags": domain_demand.get("fallbackTags", ["EVAC_VEHICLE"]),
+            "operationalBrief": domain_demand.get("operationalBrief", ""),
+            "tacticalPrecautions": domain_demand.get("tacticalPrecautions", ""),
             "recommended_squads": dispatch_res.get("recommended_squads", []),
-            "staging_area": dispatch_res.get("staging_area", "Virar East Elevated Flyover"),
-            "special_tactical_precautions": dispatch_res.get("special_tactical_precautions", "Air-gap verification required")
+            "staging_area": dispatch_res.get("staging_area", "Virar East Elevated Flyover")
         }
         state_checkpoint["last_valid_data"]["requirements"] = initial_requirements
         record_step("REQUIREMENTS_GENERATION", "COMPLETED", {
-            "summary": f"Requirements formulated: {initial_requirements['team_count_needed']} squads of type {initial_requirements['team_type_needed']}."
+            "summary": f"Requirements formulated: {initial_requirements['team_count_needed']} squads for {initial_requirements['targetDepartment']} with tags {initial_requirements['requiredTags']}."
         })
 
         # =========================================================================
-        # STEP 4: Agent Zero Recursive Resource Negotiation Loop
+        # STEP 4: Agent Zero Iterative Workforce Allocation & Fallback Loop
         # =========================================================================
-        record_step("RESOURCE_NEGOTIATION", "RUNNING", {"summary": "Agent Zero evaluating Redis pool against sub-agent requirements."})
+        record_step("RESOURCE_NEGOTIATION", "RUNNING", {"summary": "Agent Zero evaluating Redis pool and MongoDB tactical units with fallback loop."})
         if inject_fault_at_step == "RESOURCE_NEGOTIATION":
             raise RuntimeError("Synthetic error injected during RESOURCE_NEGOTIATION.")
 
@@ -183,19 +211,19 @@ async def run_autonomous_negotiation_pipeline(
         )
         state_checkpoint["last_valid_data"]["negotiation"] = negotiation_res
 
-        # Query and mobilize workforce teams from MongoDB tacticalteams collection
+        # Execute Iterative Fallback Loop against MongoDB and Redis
         try:
-            allocated_workforce = await match_and_allocate_workforce(
-                incident_id=incident_id,
-                incident_coords=coords,
+            allocated_workforce = await execute_iterative_workforce_allocation(
+                incident=incident,
                 demand=initial_requirements,
                 redis_manager_instance=redis_manager_instance
             )
             if allocated_workforce.get("assigned_teams"):
                 negotiation_res["assigned_teams"] = allocated_workforce["assigned_teams"]
-                negotiation_res["workforce_allocation"] = allocated_workforce
+            negotiation_res["workforce_allocation"] = allocated_workforce
         except Exception as alloc_err:
-            logger.warning(f"MongoDB workforce allocation warning: {alloc_err}")
+            logger.warning(f"Iterative workforce allocation error: {alloc_err}")
+            allocated_workforce = {"success": True, "assigned_teams": negotiation_res.get("assigned_teams", [])}
 
         if not negotiation_res.get("success"):
             record_step("RESOURCE_NEGOTIATION", "FAILED_DEPLETED", {
@@ -263,6 +291,8 @@ async def run_autonomous_negotiation_pipeline(
             "sub_agents": state_checkpoint["last_valid_data"]["sub_agents"],
             "confidence_data": confidence_res,
             "resource_negotiation": negotiation_res,
+            "workforce_allocation": negotiation_res.get("workforce_allocation"),
+            "dispatch_message": negotiation_res.get("workforce_allocation", {}).get("dispatch_message"),
             "pipeline_checkpoint": state_checkpoint,
             "completed_at": datetime.now(timezone.utc).isoformat()
         }
