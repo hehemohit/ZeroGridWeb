@@ -2,59 +2,48 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const AWS_VOICE_AGENT_ENDPOINT = process.env.NEXT_PUBLIC_VOICE_AGENT_URL || '';
 
-// Default in-memory team status state for instant dev resilience
+// Default in-memory team status state representing 160 Admin workforce departments
 let inMemoryTeams = [
   {
-    team_id: 'TEAM_NDRF_ALPHA',
-    name: 'NDRF Flood Rescue Alpha',
-    category: 'FLOOD_RESCUE',
-    base_location: 'Virar East Staging',
+    team_id: 'ADMIN_FLOOD_SQUAD_01',
+    name: 'Flood Management Dewatering Unit (admin.flood.01)',
+    category: 'FLOOD_MANAGEMENT',
+    base_location: 'Virar East Staging Area',
+    capacity: 10,
+    equipment: ['Zodiac Boats', '500-HP Dewatering Pumps', 'Sonar Depth Probe'],
+    state: 'IDLE',
+    is_available: true,
+    active_incident_id: null
+  },
+  {
+    team_id: 'ADMIN_HEAT_SQUAD_01',
+    name: 'Heatwave Triage & Cooling Unit (admin.heat.01)',
+    category: 'HEATWAVE_MANAGEMENT',
+    base_location: 'Central Transit Hub Shelter',
+    capacity: 10,
+    equipment: ['Misting Canopies', 'Electrolyte IV Packs', 'Thermal Imaging'],
+    state: 'IDLE',
+    is_available: true,
+    active_incident_id: null
+  },
+  {
+    team_id: 'ADMIN_GRID_SQUAD_01',
+    name: 'Power Grid High-Voltage Linemen (admin.grid.01)',
+    category: 'POWER_GRID_MANAGEMENT',
+    base_location: 'Virar 33kV Switchyard Depot',
     capacity: 8,
-    equipment: ['Zodiac Inflatable Boats', 'Thermal Drone', 'Dewatering Pumps'],
+    equipment: ['Dielectric Hot Sticks', 'Air-Gap Grounding Kits', 'Megger Testers'],
     state: 'IDLE',
     is_available: true,
     active_incident_id: null
   },
   {
-    team_id: 'TEAM_NDRF_BRAVO',
-    name: 'NDRF Rapid Evacuation Bravo',
-    category: 'EVACUATION',
-    base_location: 'Vasai West Depot',
+    team_id: 'ADMIN_RESCUE_SQUAD_01',
+    name: 'Rescue Management Tactical Unit (admin.rescue.01)',
+    category: 'RESCUE_MANAGEMENT',
+    base_location: 'Vasai West Rapid Depot',
     capacity: 12,
-    equipment: ['High-Clearance Rescue Trucks', 'Lifejackets', 'Medical Kit'],
-    state: 'ASSIGNED',
-    active_incident_id: 'INC_EVAC_0911',
-    is_available: false
-  },
-  {
-    team_id: 'TEAM_PUMP_CREW_01',
-    name: 'Municipal Dewatering Squad 01',
-    category: 'DEWATERING',
-    base_location: 'Ward 4 Pumping Station',
-    capacity: 4,
-    equipment: ['500-HP High-Volume Submersible Pumps', 'Discharge Conduits'],
-    state: 'IDLE',
-    is_available: true,
-    active_incident_id: null
-  },
-  {
-    team_id: 'TEAM_LINEMEN_SQUAD_04',
-    name: 'MSEDCL High-Voltage Linemen',
-    category: 'ELECTRICAL_GRID',
-    base_location: 'Virar East 33kV Switchyard',
-    capacity: 6,
-    equipment: ['Dielectric Hot Sticks', 'Grounding Clamps', 'Megger Insulation Testers'],
-    state: 'IDLE',
-    is_available: true,
-    active_incident_id: null
-  },
-  {
-    team_id: 'TEAM_VASAI_RESCUE_02',
-    name: 'Civil Defense Quick Response 02',
-    category: 'PARAMEDIC_RESCUE',
-    base_location: 'Sanjeevani Hospital Staging',
-    capacity: 6,
-    equipment: ['Ambulance Unit', 'Field Triage Kit', 'Emergency Defibrillator'],
+    equipment: ['Hydraulic Cutters', 'Search Drones', 'Trauma Resuscitators'],
     state: 'IDLE',
     is_available: true,
     active_incident_id: null

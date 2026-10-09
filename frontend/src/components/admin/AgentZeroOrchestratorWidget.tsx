@@ -142,11 +142,11 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
                 Agent Zero Orchestrator
               </h4>
               <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-brandTeal/10 text-brandTeal border border-brandTeal/20">
-                LPU MULTI-AGENT
+                4-PHASE MULTI-AGENT
               </span>
             </div>
             <p className="text-[11px] text-secondaryText">
-              Deterministic DynamoDB Topology + Concurrent Sub-Agent Inference
+              Autonomous Circular Multi-Agent Pipeline &bull; 160 Admin Workforce Allocation
             </p>
           </div>
         </div>
@@ -156,7 +156,7 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
           {graph && (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-mono font-medium border bg-surfaceElevated border-hairline text-secondaryText">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span>{graph.data_source === 'DYNAMODB_CLOUD' ? 'DynamoDB Cloud' : 'Simulator Mode'}</span>
+              <span>{graph.data_source === 'MONGODB_CIRCULAR_PIPELINE' ? 'MongoDB Circular Pipeline' : 'Simulator Mode'}</span>
             </span>
           )}
 
@@ -188,8 +188,8 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
           <div className="max-w-md mx-auto">
             <h5 className="text-sm font-bold text-primaryText">No Multi-Agent Synthesis Generated Yet</h5>
             <p className="text-xs text-secondaryText mt-1">
-              Click &quot;Synthesize Decisions&quot; to traverse the localized electrical grid in DynamoDB and
-              concurrently mobilize the Triage, Grid Operations, and Dispatch sub-agents.
+              Click &quot;Synthesize Decisions&quot; to execute the 4-phase circular multi-agent pipeline and
+              concurrently mobilize the 160 Admin emergency departments.
             </p>
           </div>
           <button
@@ -211,7 +211,7 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
           <div className="space-y-1">
             <h5 className="text-sm font-bold text-brandTeal">Agent Zero Multi-Agent Synthesis Active</h5>
             <p className="text-xs text-secondaryText max-w-sm mx-auto">
-              Querying DynamoDB adjacency lists & running concurrent Groq LPU sub-agents (Triage, Grid, Dispatch)...
+              Evaluating confidence gate, routing to specialized sub-agents, and matching 160 Admin workforce...
             </p>
           </div>
         </div>

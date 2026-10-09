@@ -348,7 +348,7 @@ export function SosDrawer({
                 </p>
               </div>
 
-              {/* Agent Zero Autonomous Multi-Agent Orchestrator (DynamoDB Graph + Groq LPUs) */}
+              {/* Agent Zero Autonomous Multi-Agent Orchestrator (4-Phase Circular Pipeline + 160 Admins) */}
               <AgentZeroOrchestratorWidget
                 incidentId={sos.rawId || sos.id}
                 incidentType={sos.severity === 'CRITICAL' ? 'SUBSTATION_WATER_INGRESS' : 'GRID_SURGE_RISK'}
@@ -641,11 +641,10 @@ export function SosDrawer({
                         className="flex-1 bg-canvas border border-cyan-500/30 rounded-xl px-3 py-2 text-xs text-primaryText focus:outline-none focus:border-cyan-400 font-medium cursor-pointer"
                       >
                         <option value="">-- Deploy Emergency Tactical Unit --</option>
-                        <option value="TEAM_NDRF_ALPHA">NDRF Flood Rescue Alpha (8 Crew • Boats • Pumps)</option>
-                        <option value="TEAM_NDRF_BRAVO">NDRF Rapid Evacuation Bravo (12 Crew • High-Clearance Trucks)</option>
-                        <option value="TEAM_PUMP_CREW_01">Municipal Dewatering Squad 01 (4 Crew • 500-HP Pumps)</option>
-                        <option value="TEAM_LINEMEN_SQUAD_04">MSEDCL High-Voltage Linemen (6 Crew • Hot Sticks)</option>
-                        <option value="TEAM_VASAI_RESCUE_02">Civil Defense Quick Response 02 (6 Crew • Ambulance)</option>
+                        <option value="ADMIN_FLOOD_SQUAD_01">Flood Management Dewatering Unit (admin.flood.01 • Boats • Pumps)</option>
+                        <option value="ADMIN_HEAT_SQUAD_01">Heatwave Triage & Cooling Unit (admin.heat.01 • Misting • Triage)</option>
+                        <option value="ADMIN_GRID_SQUAD_01">Power Grid High-Voltage Linemen (admin.grid.01 • Hot Sticks • Testers)</option>
+                        <option value="ADMIN_RESCUE_SQUAD_01">Rescue Management Tactical Unit (admin.rescue.01 • Cutters • Drones)</option>
                       </select>
 
                       {sos.assignedSquad && (

@@ -15,7 +15,8 @@ const {
   triggerBatchDispatch,
   getBatchDispatchStatus,
   pauseBatchDispatch,
-  resumeBatchDispatch
+  resumeBatchDispatch,
+  getWorkforceStats
 } = require('../controllers/adminController');
 
 const router = express.Router();
@@ -63,6 +64,7 @@ router.get('/system-stats', getSystemStats);
 router.get('/sos/history', getSosHistory);
 router.get('/sos/:id/dossier', getSosDossier);
 router.get('/sos', getActiveSosEvents);
+router.get('/workforce/stats', getWorkforceStats);
 
 // POST /api/admin/sos/auto-assign — Auto-assign active SOS events to nearest admin responder
 router.post('/sos/auto-assign', autoAssignNearestAdmin);
