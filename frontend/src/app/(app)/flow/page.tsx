@@ -165,16 +165,29 @@ export default function FlowTestingPage() {
           next.ALERT_TRIGGER = 'COMPLETED';
         } else if (data.step === 'CONFIDENCE_CALCULATION') {
           next.CONFIDENCE_CALCULATION = data.status === 'RUNNING' ? 'RUNNING' : data.status === 'FILTERED_FALSE_ALERT' ? 'FILTERED' : 'COMPLETED';
-        } else if (data.step === 'DEDUPLICATION_AND_PRIORITY') {
+        } else if (
+          data.step === 'DEDUPLICATION_AND_PRIORITY' ||
+          data.step === 'DEDUPLICATION' ||
+          data.step === 'AGENT_ZERO_INTAKE_AND_CLASSIFICATION'
+        ) {
           next.DEDUPLICATION = 'COMPLETED';
-        } else if (data.step === 'SUB_AGENT_COLLABORATION') {
+          next.DOMAIN_ROUTING = 'COMPLETED';
+        } else if (
+          data.step === 'SUB_AGENT_TACTICAL_ASSESSMENT' ||
+          data.step === 'SUB_AGENT_COLLABORATION' ||
+          data.step === 'REQUIREMENTS_GENERATION'
+        ) {
           next.DOMAIN_ROUTING = 'COMPLETED';
           next.DEMAND_GENERATION = 'COMPLETED';
-        } else if (data.step === 'REQUIREMENTS_GENERATION') {
-          next.DEMAND_GENERATION = 'COMPLETED';
-        } else if (data.step === 'RESOURCE_NEGOTIATION') {
+        } else if (
+          data.step === 'AGENT_ZERO_WORKFORCE_ALLOCATION' ||
+          data.step === 'RESOURCE_NEGOTIATION'
+        ) {
           next.RESOURCE_NEGOTIATION = data.status === 'RUNNING' ? 'RUNNING' : data.status === 'ERROR_PRESERVED' ? 'ERROR_PRESERVED' : 'COMPLETED';
-        } else if (data.step === 'ATOMIC_LOCK_AND_DISPATCH') {
+        } else if (
+          data.step === 'AGENT_ZERO_MASTER_DISPATCH' ||
+          data.step === 'ATOMIC_LOCK_AND_DISPATCH'
+        ) {
           next.ATOMIC_LOCK_DISPATCH = data.status === 'RUNNING' ? 'RUNNING' : 'COMPLETED';
         }
         return next;
@@ -182,6 +195,12 @@ export default function FlowTestingPage() {
     });
 
     socket.on('flow:completed', (data: any) => {
+      if (data?.pipeline_result) {
+        setExecutionResult((prev: any) => ({
+          ...prev,
+          ...data.pipeline_result
+        }));
+      }
       setStepStatuses((prev) => ({
         ...prev,
         ATOMIC_LOCK_DISPATCH: 'COMPLETED'
@@ -192,32 +211,61 @@ export default function FlowTestingPage() {
       setIncidentId(data.id || data._id || 'SOS_LIVE');
       if (data.message) setMessage(data.message);
       if (data.waterDepthCm !== undefined) setWaterDepthCm(Number(data.waterDepthCm));
+      if (data.temperatureC !== undefined) setTemperatureC(Number(data.temperatureC));
+      if (data.severity) setSeverity(data.severity);
+      setExecutionResult(null);
       setTimelineEvents((prev) => [
         ...prev,
         {
           step: 'INIT',
           status: 'RUNNING',
-          summary: `Incoming Live SOS: ${data.message || 'Distress signal detected'} (${data.waterDepthCm || 0}cm water depth)`,
+          summary: `Incoming Live SOS: ${data.message || 'Distress signal detected'} (${data.waterDepthCm || 0}cm water depth, ${data.temperatureC || 28}°C)`,
           timestamp: new Date().toISOString()
         }
       ]);
-      setStepStatuses((prev) => ({
-        ...prev,
+      setStepStatuses({
         ALERT_TRIGGER: 'COMPLETED',
-        CONFIDENCE_CALCULATION: 'RUNNING'
-      }));
+        CONFIDENCE_CALCULATION: 'RUNNING',
+        DEDUPLICATION: 'IDLE',
+        DOMAIN_ROUTING: 'IDLE',
+        DEMAND_GENERATION: 'IDLE',
+        RESOURCE_NEGOTIATION: 'IDLE',
+        ATOMIC_LOCK_DISPATCH: 'IDLE'
+      });
     });
 
     socket.on('sos:agent_zero_orchestrated', (data: any) => {
-      if (data.directive) {
+      const res = data.pipeline_result || data.orchestration || data;
+      if (res) {
         setExecutionResult((prev: any) => ({
           ...prev,
-          incident_id: data.sosId,
-          status: 'VERIFIED_AND_ASSIGNED',
-          assigned_teams: data.assignedSquad ? [data.assignedSquad] : prev?.assigned_teams,
-          agent_zero_directive: data.directive,
-          dispatch_message: data.dispatchMessage || prev?.dispatch_message
+          ...res,
+          incident_id: data.sosId || res.incident_id || prev?.incident_id,
+          status: res.status || 'VERIFIED_AND_ASSIGNED',
+          assigned_teams: res.assigned_teams || (data.assignedSquad ? [data.assignedSquad] : prev?.assigned_teams),
+          agent_zero_directive: res.agent_zero_directive || data.directive || prev?.agent_zero_directive,
+          agent_zero_classification: res.agent_zero_classification || data.agent_zero_classification || prev?.agent_zero_classification,
+          domain_demand: res.domain_demand || data.domain_demand || prev?.domain_demand,
+          workforce_allocation: res.workforce_allocation || data.workforce_allocation || prev?.workforce_allocation,
+          confidence_data: res.confidence_data || data.confidence_data || prev?.confidence_data,
+          deduplication: res.deduplication || data.deduplication || prev?.deduplication,
+          dispatch_message: res.dispatch_message || data.dispatchMessage || prev?.dispatch_message
         }));
+
+        const wasNegotiated = Boolean(
+          res.workforce_allocation?.fallback_department_used ||
+          (res.resource_negotiation?.rounds_count || 1) > 1
+        );
+
+        setStepStatuses({
+          ALERT_TRIGGER: 'COMPLETED',
+          CONFIDENCE_CALCULATION: 'COMPLETED',
+          DEDUPLICATION: 'COMPLETED',
+          DOMAIN_ROUTING: 'COMPLETED',
+          DEMAND_GENERATION: 'COMPLETED',
+          RESOURCE_NEGOTIATION: wasNegotiated ? 'CONSTRAINT_LOOP' : 'COMPLETED',
+          ATOMIC_LOCK_DISPATCH: 'COMPLETED'
+        });
       }
     });
 
@@ -1020,7 +1068,9 @@ export default function FlowTestingPage() {
                     {hasExecuted ? (
                       <>
                         Agent 0 queried MongoDB <code className="text-primaryText font-mono">users</code> for IDLE personnel in{' '}
-                        <strong className="text-primaryText font-mono">{executionResult?.domain_demand?.targetDepartment || `${classifiedDomain}_MANAGEMENT`}</strong>{' '}
+                        <strong className="text-primaryText font-mono">
+                          {executionResult?.domain_demand?.targetDepartment || (classifiedDomain ? `${classifiedDomain}_MANAGEMENT` : 'AWAITING_ROUTING')}
+                        </strong>{' '}
                         matching requested tags.
                       </>
                     ) : (

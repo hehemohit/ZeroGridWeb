@@ -280,7 +280,7 @@ async function executeFlowPipeline(req, res) {
         pipelineResponse.assigned_teams =
           Array.isArray(simulated_available_teams) && simulated_available_teams.length > 0
             ? simulated_available_teams
-            : ['TEAM_NDRF_ALPHA', 'TEAM_PUMP_CREW_01'];
+            : ['admin.grid.01@zerogrid.org', 'admin.flood.01@zerogrid.org'];
       }
       if (!pipelineResponse.resource_negotiation) {
         const isDeficit = Array.isArray(simulated_available_teams) && simulated_available_teams.length < 3;

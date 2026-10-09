@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     const tide = weather_override?.tidal_surge_m ?? 2.2;
     const availablePool = Array.isArray(simulated_available_teams) && simulated_available_teams.length > 0
       ? simulated_available_teams
-      : ['TEAM_NDRF_ALPHA'];
+      : ['admin.grid.01@zerogrid.org', 'admin.flood.01@zerogrid.org'];
 
     const timeline: any[] = [];
     const now = () => new Date().toISOString();

@@ -3,72 +3,99 @@ import { NextResponse } from 'next/server';
 export async function GET() {
   const presets = [
     {
-      id: 'scenario_resource_deficit',
-      title: 'Resource Deficit & Sub-Agent Reformulation Loop',
-      badge: 'Negotiation Loop',
+      id: 'scenario_grid_flood_fallback',
+      title: 'Flooded 33kV Switchyard & Fallback Negotiation',
+      badge: 'Grid Ingress',
       badgeColor: 'amber',
-      description: 'Sub-agent requests 4 rescue squads, but only 1 IDLE unit is free in Redis. Triggers live recursive feedback loop and plan reformulation.',
+      description: 'Severe electrical hazard at Virar East Substation. Agent 0 autonomously classifies crisis into Power Grid Management, detects linemen shortage, and executes iterative fallback loop to pull dewatering squads from Flood Management.',
       incident: {
-        incident_id: 'INC_DEFICIT_VIRAR_01',
+        incident_id: 'TICKET_GRID_301',
         incident_type: 'SUBSTATION_WATER_INGRESS',
+        category: 'POWER_OUTAGE',
         severity: 'CRITICAL',
         coordinates: [19.4534, 72.8061],
         water_depth_cm: 55.0,
-        message: 'Severe flood surge in Virar East switchyard. Standing water approaching 33kV busbars. Immediate multi-squad intervention demanded.'
+        temperature_c: 28.0,
+        message: '33kV switchyard submerged. Feeder breaker tripped. Linemen needed for air-gap isolation and emergency dewatering pumps to drain yard.'
       },
-      simulated_available_teams: ['TEAM_NDRF_ALPHA'],
+      simulated_available_teams: ['admin.grid.01@zerogrid.org'],
       inject_fault_at_step: null
     },
     {
-      id: 'scenario_optimal_dispatch',
-      title: 'Optimal Multi-Agent Dispatch (Direct Allocation)',
-      badge: 'Happy Path',
+      id: 'scenario_flood_direct',
+      title: 'Submerged Underpass Rapid Dewatering',
+      badge: 'Flood Direct',
       badgeColor: 'emerald',
-      description: 'Sufficient emergency units are free in Redis. Triage, Grid, and Dispatch formulate requirements and Agent Zero locks units in single pass.',
+      description: 'Underpass inundated with 48cm runoff. Agent 0 autonomously classifies hydrologic threat, routes to Flood Management Agent, and mobilizes zodiac rescue boats and submersible pumps.',
       incident: {
-        incident_id: 'INC_OPTIMAL_VASAI_02',
-        incident_type: 'SUBSTATION_WATER_INGRESS',
+        incident_id: 'TICKET_FLOOD_101',
+        incident_type: 'URBAN_FLOOD_INGRESS',
+        category: 'FLOOD',
         severity: 'HIGH',
-        coordinates: [19.3820, 72.8280],
-        water_depth_cm: 38.0,
-        message: 'Water ingress at Vasai West primary substation. Drain channels obstructed. Linemen and pump crews required.'
+        coordinates: [19.4580, 72.8140],
+        water_depth_cm: 48.0,
+        temperature_c: 27.5,
+        message: 'Ward 4 underpass flooded with 48cm standing water. Stranded vehicles requiring zodiac boats and high-capacity pump extraction.'
       },
-      simulated_available_teams: ['TEAM_NDRF_ALPHA', 'TEAM_PUMP_CREW_01', 'TEAM_LINEMEN_SQUAD_04'],
+      simulated_available_teams: ['admin.flood.01@zerogrid.org', 'admin.flood.02@zerogrid.org'],
+      inject_fault_at_step: null
+    },
+    {
+      id: 'scenario_heatwave_crisis',
+      title: 'Transit Terminal Urban Heatwave (44°C)',
+      badge: 'Thermal Distress',
+      badgeColor: 'red',
+      description: 'Extreme wet-bulb crisis, heat index 44°C, multiple citizens collapsing. Agent 0 autonomously classifies thermal hazard, routes to Heatwave Management Agent, and deploys cooling hydration canopies.',
+      incident: {
+        incident_id: 'TICKET_HEAT_201',
+        incident_type: 'HEATWAVE_SURGE',
+        category: 'HEATWAVE',
+        severity: 'HIGH',
+        coordinates: [19.4520, 72.8150],
+        water_depth_cm: 0,
+        temperature_c: 44.2,
+        message: 'Severe heatwave emergency. Multiple civilians collapsing due to heat exhaustion at Virar terminal. Urgent hydration misting shelter needed.'
+      },
+      simulated_available_teams: ['admin.heat.01@zerogrid.org', 'admin.heat.02@zerogrid.org'],
+      inject_fault_at_step: null
+    },
+    {
+      id: 'scenario_rescue_entrapment',
+      title: 'Submerged Basement Structural Entrapment',
+      badge: 'Structural Entrapment',
+      badgeColor: 'blue',
+      description: 'Civilians trapped in basement structure due to rapid ingress and partial collapse. Agent 0 autonomously classifies life-safety entrapment and routes to Rescue Management Agent.',
+      incident: {
+        incident_id: 'TICKET_RESCUE_401',
+        incident_type: 'STRUCTURAL_ENTRAPMENT',
+        category: 'TRAPPED',
+        severity: 'CRITICAL',
+        coordinates: [19.4420, 72.8020],
+        water_depth_cm: 35.0,
+        temperature_c: 28.0,
+        message: 'Civilians trapped inside submerged lower ground floor following partial ceiling collapse. Rapid extraction and trauma triage paramedics required.'
+      },
+      simulated_available_teams: ['admin.rescue.01@zerogrid.org', 'admin.rescue.02@zerogrid.org'],
       inject_fault_at_step: null
     },
     {
       id: 'scenario_false_alert',
-      title: 'False Alarm & Anomaly Noise Filtering',
-      badge: 'Confidence Filter',
-      badgeColor: 'blue',
-      description: 'Spurious sensor noise or unverified report. Confidence Calculator Agent evaluates low credibility (< 0.70) and short-circuits.',
+      title: 'Spurious Sensor Spike (Clear Skies)',
+      badge: 'Low Confidence Noise',
+      badgeColor: 'purple',
+      description: 'Sensor artifact during dry weather. Confidence Calculator scores alert at 42% (< 65% threshold) and safely filters alert before reaching Agent 0.',
       incident: {
-        incident_id: 'INC_FALSE_ALARM_03',
+        incident_id: 'TICKET_NOISE_999',
         incident_type: 'SENSOR_ANOMALY',
+        category: 'OTHER',
         severity: 'LOW',
         coordinates: [19.4500, 72.8100],
-        water_depth_cm: 4.0,
-        message: 'Brief water sensor flicker detected during dry clear skies. No visual flooding confirmed.'
+        water_depth_cm: 3.0,
+        temperature_c: 28.0,
+        message: 'Transient sensor spike detected. No rainfall, tide normal, no citizen corroboration.'
       },
       simulated_available_teams: null,
       inject_fault_at_step: null
-    },
-    {
-      id: 'scenario_fault_injection',
-      title: 'Mid-Pipeline Fault Injection & State Preservation',
-      badge: 'Fault Recovery',
-      badgeColor: 'red',
-      description: 'Injects synthetic failure at Step 4 (Resource Negotiation). Checkpoint engine preserves prior agent states for recovery.',
-      incident: {
-        incident_id: 'INC_FAULT_TEST_04',
-        incident_type: 'SUBSTATION_WATER_INGRESS',
-        severity: 'CRITICAL',
-        coordinates: [19.4534, 72.8061],
-        water_depth_cm: 60.0,
-        message: 'Critical emergency scenario used to verify fault resilience and state checkpoint integrity.'
-      },
-      simulated_available_teams: ['TEAM_NDRF_ALPHA'],
-      inject_fault_at_step: 'RESOURCE_NEGOTIATION'
     }
   ];
 
