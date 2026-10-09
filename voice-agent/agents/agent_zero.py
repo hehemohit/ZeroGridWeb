@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from .base import get_groq_async_client, extract_json_from_llm, REASONING_MODEL
 from .dispatch_agent import reformulate_dispatch_requirements
+from .core.dedup_engine import process_deduplication_and_escalation, find_duplicate_incident
+from .core.workforce_engine import match_and_allocate_workforce
 
 logger = logging.getLogger("zerogrid.agents.zero")
 

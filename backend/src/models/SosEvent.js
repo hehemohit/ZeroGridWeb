@@ -54,6 +54,28 @@ const sosAckSchema = new mongoose.Schema(
   { _id: false }
 );
 
+/**
+ * Sub-schema for crowdsourced duplicate citizen witness reports
+ */
+const witnessReportSchema = new mongoose.Schema(
+  {
+    citizenId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: false
+    },
+    displayName: { type: String, default: 'Anonymous Citizen' },
+    phoneNumber: { type: String, default: '' },
+    timestamp: { type: Date, default: Date.now },
+    reportedDepthCm: { type: Number, default: 0 },
+    message: { type: String, trim: true, default: '' },
+    batteryPercentage: { type: Number, default: null },
+    transport: { type: String, enum: ['ONLINE', 'MESH', 'BOTH'], default: 'ONLINE' },
+    coordinates: { type: [Number], required: false } // [lng, lat]
+  },
+  { _id: false }
+);
+
 const sosEventSchema = new mongoose.Schema(
   {
     triggeredBy: {
@@ -93,6 +115,30 @@ const sosEventSchema = new mongoose.Schema(
       ],
       default: 'OTHER'
     },
+    domain: {
+      type: String,
+      enum: ['FLOOD', 'HEATWAVE', 'POWER_GRID', 'RESCUE', 'OTHER'],
+      default: 'OTHER',
+      index: true
+    },
+    reportCount: {
+      type: Number,
+      default: 1,
+      min: 1,
+      index: true
+    },
+    priority: {
+      type: String,
+      enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'],
+      default: 'MEDIUM',
+      index: true
+    },
+    priorityScore: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 50
+    },
     waterDepthCm: {
       type: Number,
       default: 0
@@ -129,8 +175,41 @@ const sosEventSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['ACTIVE', 'ACKNOWLEDGED', 'RESOLVED'],
+      enum: [
+        'ACTIVE',
+        'INVESTIGATING',
+        'ALLOCATING',
+        'DISPATCHED',
+        'ON_SCENE',
+        'CONTAINED',
+        'ACKNOWLEDGED',
+        'RESOLVED',
+        'ESCALATED_MASS_CASUALTY',
+        'FALSE_ALARM'
+      ],
       default: 'ACTIVE',
+      index: true
+    },
+    witnessReports: {
+      type: [witnessReportSchema],
+      default: []
+    },
+    workforceDemand: {
+      type: {
+        requiredRole: String,
+        teamCount: Number,
+        equipmentNeeded: [String],
+        urgencyMinutes: Number
+      },
+      default: null
+    },
+    firstReportedAt: {
+      type: Date,
+      default: Date.now
+    },
+    lastReportedAt: {
+      type: Date,
+      default: Date.now,
       index: true
     },
     // Legacy single-acknowledger field (kept for backward compat)
@@ -220,6 +299,9 @@ const sosEventSchema = new mongoose.Schema(
 // 2dsphere index - enables geospatial queries on the location field.
 // Equivalent to: db.sosEvents.createIndex({ location: "2dsphere" })
 sosEventSchema.index({ location: '2dsphere' });
+// Compound index for fast sub-10ms spatial-temporal duplicate queries:
+sosEventSchema.index({ status: 1, lastReportedAt: -1, domain: 1 });
+sosEventSchema.index({ location: '2dsphere', status: 1 });
 
 const SosEvent = mongoose.model('SosEvent', sosEventSchema);
 

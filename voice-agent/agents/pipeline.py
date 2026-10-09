@@ -14,7 +14,12 @@ from .confidence_agent import confidence_calculator_agent
 from .triage_agent import run_triage_agent
 from .grid_agent import run_grid_agent
 from .dispatch_agent import run_dispatch_agent
-from .agent_zero import run_master_synthesis, negotiate_resources_loop
+from .agent_zero import (
+    run_master_synthesis,
+    negotiate_resources_loop,
+    process_deduplication_and_escalation,
+    match_and_allocate_workforce
+)
 
 logger = logging.getLogger("zerogrid.agents.pipeline")
 
@@ -105,6 +110,25 @@ async def run_autonomous_negotiation_pipeline(
         })
 
         # =========================================================================
+        # STEP 1.5: Agent 0 Spatial Deduplication & Priority Escalation
+        # =========================================================================
+        record_step("DEDUPLICATION_AND_PRIORITY", "RUNNING", {"summary": "Querying MongoDB active incidents for spatial-temporal duplicates."})
+        dedup_res = await process_deduplication_and_escalation(incident, confidence_res)
+        state_checkpoint["last_valid_data"]["deduplication"] = dedup_res
+
+        # Merge updated priority and reportCount into incident payload
+        incident["reportCount"] = dedup_res.get("report_count", 1)
+        incident["priority"] = dedup_res.get("priority", "MEDIUM")
+        incident["domain"] = dedup_res.get("domain", "FLOOD")
+
+        record_step("DEDUPLICATION_AND_PRIORITY", "COMPLETED", {
+            "summary": (
+                f"{'Corroborated duplicate incident' if dedup_res.get('is_duplicate') else 'New incident registered'}: "
+                f"Report Count={dedup_res.get('report_count')} | Priority={dedup_res.get('priority')} ({dedup_res.get('priority_score')}/100)."
+            )
+        })
+
+        # =========================================================================
         # STEP 2: Sub-Agent Concurrent Collaboration (Triage + Grid + Dispatch)
         # =========================================================================
         record_step("SUB_AGENT_COLLABORATION", "RUNNING", {"summary": "Executing Triage, Grid, and Dispatch sub-agents concurrently."})
@@ -158,6 +182,20 @@ async def run_autonomous_negotiation_pipeline(
             simulated_available_teams=simulated_available_teams
         )
         state_checkpoint["last_valid_data"]["negotiation"] = negotiation_res
+
+        # Query and mobilize workforce teams from MongoDB tacticalteams collection
+        try:
+            allocated_workforce = await match_and_allocate_workforce(
+                incident_id=incident_id,
+                incident_coords=coords,
+                demand=initial_requirements,
+                redis_manager_instance=redis_manager_instance
+            )
+            if allocated_workforce.get("assigned_teams"):
+                negotiation_res["assigned_teams"] = allocated_workforce["assigned_teams"]
+                negotiation_res["workforce_allocation"] = allocated_workforce
+        except Exception as alloc_err:
+            logger.warning(f"MongoDB workforce allocation warning: {alloc_err}")
 
         if not negotiation_res.get("success"):
             record_step("RESOURCE_NEGOTIATION", "FAILED_DEPLETED", {
