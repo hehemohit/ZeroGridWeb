@@ -1,16 +1,11 @@
 'use client';
 
 import React, { useEffect, useRef, useCallback, useState } from 'react';
-import {
-  APIProvider,
-  Map,
-  useMap,
-  useMapsLibrary,
-} from '@vis.gl/react-google-maps';
+import * as maplibregl from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import { Loader2, Building2, Route, Droplets } from 'lucide-react';
 import type { SosEventUI } from './SosDrawer';
-import { generateHqHexHoneycomb, isPointInPolygon } from '@/utils/hexUtils';
-import { TidalTelemetryStrip } from './TidalTelemetryStrip';
+import { generateHqHexHoneycomb } from '@/utils/hexUtils';
 
 // Types
 export interface HqMarkerItem {
@@ -48,33 +43,12 @@ export interface SosLiveMapProps {
   /** Called when the user double-clicks an SOS map marker */
   onMarkerDoubleClick?: (id: string) => void;
   /** Called when user clicks an HQ map marker */
-  onHqMarkerClick?: (hqId: string) => void;
-  /** Open Predictive Crisis Command Center Modal */
+  onHqMarkerClick?: (id: string) => void;
+  /** Open Crisis Command Modal callback */
   onOpenCrisisCommand?: () => void;
 }
 
-// Dark / Tactical Map Style
-const DARK_MAP_STYLE: google.maps.MapTypeStyle[] = [
-  { elementType: 'geometry', stylers: [{ color: '#0d1424' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#0d1424' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#64748B' }] },
-  { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#94A3B8' }] },
-  { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#475569' }] },
-  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#0f1e2e' }] },
-  { featureType: 'poi.park', elementType: 'labels.text.fill', stylers: [{ color: '#334155' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#1a2740' }] },
-  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#0f1e2e' }] },
-  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#475569' }] },
-  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#1e3050' }] },
-  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#162035' }] },
-  { featureType: 'road.highway', elementType: 'labels.text.fill', stylers: [{ color: '#64748B' }] },
-  { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#0f1e2e' }] },
-  { featureType: 'transit.station', elementType: 'labels.text.fill', stylers: [{ color: '#475569' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#071016' }] },
-  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#334155' }] },
-  { featureType: 'water', elementType: 'labels.text.stroke', stylers: [{ color: '#071016' }] },
-];
-
+// Marker Vector Generators
 function buildMarkerSvg(sos: SosEventUI, isSelected: boolean): string {
   const isAck = sos.status === 'ACKNOWLEDGED';
   const categoryUpper = (sos.category || '').toUpperCase();
@@ -120,32 +94,26 @@ function buildMarkerSvg(sos: SosEventUI, isSelected: boolean): string {
     outerColor = '#10B981'; // Emerald
     innerColor = '#34D399';
     coreColor = '#059669';
-    // Shield Checkmark Glyph
     glyphSvg = `<path d="M19 24l3.5 3.5 6.5-6.5" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`;
   } else if (isFlood) {
     outerColor = '#0284C7'; // Hydro Blue
     innerColor = '#38BDF8';
     coreColor = '#0369A1';
-    // Water Droplet Glyph
     glyphSvg = `<path d="M24 16 C24 16 18 23.5 18 26.5 C18 29.8 20.7 32.5 24 32.5 C27.3 32.5 30 29.8 30 26.5 C30 23.5 24 16 24 16 Z" fill="#FFFFFF"/>`;
   } else if (isPowerGrid) {
     outerColor = '#F59E0B'; // Voltage Gold / Amber
     innerColor = '#FDE047';
     coreColor = '#D97706';
-    // Lightning Bolt Glyph
     glyphSvg = `<polygon points="25,15 18,24 23,24 21,33 29,22 24,22" fill="#FFFFFF"/>`;
   } else if (isHeatwave) {
     outerColor = '#EA580C'; // Flame Orange
     innerColor = '#FB923C';
     coreColor = '#C2410C';
-    // Sun / Thermal Flame Glyph
     glyphSvg = `<circle cx="24" cy="24" r="4.5" fill="#FFFFFF"/><path d="M24 15v2M24 31v2M15 24h2M31 24h2M17.5 17.5l1.5 1.5M29 29l1.5 1.5M17.5 30.5l1.5-1.5M29 19l1.5-1.5" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>`;
   } else {
-    // Critical Alert / Medical / Emergency SOS (Red)
     outerColor = '#EF4444';
     innerColor = '#F87171';
     coreColor = '#DC2626';
-    // Emergency Cross Glyph
     glyphSvg = `<path d="M22 17h4v14h-4zM17 22h14v4h-14z" fill="#FFFFFF"/>`;
   }
 
@@ -194,875 +162,100 @@ function buildDetourPinSvg(label: string, color: string): string {
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
-/**
- * Wraps a circular SVG marker image in a zero-dimension relative container so
- * that its visual center (cx, cy) is positioned exactly on the GPS coordinate [lat, lng],
- * rather than Google Maps AdvancedMarkerElement's default bottom-center anchor.
- */
-function createCenteredMarkerWrapper(
-  img: HTMLImageElement,
-  width: number,
-  height: number
-): HTMLDivElement {
-  const wrapper = document.createElement('div');
-  wrapper.style.width = '0px';
-  wrapper.style.height = '0px';
-  wrapper.style.position = 'relative';
-  wrapper.style.pointerEvents = 'auto';
-
-  img.style.position = 'absolute';
-  img.style.left = `${-width / 2}px`;
-  img.style.top = `${-height / 2}px`;
-  img.style.width = `${width}px`;
-  img.style.height = `${height}px`;
-  img.style.transformOrigin = 'center center';
-
-  wrapper.appendChild(img);
-  return wrapper;
-}
-
-export function parseHqCoords(location: any, index: number = 0): [number, number] {
-  if (typeof location === 'object' && location !== null) {
-    if (Array.isArray(location.coordinates) && location.coordinates.length === 2) {
-      const lng = Number(location.coordinates[0]);
-      const lat = Number(location.coordinates[1]);
-      if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) return [lat, lng];
+function parseHqCoords(loc: any, index: number): [number, number] {
+  if (loc && typeof loc === 'object') {
+    if (Array.isArray(loc.coordinates) && loc.coordinates.length === 2) {
+      const p1 = Number(loc.coordinates[0]);
+      const p2 = Number(loc.coordinates[1]);
+      if (!isNaN(p1) && !isNaN(p2)) {
+        if (Math.abs(p1) <= 90 && Math.abs(p2) <= 180) {
+          return [p1, p2];
+        }
+        if (Math.abs(p2) <= 90 && Math.abs(p1) <= 180) {
+          return [p2, p1];
+        }
+      }
     }
-    const lat = Number(location.lat ?? location.latitude);
-    const lng = Number(location.lng ?? location.longitude);
-    if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) return [lat, lng];
+    const lat = Number(loc.lat ?? loc.latitude);
+    const lng = Number(loc.lng ?? loc.longitude);
+    if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
+      return [lat, lng];
+    }
   }
 
-  if (typeof location === 'string' && location.trim()) {
-    const match = location.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+  if (typeof loc === 'string') {
+    const match = loc.match(/(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)/);
     if (match) {
       const p1 = parseFloat(match[1]);
       const p2 = parseFloat(match[2]);
       if (!isNaN(p1) && !isNaN(p2)) {
         if (Math.abs(p1) <= 90 && Math.abs(p2) <= 180) {
-          return [p1, p2]; // [lat, lng]
+          return [p1, p2];
         }
       }
     }
   }
 
-  // Fallback coords around default base (28.6139, 77.2090)
-  const baseLat = 28.6139;
-  const baseLng = 77.2090;
+  const baseLat = 19.4580;
+  const baseLng = 72.8140;
   const offsetLat = ((index % 5) - 2) * 0.04;
   const offsetLng = ((Math.floor(index / 5) % 5) - 2) * 0.04;
   return [baseLat + offsetLat, baseLng + offsetLng];
 }
 
-// Inner Map Controller
-interface MapControllerProps extends SosLiveMapProps {
-  onMapReady: () => void;
+function decodePolyline(encoded: string): [number, number][] {
+  const points: [number, number][] = [];
+  let index = 0, len = encoded.length;
+  let lat = 0, lng = 0;
+  while (index < len) {
+    let b, shift = 0, result = 0;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    const dlat = ((result & 1) ? ~(result >> 1) : (result >> 1));
+    lat += dlat;
+
+    shift = 0;
+    result = 0;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    const dlng = ((result & 1) ? ~(result >> 1) : (result >> 1));
+    lng += dlng;
+
+    // Returns [lng, lat] for MapLibre GeoJSON standard
+    points.push([lng * 1e-5, lat * 1e-5]);
+  }
+  return points;
 }
 
-function MapController({
-  sosEvents = [],
-  headquarters = [],
-  showHeadquarters = true,
-  selectedSosId,
-  selectedHqId,
-  optimizedRouteData,
-  detourMode = false,
-  detourOrigin = null,
-  detourDest = null,
-  detourResult = null,
-  isDetourLoading = false,
-  onDetourMapClick,
-  onMarkerClick,
-  onMarkerDoubleClick,
-  onHqMarkerClick,
-  onMapReady
-}: MapControllerProps) {
-  const map = useMap();
-  const markerLib = useMapsLibrary('marker');
-  const routesLib = useMapsLibrary('routes');
-  const mapsLib = useMapsLibrary('maps');
-  const geometryLib = useMapsLibrary('geometry');
-
-  const markersRef = useRef<Map<string, google.maps.marker.AdvancedMarkerElement>>(
-    new globalThis.Map()
-  );
-  const hydroCirclesRef = useRef<Map<string, google.maps.Circle>>(new globalThis.Map());
-  const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
-  const polylineRef = useRef<google.maps.Polyline | null>(null);
-  const originMarkerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
-  const stepMarkersRef = useRef<Map<string, google.maps.marker.AdvancedMarkerElement>>(
-    new globalThis.Map()
-  );
-  const hexPolygonsRef = useRef<Map<string, google.maps.Polygon>>(new globalThis.Map());
-
-  // Detour visualization refs
-  const detourOriginMarkerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
-  const detourDestMarkerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
-  const detourBlockedLineRef = useRef<google.maps.Polyline | null>(null);
-  const detourSafePolylineRef = useRef<google.maps.Polyline | null>(null);
-
-  const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const hasAutoFit = useRef(false);
-  const [isReady, setIsReady] = useState(false);
-
-  // Signal ready once map & markerLib are loaded
-  useEffect(() => {
-    if (map && markerLib) {
-      setIsReady(true);
-      onMapReady();
-    }
-  }, [map, markerLib, onMapReady]);
-
-  // Detour mode map click listener
-  useEffect(() => {
-    if (!map || !detourMode || !onDetourMapClick) return;
-
-    const clickListener = map.addListener('click', (e: google.maps.MapMouseEvent) => {
-      if (e.latLng) {
-        onDetourMapClick(e.latLng.lat(), e.latLng.lng());
-      }
-    });
-
-    return () => {
-      google.maps.event.removeListener(clickListener);
-    };
-  }, [map, detourMode, onDetourMapClick]);
-
-  // Auto-fit bounds on first meaningful data load
-  useEffect(() => {
-    if (!map || !isReady || hasAutoFit.current) return;
-
-    const validEvents = sosEvents.filter(
-      e => e.coordinates && e.status !== 'RESOLVED'
-    );
-    const validHqs = headquarters.map((hq, idx) => ({
-      ...hq,
-      coords: hq.coordinates || parseHqCoords(hq.location, idx)
-    }));
-
-    if (validEvents.length === 0 && validHqs.length === 0) return;
-
-    const bounds = new google.maps.LatLngBounds();
-    validEvents.forEach(e => {
-      if (e.coordinates) {
-        bounds.extend({ lat: e.coordinates[0], lng: e.coordinates[1] });
-      }
-    });
-
-    if (showHeadquarters) {
-      validHqs.forEach(hq => {
-        bounds.extend({ lat: hq.coords[0], lng: hq.coords[1] });
-      });
-    }
-
-    if (validEvents.length === 1 && (!showHeadquarters || validHqs.length === 0) && validEvents[0].coordinates) {
-      map.setCenter({ lat: validEvents[0].coordinates[0], lng: validEvents[0].coordinates[1] });
-      map.setZoom(14);
-    } else if (showHeadquarters && validHqs.length === 1 && validEvents.length === 0) {
-      map.setCenter({ lat: validHqs[0].coords[0], lng: validHqs[0].coords[1] });
-      map.setZoom(14);
-    } else if (!bounds.isEmpty()) {
-      map.fitBounds(bounds, { top: 60, right: 40, bottom: 60, left: 40 });
-    }
-    hasAutoFit.current = true;
-  }, [map, isReady, sosEvents, headquarters, showHeadquarters]);
-
-  // Smooth Zoom Animation Helper
-  const animateSmoothZoom = useCallback(
-    (targetLat: number, targetLng: number, targetZoom = 16) => {
-      if (!map) return;
-      map.panTo({ lat: targetLat, lng: targetLng });
-
-      let currentZoom = map.getZoom() ?? 6;
-      if (currentZoom >= targetZoom) return;
-
-      const zoomTimer = setInterval(() => {
-        currentZoom += 1;
-        map.setZoom(currentZoom);
-        if (currentZoom >= targetZoom) {
-          clearInterval(zoomTimer);
-        }
-      }, 95);
-    },
-    [map]
-  );
-
-  const handleMarkerClick = useCallback(
-    (id: string, coords?: [number, number]) => {
-      if (clickTimerRef.current) {
-        clearTimeout(clickTimerRef.current);
-        clickTimerRef.current = null;
-        if (onMarkerDoubleClick) {
-          onMarkerDoubleClick(id);
-        } else if (onMarkerClick) {
-          onMarkerClick(id);
-        }
-      } else {
-        clickTimerRef.current = setTimeout(() => {
-          clickTimerRef.current = null;
-          if (onMarkerClick) onMarkerClick(id);
-          if (coords) {
-            animateSmoothZoom(coords[0], coords[1], 16);
-          }
-        }, 280);
-      }
-    },
-    [onMarkerClick, onMarkerDoubleClick, animateSmoothZoom]
-  );
-
-  // Pan + smooth zoom when a list item or marker is selected
-  useEffect(() => {
-    if (!map) return;
-    if (selectedSosId) {
-      const target = sosEvents.find(
-        e => e.id === selectedSosId || e.rawId === selectedSosId
-      );
-      if (target?.coordinates) {
-        animateSmoothZoom(target.coordinates[0], target.coordinates[1], 16);
-        return;
-      }
-    }
-    if (selectedHqId) {
-      const targetHqIdx = headquarters.findIndex(h => h.id === selectedHqId);
-      if (targetHqIdx !== -1) {
-        const targetHq = headquarters[targetHqIdx];
-        const coords = targetHq.coordinates || parseHqCoords(targetHq.location, targetHqIdx);
-        animateSmoothZoom(coords[0], coords[1], 15);
-      }
-    }
-  }, [map, selectedSosId, selectedHqId, sosEvents, headquarters, animateSmoothZoom]);
-
-  // Render Hydro Depth Circles for flood events
-  useEffect(() => {
-    if (!map || !isReady || !mapsLib) return;
-
-    const activeHydroKeys = new Set<string>();
-    const validHydroEvents = sosEvents.filter(
-      e => e.coordinates &&
-      (e.status === 'ACTIVE' || e.status === 'ACKNOWLEDGED') &&
-      ((e.waterDepthCm ?? 0) > 0 || ['WATERLOGGING', 'SUBMERGED_UNDERPASS', 'DRAINAGE_OVERFLOW'].includes(e.severity))
-    );
-
-    validHydroEvents.forEach(sos => {
-      const key = `hydro-${sos.rawId || sos.id}`;
-      activeHydroKeys.add(key);
-
-      const depth = sos.waterDepthCm || 0;
-      const radius = depth >= 60 ? 120 : depth >= 30 ? 80 : 50;
-      const color = depth >= 60 ? '#EF4444' : depth >= 30 ? '#F97316' : '#EAB308';
-
-      if (hydroCirclesRef.current.has(key)) {
-        const circle = hydroCirclesRef.current.get(key)!;
-        circle.setCenter({ lat: sos.coordinates![0], lng: sos.coordinates![1] });
-        circle.setRadius(radius);
-        circle.setOptions({
-          fillColor: color,
-          strokeColor: color
-        });
-      } else {
-        const CircleClass = mapsLib.Circle || (typeof google !== 'undefined' && google.maps?.Circle);
-        if (CircleClass) {
-          const circle = new CircleClass({
-            map,
-            center: { lat: sos.coordinates![0], lng: sos.coordinates![1] },
-            radius,
-            fillColor: color,
-            fillOpacity: 0.25,
-            strokeColor: color,
-            strokeOpacity: 0.7,
-            strokeWeight: 2,
-            clickable: false,
-            zIndex: 1
-          });
-          hydroCirclesRef.current.set(key, circle);
-        }
-      }
-    });
-
-    // Clean up stale circles
-    hydroCirclesRef.current.forEach((circle, key) => {
-      if (!activeHydroKeys.has(key)) {
-        circle.setMap(null);
-        hydroCirclesRef.current.delete(key);
-      }
-    });
-  }, [map, isReady, mapsLib, sosEvents]);
-
-  // Create / update / remove markers
-  useEffect(() => {
-    if (!map || !markerLib || !isReady) return;
-
-    const currentKeys = new Set(markersRef.current.keys());
-
-    // 1. Render SOS Markers
-    const validEvents = sosEvents.filter(
-      e => e.coordinates && (e.status === 'ACTIVE' || e.status === 'ACKNOWLEDGED')
-    );
-
-    validEvents.forEach(sos => {
-      const key = `sos-${sos.rawId || sos.id}`;
-      const isSelected = selectedSosId === sos.id || selectedSosId === sos.rawId;
-
-      if (markersRef.current.has(key)) {
-        const existing = markersRef.current.get(key)!;
-        const wrapper = existing.content as HTMLElement;
-        const img = (wrapper.tagName === 'IMG' ? wrapper : wrapper.querySelector('img')) as HTMLImageElement;
-        img.src = buildMarkerSvg(sos, isSelected);
-        existing.zIndex = isSelected ? 999 : sos.status === 'ACTIVE' ? 10 : 5;
-
-        if (isSelected) {
-          img.style.animation = 'markerSpringBounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
-          img.style.transform = 'scale(1.25)';
-        } else if (sos.status === 'ACTIVE') {
-          img.style.animation = 'sosMarkerPulse 1.8s ease-in-out infinite';
-          img.style.transform = 'scale(1)';
-        } else {
-          img.style.animation = 'none';
-          img.style.transform = 'scale(1)';
-        }
-        currentKeys.delete(key);
-      } else {
-        const img = document.createElement('img');
-        img.src = buildMarkerSvg(sos, isSelected);
-        img.style.cursor = 'pointer';
-        img.style.transition = 'transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)';
-        img.draggable = false;
-
-        if (isSelected) {
-          img.style.animation = 'markerSpringBounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
-          img.style.transform = 'scale(1.25)';
-        } else if (sos.status === 'ACTIVE') {
-          img.style.animation = 'sosMarkerPulse 1.8s ease-in-out infinite';
-        }
-
-        const wrapper = createCenteredMarkerWrapper(img, 48, 48);
-
-        const marker = new markerLib.AdvancedMarkerElement({
-          map,
-          position: { lat: sos.coordinates![0], lng: sos.coordinates![1] },
-          content: wrapper,
-          title: `${sos.userName} — ${sos.status}`,
-          zIndex: isSelected ? 999 : sos.status === 'ACTIVE' ? 10 : 5,
-        });
-
-        marker.addListener('click', () => {
-          handleMarkerClick(sos.id, sos.coordinates);
-        });
-
-        img.addEventListener('mouseenter', () => {
-          if (selectedSosId !== sos.id && selectedSosId !== sos.rawId) {
-            img.style.transform = 'scale(1.25)';
-          }
-        });
-        img.addEventListener('mouseleave', () => {
-          if (selectedSosId !== sos.id && selectedSosId !== sos.rawId) {
-            img.style.transform = 'scale(1)';
-          }
-        });
-
-        markersRef.current.set(key, marker);
-        currentKeys.delete(key);
-      }
-    });
-
-    // 2. Render HQ Markers (only if showHeadquarters is enabled)
-    if (showHeadquarters) {
-      headquarters.forEach((hq, idx) => {
-        const key = `hq-${hq.id}`;
-        const isSelected = selectedHqId === hq.id;
-        const coords = hq.coordinates || parseHqCoords(hq.location, idx);
-
-        if (markersRef.current.has(key)) {
-          const existing = markersRef.current.get(key)!;
-          const wrapper = existing.content as HTMLElement;
-          const img = (wrapper.tagName === 'IMG' ? wrapper : wrapper.querySelector('img')) as HTMLImageElement;
-          img.src = buildHqMarkerSvg(hq.status, isSelected);
-          existing.zIndex = isSelected ? 999 : 8;
-
-          if (isSelected) {
-            img.style.animation = 'markerSpringBounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
-            img.style.transform = 'scale(1.25)';
-          } else {
-            img.style.animation = 'none';
-            img.style.transform = 'scale(1)';
-          }
-          currentKeys.delete(key);
-        } else {
-          const img = document.createElement('img');
-          img.src = buildHqMarkerSvg(hq.status, isSelected);
-          img.style.cursor = 'pointer';
-          img.style.transition = 'transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)';
-          img.draggable = false;
-
-          if (isSelected) {
-            img.style.animation = 'markerSpringBounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
-            img.style.transform = 'scale(1.25)';
-          }
-
-          const wrapper = createCenteredMarkerWrapper(img, 52, 52);
-
-          const marker = new markerLib.AdvancedMarkerElement({
-            map,
-            position: { lat: coords[0], lng: coords[1] },
-            content: wrapper,
-            title: `[Headquarters] ${hq.name} (${hq.status})`,
-            zIndex: isSelected ? 999 : 8,
-          });
-
-          marker.addListener('click', () => {
-            if (onHqMarkerClick) {
-              onHqMarkerClick(hq.id);
-            } else if (onMarkerClick) {
-              onMarkerClick(hq.id);
-            }
-            animateSmoothZoom(coords[0], coords[1], 15);
-          });
-
-          img.addEventListener('mouseenter', () => {
-            if (selectedHqId !== hq.id) img.style.transform = 'scale(1.25)';
-          });
-          img.addEventListener('mouseleave', () => {
-            if (selectedHqId !== hq.id) img.style.transform = 'scale(1)';
-          });
-
-          markersRef.current.set(key, marker);
-          currentKeys.delete(key);
-        }
-      });
-    }
-
-    // 3. Remove stale markers
-    currentKeys.forEach(key => {
-      const stale = markersRef.current.get(key);
-      if (stale) { stale.map = null; markersRef.current.delete(key); }
-    });
-  }, [
-    map,
-    markerLib,
-    sosEvents,
-    headquarters,
-    showHeadquarters,
-    selectedSosId,
-    selectedHqId,
-    onMarkerClick,
-    onHqMarkerClick,
-    handleMarkerClick,
-    isReady,
-    animateSmoothZoom
-  ]);
-
-  // Render 10–15 km Hexagonal Zone Grid Overlays around Headquarters
-  useEffect(() => {
-    if (!map || !isReady || !mapsLib) return;
-
-    if (!showHeadquarters) {
-      hexPolygonsRef.current.forEach(poly => poly.setMap(null));
-      hexPolygonsRef.current.clear();
-      return;
-    }
-
-    const activeKeys = new Set<string>();
-
-    headquarters.forEach((hq, idx) => {
-      const coords = hq.coordinates || parseHqCoords(hq.location, idx);
-      const hexCells = generateHqHexHoneycomb(
-        hq.id,
-        hq.name,
-        { lat: coords[0], lng: coords[1] },
-        12.0
-      );
-
-      hexCells.forEach((cell) => {
-        const key = cell.id;
-        activeKeys.add(key);
-
-        const strokeColor = '#38BDF8';
-        const strokeOpacity = 0.90;
-        const strokeWeight = 2.5;
-        const fillColor = '#000000';
-        const fillOpacity = 0.0;
-
-        if (hexPolygonsRef.current.has(key)) {
-          const polygon = hexPolygonsRef.current.get(key)!;
-          polygon.setOptions({
-            strokeColor,
-            strokeOpacity,
-            strokeWeight,
-            fillColor,
-            fillOpacity,
-            clickable: false,
-          });
-        } else {
-          const PolygonClass = mapsLib.Polygon || (typeof google !== 'undefined' && google.maps?.Polygon);
-          if (PolygonClass) {
-            const polygon = new PolygonClass({
-              paths: cell.path,
-              strokeColor,
-              strokeOpacity: 0.90,
-              strokeWeight: 2.5,
-              fillColor,
-              fillOpacity: 0.0,
-              clickable: false,
-              map,
-            });
-
-            hexPolygonsRef.current.set(key, polygon);
-          }
-        }
-      });
-    });
-
-    // Remove stale hex polygons
-    hexPolygonsRef.current.forEach((poly, key) => {
-      if (!activeKeys.has(key)) {
-        poly.setMap(null);
-        hexPolygonsRef.current.delete(key);
-      }
-    });
-  }, [map, isReady, mapsLib, showHeadquarters, headquarters, sosEvents, animateSmoothZoom]);
-
-  // Render Detour Overlays (Origin, Destination, Red blocked direct line, Green Strands safe route)
-  useEffect(() => {
-    if (!map || !markerLib || !mapsLib || !isReady) return;
-
-    // 1. Detour Origin Pin
-    if (detourOrigin) {
-      if (!detourOriginMarkerRef.current) {
-        const img = document.createElement('img');
-        img.src = buildDetourPinSvg('A', '#0EA5E9');
-        img.style.width = '36px';
-        img.style.height = '46px';
-        const marker = new markerLib.AdvancedMarkerElement({
-          map,
-          position: { lat: detourOrigin[0], lng: detourOrigin[1] },
-          content: img,
-          title: 'Detour Origin',
-          zIndex: 4000
-        });
-        detourOriginMarkerRef.current = marker;
-      } else {
-        detourOriginMarkerRef.current.position = { lat: detourOrigin[0], lng: detourOrigin[1] };
-      }
-    } else if (detourOriginMarkerRef.current) {
-      detourOriginMarkerRef.current.map = null;
-      detourOriginMarkerRef.current = null;
-    }
-
-    // 2. Detour Destination Pin
-    if (detourDest) {
-      if (!detourDestMarkerRef.current) {
-        const img = document.createElement('img');
-        img.src = buildDetourPinSvg('B', '#F59E0B');
-        img.style.width = '36px';
-        img.style.height = '46px';
-        const marker = new markerLib.AdvancedMarkerElement({
-          map,
-          position: { lat: detourDest[0], lng: detourDest[1] },
-          content: img,
-          title: 'Detour Destination',
-          zIndex: 4000
-        });
-        detourDestMarkerRef.current = marker;
-      } else {
-        detourDestMarkerRef.current.position = { lat: detourDest[0], lng: detourDest[1] };
-      }
-    } else if (detourDestMarkerRef.current) {
-      detourDestMarkerRef.current.map = null;
-      detourDestMarkerRef.current = null;
-    }
-
-    // 3. Direct Blocked Route (Dashed Red Line)
-    if (detourOrigin && detourDest) {
-      const PolylineClass = mapsLib.Polyline || (typeof google !== 'undefined' && google.maps?.Polyline);
-      if (PolylineClass) {
-        if (!detourBlockedLineRef.current) {
-          const line = new PolylineClass({
-            path: [
-              { lat: detourOrigin[0], lng: detourOrigin[1] },
-              { lat: detourDest[0], lng: detourDest[1] }
-            ],
-            strokeColor: '#EF4444',
-            strokeOpacity: 0.7,
-            strokeWeight: 3,
-            map
-          });
-          detourBlockedLineRef.current = line;
-        } else {
-          detourBlockedLineRef.current.setPath([
-            { lat: detourOrigin[0], lng: detourOrigin[1] },
-            { lat: detourDest[0], lng: detourDest[1] }
-          ]);
-        }
-      }
-    } else if (detourBlockedLineRef.current) {
-      detourBlockedLineRef.current.setMap(null);
-      detourBlockedLineRef.current = null;
-    }
-
-    // 4. Safe Strands Detour Polyline (Glowing Green)
-    if (detourResult?.recommendedRouteGeoJson?.coordinates) {
-      const coords = detourResult.recommendedRouteGeoJson.coordinates;
-      const safePath: google.maps.LatLngLiteral[] = coords.map((c: number[]) => ({
-        lat: Number(c[1]),
-        lng: Number(c[0])
-      }));
-
-      const PolylineClass = mapsLib.Polyline || (typeof google !== 'undefined' && google.maps?.Polyline);
-      if (PolylineClass && safePath.length > 1) {
-        if (!detourSafePolylineRef.current) {
-          const polyline = new PolylineClass({
-            path: safePath,
-            strokeColor: '#22C55E',
-            strokeOpacity: 0.95,
-            strokeWeight: 5,
-            zIndex: 3500,
-            map
-          });
-          detourSafePolylineRef.current = polyline;
-        } else {
-          detourSafePolylineRef.current.setPath(safePath);
-        }
-
-        // Fit bounds to show entire safe detour
-        const bounds = new google.maps.LatLngBounds();
-        safePath.forEach(pt => bounds.extend(pt));
-        map.fitBounds(bounds, { top: 70, right: 70, bottom: 70, left: 70 });
-      }
-    } else if (detourSafePolylineRef.current) {
-      detourSafePolylineRef.current.setMap(null);
-      detourSafePolylineRef.current = null;
-    }
-  }, [map, markerLib, mapsLib, isReady, detourOrigin, detourDest, detourResult]);
-
-  // Render / Update Tactical Route Overlay & Sequence Badges
-  useEffect(() => {
-    if (!map || !markerLib || !isReady) return;
-
-    if (directionsRendererRef.current) {
-      directionsRendererRef.current.setMap(null);
-      directionsRendererRef.current = null;
-    }
-    if (polylineRef.current) {
-      polylineRef.current.setMap(null);
-      polylineRef.current = null;
-    }
-    if (originMarkerRef.current) {
-      originMarkerRef.current.map = null;
-      originMarkerRef.current = null;
-    }
-    stepMarkersRef.current.forEach(m => { m.map = null; });
-    stepMarkersRef.current.clear();
-
-    if (
-      !optimizedRouteData ||
-      !optimizedRouteData.optimizedRoute ||
-      !Array.isArray(optimizedRouteData.optimizedRoute) ||
-      optimizedRouteData.optimizedRoute.length === 0
-    ) {
-      return;
-    }
-
-    const pathPoints: google.maps.LatLngLiteral[] = [];
-
-    const getPt = (loc: any): google.maps.LatLngLiteral | null => {
-      if (!loc) return null;
-      if (typeof loc === 'object') {
-        const lat = Number(loc.lat ?? loc.latitude);
-        const lng = Number(loc.lng ?? loc.longitude);
-        if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) return { lat, lng };
-        if (Array.isArray(loc.coordinates) && loc.coordinates.length === 2) {
-          const lngC = Number(loc.coordinates[0]);
-          const latC = Number(loc.coordinates[1]);
-          if (!isNaN(latC) && !isNaN(lngC) && latC !== 0 && lngC !== 0) return { lat: latC, lng: lngC };
-        }
-      }
-      return null;
-    };
-
-    const origPt = getPt(optimizedRouteData.origin?.location);
-    if (origPt) pathPoints.push(origPt);
-
-    optimizedRouteData.optimizedRoute.forEach((step: any) => {
-      const pt = getPt(step.location);
-      if (pt) pathPoints.push(pt);
-    });
-
-    if (pathPoints.length < 2) return;
-
-    let routePath: google.maps.LatLng[] | google.maps.LatLngLiteral[] = [];
-    let isRealRoad = false;
-
-    if (
-      optimizedRouteData.encodedPolyline &&
-      typeof optimizedRouteData.encodedPolyline === 'string' &&
-      geometryLib?.encoding
-    ) {
-      routePath = geometryLib.encoding.decodePath(optimizedRouteData.encodedPolyline);
-      isRealRoad = true;
-    } else {
-      routePath = pathPoints;
-    }
-
-    if (routePath.length < 2) return;
-
-    const PolylineClass = mapsLib?.Polyline || (typeof google !== 'undefined' && google.maps?.Polyline);
-    if (PolylineClass) {
-      const arrowSymbol = typeof google !== 'undefined' && google.maps?.SymbolPath ? {
-        path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-        strokeColor: '#10B981',
-        fillColor: '#10B981',
-        fillOpacity: 1,
-        scale: 3
-      } : undefined;
-
-      const polyline = new PolylineClass({
-        path: routePath,
-        geodesic: !isRealRoad,
-        strokeColor: '#10B981',
-        strokeOpacity: 0.95,
-        strokeWeight: 6,
-        icons: arrowSymbol ? [{ icon: arrowSymbol, offset: '30%', repeat: '120px' }] : undefined,
-        map
-      });
-      polylineRef.current = polyline;
-    }
-
-    if (origPt && markerLib) {
-      const originName = optimizedRouteData.origin?.name || 'Headquarters';
-
-      const hqSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="56" height="64" viewBox="0 0 56 64">
-        <defs>
-          <filter id="hq-shadow" x="-20%" y="-10%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000" flood-opacity="0.5"/>
-          </filter>
-        </defs>
-        <path d="M28 3 C14 3 4 13.5 4 27 C4 43 28 61 28 61 C28 61 52 43 52 27 C52 13.5 42 3 28 3Z"
-          fill="#0E7490" stroke="#2DD4BF" stroke-width="2.5" filter="url(#hq-shadow)"/>
-        <path d="M20 38V24a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v14M16 38h24M25 30h6M25 34h6M25 37h6"
-          fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>`;
-
-      const hqEl = document.createElement('div');
-      hqEl.style.cssText = 'cursor:default; filter:drop-shadow(0 0 8px #2DD4BF66);';
-      hqEl.innerHTML = hqSvg;
-
-      const label = document.createElement('div');
-      label.style.cssText = [
-        'position:absolute', 'bottom:-20px', 'left:50%', 'transform:translateX(-50%)',
-        'white-space:nowrap', 'font-size:9px', 'font-weight:700', 'letter-spacing:0.06em',
-        'color:#2DD4BF', 'font-family:monospace',
-        'background:rgba(13,20,36,0.88)', 'padding:2px 5px',
-        'border-radius:3px', 'border:1px solid #2DD4BF33', 'pointer-events:none'
-      ].join(';');
-      label.textContent = originName.toUpperCase();
-
-      const wrapper = document.createElement('div');
-      wrapper.style.cssText = 'position:relative; display:inline-block;';
-      wrapper.appendChild(hqEl);
-      wrapper.appendChild(label);
-
-      const originMarker = new markerLib.AdvancedMarkerElement({
-        map,
-        position: origPt,
-        content: wrapper,
-        title: `Route Origin: ${originName}`,
-        zIndex: 3000
-      });
-      originMarkerRef.current = originMarker;
-    }
-
-    optimizedRouteData.optimizedRoute.forEach((step: any) => {
-      const pt = getPt(step.location);
-      if (!pt) return;
-      const key = `step-${step.step}`;
-
-      const img = document.createElement('img');
-      img.src = buildStepMarkerSvg(step.step, step.category);
-      img.style.cursor = 'pointer';
-
-      const wrapper = createCenteredMarkerWrapper(img, 44, 44);
-
-      const marker = new markerLib.AdvancedMarkerElement({
-        map,
-        position: pt,
-        content: wrapper,
-        title: `Step ${step.step}: ${step.category} (${step.distanceFromPrevKm} km)`,
-        zIndex: 2000 + step.step
-      });
-
-      stepMarkersRef.current.set(key, marker);
-    });
-
-    const bounds = new google.maps.LatLngBounds();
-    pathPoints.forEach(pt => bounds.extend(pt));
-    map.fitBounds(bounds, { top: 80, right: 80, bottom: 80, left: 80 });
-  }, [map, markerLib, routesLib, mapsLib, geometryLib, isReady, optimizedRouteData]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (directionsRendererRef.current) {
-        directionsRendererRef.current.setMap(null);
-        directionsRendererRef.current = null;
-      }
-      if (polylineRef.current) {
-        polylineRef.current.setMap(null);
-        polylineRef.current = null;
-      }
-      if (originMarkerRef.current) {
-        originMarkerRef.current.map = null;
-        originMarkerRef.current = null;
-      }
-      if (detourBlockedLineRef.current) {
-        detourBlockedLineRef.current.setMap(null);
-        detourBlockedLineRef.current = null;
-      }
-      if (detourSafePolylineRef.current) {
-        detourSafePolylineRef.current.setMap(null);
-        detourSafePolylineRef.current = null;
-      }
-      if (detourOriginMarkerRef.current) {
-        detourOriginMarkerRef.current.map = null;
-        detourOriginMarkerRef.current = null;
-      }
-      if (detourDestMarkerRef.current) {
-        detourDestMarkerRef.current.map = null;
-        detourDestMarkerRef.current = null;
-      }
-      stepMarkersRef.current.forEach(m => { m.map = null; });
-      stepMarkersRef.current.clear();
-      markersRef.current.forEach(m => { m.map = null; });
-      markersRef.current.clear();
-      hexPolygonsRef.current.forEach(p => p.setMap(null));
-      hexPolygonsRef.current.clear();
-      hydroCirclesRef.current.forEach(c => c.setMap(null));
-      hydroCirclesRef.current.clear();
-    };
-  }, []);
-
-  return null;
+function createGeoJsonCircle(centerLng: number, centerLat: number, radiusKm: number, points = 32): [number, number][] {
+  const coords: [number, number][] = [];
+  const distanceX = radiusKm / (111.32 * Math.cos((centerLat * Math.PI) / 180));
+  const distanceY = radiusKm / 110.574;
+
+  for (let i = 0; i < points; i++) {
+    const theta = (i / points) * (2 * Math.PI);
+    const x = distanceX * Math.cos(theta);
+    const y = distanceY * Math.sin(theta);
+    coords.push([centerLng + x, centerLat + y]);
+  }
+  coords.push(coords[0]);
+  return coords;
 }
 
-// Loading Skeleton
-function MapSkeleton() {
-  return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0d1424] gap-3 z-10 pointer-events-none">
-      <div
-        className="absolute inset-0 opacity-20"
-        style={{
-          backgroundImage: `linear-gradient(to right, #1E293B 1px, transparent 1px), linear-gradient(to bottom, #1E293B 1px, transparent 1px)`,
-          backgroundSize: '40px 40px',
-        }}
-      />
-      <div className="relative z-10 flex flex-col items-center gap-3">
-        <Loader2 className="w-8 h-8 text-brandTeal animate-spin" />
-        <p className="text-xs font-semibold text-secondaryText font-mono tracking-wide">
-          Loading Geo-Spatial Engine&hellip;
-        </p>
-        <p className="text-[11px] text-mutedGray">Binding Google Maps SDK</p>
-      </div>
-    </div>
-  );
+// Helpers for safe GeoJSON source and layer registration
+function upsertGeoJsonSource(map: maplibregl.Map, id: string, data: GeoJSON.GeoJSON) {
+  const source = map.getSource(id) as maplibregl.GeoJSONSource | undefined;
+  if (source) {
+    source.setData(data);
+  } else {
+    map.addSource(id, { type: 'geojson', data });
+  }
 }
 
 // HUD Overlays
@@ -1188,8 +381,8 @@ function MapHUD({
   );
 }
 
-// Missing API Key Fallback
-function NoApiKeyFallback() {
+// Fallback when AWS Location API Key is missing
+function NoApiKeyFallback({ region, mapName }: { region: string; mapName: string }) {
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0d1424] gap-3">
       <div
@@ -1199,26 +392,24 @@ function NoApiKeyFallback() {
           backgroundSize: '40px 40px',
         }}
       />
-      <div className="relative z-10 flex flex-col items-center text-center px-6 py-5 bg-surfaceCard/90 backdrop-blur-md border border-hairlineBright rounded-2xl shadow-panel-dark max-w-xs">
+      <div className="relative z-10 flex flex-col items-center text-center px-6 py-5 bg-surfaceCard/90 backdrop-blur-md border border-hairlineBright rounded-2xl shadow-panel-dark max-w-sm">
         <div className="w-10 h-10 rounded-full bg-alertRedBg border border-alertRedBorder flex items-center justify-center mb-3">
           <span className="text-alertRed text-lg font-bold">!</span>
         </div>
-        <p className="text-sm font-bold text-primaryText mb-1">API Key Missing</p>
-        <p className="text-[11px] text-mutedGray leading-relaxed">
-          Set{' '}
-          <code className="font-mono text-brandTeal bg-brandTealDark px-1 rounded">
-            NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
-          </code>{' '}
-          in your <code className="font-mono text-mutedGray">.env</code> file to enable the live map.
+        <p className="text-sm font-bold text-primaryText mb-1">Amazon Location Service Key Required</p>
+        <p className="text-[11px] text-mutedGray leading-relaxed mb-2">
+          Set <code className="font-mono text-brandTeal bg-brandTealDark px-1 rounded">NEXT_PUBLIC_AWS_LOCATION_API_KEY</code> in your <code className="font-mono text-mutedGray">.env</code> file.
         </p>
+        <div className="text-[10px] font-mono text-secondaryText bg-surfaceElevated px-2.5 py-1.5 rounded-lg border border-hairline w-full text-left space-y-0.5">
+          <div>Region: <span className="text-brandTeal font-bold">{region}</span></div>
+          <div>Map Resource: <span className="text-brandTeal font-bold">{mapName}</span></div>
+        </div>
       </div>
     </div>
   );
 }
 
-// Main SosLiveMap Component
-const DEFAULT_CENTER = { lat: 20.5937, lng: 78.9629 }; // India center fallback
-
+// Main SosLiveMap Component powered by Amazon Location Service & MapLibre GL
 export function SosLiveMap({
   sosEvents = [],
   headquarters = [],
@@ -1236,16 +427,675 @@ export function SosLiveMap({
   onMarkerClick,
   onMarkerDoubleClick,
   onHqMarkerClick,
-  onOpenCrisisCommand
 }: SosLiveMapProps) {
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<maplibregl.Map | null>(null);
   const [mapReady, setMapReady] = useState(false);
-  const handleMapReady = useCallback(() => setMapReady(true), []);
 
-  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '';
+  // Markers Refs
+  const markersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
+  const originMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const stepMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
+  const detourOriginMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const detourDestMarkerRef = useRef<maplibregl.Marker | null>(null);
 
-  if (!apiKey) {
-    return <NoApiKeyFallback />;
-  }
+  const hasAutoFit = useRef(false);
+  const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const region = process.env.NEXT_PUBLIC_AWS_REGION || 'ap-south-1';
+  const mapName = process.env.NEXT_PUBLIC_AWS_LOCATION_MAP_NAME || 'default';
+  const apiKey = process.env.NEXT_PUBLIC_AWS_LOCATION_API_KEY || '';
+
+  // 1. Initialize MapLibre GL with Amazon Location Service
+  useEffect(() => {
+    if (!mapContainerRef.current || mapRef.current) return;
+
+    // Build style URL: Amazon Location Service endpoint with API Key
+    // If no API key is set yet, provide a dark fallback basemap so the app remains interactive in local testing
+    const styleUrl = apiKey
+      ? `https://maps.geo.${region}.amazonaws.com/maps/v0/maps/${mapName}/style-descriptor?key=${apiKey}`
+      : 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
+
+    const map = new maplibregl.Map({
+      container: mapContainerRef.current,
+      center: [72.8258, 19.4564], // [lng, lat] Virar / Mumbai corridor default
+      zoom: 11,
+      style: styleUrl,
+      transformRequest: (url: string) => {
+        if (apiKey && url.includes('amazonaws.com') && !url.includes('key=')) {
+          return { url: `${url}${url.includes('?') ? '&' : '?'}key=${apiKey}` };
+        }
+        return { url };
+      },
+    });
+
+    map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-right');
+
+    map.on('load', () => {
+      mapRef.current = map;
+      setMapReady(true);
+    });
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+      setMapReady(false);
+    };
+  }, [apiKey, region, mapName]);
+
+  // 2. Detour Mode Map Click Listener
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    const handleClick = (e: maplibregl.MapMouseEvent) => {
+      if (detourMode && onDetourMapClick) {
+        onDetourMapClick(e.lngLat.lat, e.lngLat.lng);
+      }
+    };
+
+    map.on('click', handleClick);
+    return () => {
+      map.off('click', handleClick);
+    };
+  }, [mapReady, detourMode, onDetourMapClick]);
+
+  // 3. Smooth Center/Zoom Helper
+  const animateSmoothZoom = useCallback((lat: number, lng: number, targetZoom = 15) => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.flyTo({ center: [lng, lat], zoom: targetZoom, duration: 800 });
+  }, []);
+
+  // 4. Marker Click Handler with Double-Click Simulation
+  const handleMarkerClick = useCallback((id: string, coords?: [number, number]) => {
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+      if (onMarkerDoubleClick) onMarkerDoubleClick(id);
+    } else {
+      clickTimerRef.current = setTimeout(() => {
+        clickTimerRef.current = null;
+        if (onMarkerClick) onMarkerClick(id);
+        if (coords) {
+          animateSmoothZoom(coords[0], coords[1], 15);
+        }
+      }, 250);
+    }
+  }, [onMarkerClick, onMarkerDoubleClick, animateSmoothZoom]);
+
+  // 5. Auto-fit bounds on initial data load
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || hasAutoFit.current) return;
+
+    const validEvents = sosEvents.filter(
+      e => e.coordinates && e.status !== 'RESOLVED'
+    );
+    const validHqs = headquarters.map((hq, idx) => ({
+      ...hq,
+      coords: hq.coordinates || parseHqCoords(hq.location, idx)
+    }));
+
+    if (validEvents.length === 0 && validHqs.length === 0) return;
+
+    const bounds = new maplibregl.LngLatBounds();
+    validEvents.forEach(e => {
+      if (e.coordinates) {
+        bounds.extend([e.coordinates[1], e.coordinates[0]]);
+      }
+    });
+
+    if (showHeadquarters) {
+      validHqs.forEach(hq => {
+        bounds.extend([hq.coords[1], hq.coords[0]]);
+      });
+    }
+
+    if (!bounds.isEmpty()) {
+      map.fitBounds(bounds, { padding: 60, maxZoom: 15 });
+      hasAutoFit.current = true;
+    }
+  }, [mapReady, sosEvents, headquarters, showHeadquarters]);
+
+  // 6. Synchronize SOS & Headquarters Markers
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    const currentKeys = new Set(markersRef.current.keys());
+
+    // 6.1 Render SOS Markers
+    const validEvents = sosEvents.filter(
+      e => e.coordinates && (e.status === 'ACTIVE' || e.status === 'ACKNOWLEDGED')
+    );
+
+    validEvents.forEach(sos => {
+      const key = `sos-${sos.rawId || sos.id}`;
+      const isSelected = selectedSosId === sos.id || selectedSosId === sos.rawId;
+      const [lat, lng] = sos.coordinates!;
+
+      if (markersRef.current.has(key)) {
+        const marker = markersRef.current.get(key)!;
+        marker.setLngLat([lng, lat]);
+        const img = marker.getElement().querySelector('img') as HTMLImageElement | null;
+        if (img) {
+          img.src = buildMarkerSvg(sos, isSelected);
+          if (isSelected) {
+            img.style.transform = 'scale(1.25)';
+          } else {
+            img.style.transform = 'scale(1)';
+          }
+        }
+        currentKeys.delete(key);
+      } else {
+        const el = document.createElement('div');
+        el.style.cssText = 'width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; cursor: pointer;';
+
+        const img = document.createElement('img');
+        img.src = buildMarkerSvg(sos, isSelected);
+        img.style.width = '48px';
+        img.style.height = '48px';
+        img.style.transition = 'transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)';
+        img.draggable = false;
+
+        if (isSelected) {
+          img.style.transform = 'scale(1.25)';
+        }
+
+        img.addEventListener('mouseenter', () => {
+          if (selectedSosId !== sos.id && selectedSosId !== sos.rawId) {
+            img.style.transform = 'scale(1.25)';
+          }
+        });
+        img.addEventListener('mouseleave', () => {
+          if (selectedSosId !== sos.id && selectedSosId !== sos.rawId) {
+            img.style.transform = 'scale(1)';
+          }
+        });
+
+        el.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          handleMarkerClick(sos.id, sos.coordinates);
+        });
+
+        el.appendChild(img);
+
+        const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+          .setLngLat([lng, lat])
+          .addTo(map);
+
+        markersRef.current.set(key, marker);
+        currentKeys.delete(key);
+      }
+    });
+
+    // 6.2 Render HQ Markers (only if showHeadquarters is enabled)
+    if (showHeadquarters) {
+      headquarters.forEach((hq, idx) => {
+        const key = `hq-${hq.id}`;
+        const isSelected = selectedHqId === hq.id;
+        const coords = hq.coordinates || parseHqCoords(hq.location, idx);
+        const [lat, lng] = coords;
+
+        if (markersRef.current.has(key)) {
+          const marker = markersRef.current.get(key)!;
+          marker.setLngLat([lng, lat]);
+          const img = marker.getElement().querySelector('img') as HTMLImageElement | null;
+          if (img) {
+            img.src = buildHqMarkerSvg(hq.status, isSelected);
+            if (isSelected) {
+              img.style.transform = 'scale(1.25)';
+            } else {
+              img.style.transform = 'scale(1)';
+            }
+          }
+          currentKeys.delete(key);
+        } else {
+          const el = document.createElement('div');
+          el.style.cssText = 'width: 52px; height: 52px; display: flex; align-items: center; justify-content: center; cursor: pointer;';
+
+          const img = document.createElement('img');
+          img.src = buildHqMarkerSvg(hq.status, isSelected);
+          img.style.width = '52px';
+          img.style.height = '52px';
+          img.style.transition = 'transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)';
+          img.draggable = false;
+
+          if (isSelected) {
+            img.style.transform = 'scale(1.25)';
+          }
+
+          img.addEventListener('mouseenter', () => {
+            if (selectedHqId !== hq.id) img.style.transform = 'scale(1.25)';
+          });
+          img.addEventListener('mouseleave', () => {
+            if (selectedHqId !== hq.id) img.style.transform = 'scale(1)';
+          });
+
+          el.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            if (onHqMarkerClick) {
+              onHqMarkerClick(hq.id);
+            } else if (onMarkerClick) {
+              onMarkerClick(hq.id);
+            }
+            animateSmoothZoom(lat, lng, 15);
+          });
+
+          el.appendChild(img);
+
+          const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+            .setLngLat([lng, lat])
+            .addTo(map);
+
+          markersRef.current.set(key, marker);
+          currentKeys.delete(key);
+        }
+      });
+    }
+
+    // 6.3 Cleanup Stale Markers
+    currentKeys.forEach(key => {
+      const stale = markersRef.current.get(key);
+      if (stale) {
+        stale.remove();
+        markersRef.current.delete(key);
+      }
+    });
+  }, [
+    mapReady,
+    sosEvents,
+    headquarters,
+    showHeadquarters,
+    selectedSosId,
+    selectedHqId,
+    onMarkerClick,
+    onHqMarkerClick,
+    handleMarkerClick,
+    animateSmoothZoom
+  ]);
+
+  // 7. Render 10–15 km Hexagonal Zone Overlays around Headquarters (Outline only, Click-through)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    if (!showHeadquarters || headquarters.length === 0) {
+      if (map.getSource('hq-hex-zones')) {
+        upsertGeoJsonSource(map, 'hq-hex-zones', { type: 'FeatureCollection', features: [] });
+      }
+      return;
+    }
+
+    const hexFeatures: GeoJSON.Feature[] = [];
+
+    headquarters.forEach((hq, idx) => {
+      const coords = hq.coordinates || parseHqCoords(hq.location, idx);
+      const hexCells = generateHqHexHoneycomb(
+        hq.id,
+        hq.name,
+        { lat: coords[0], lng: coords[1] },
+        12.0
+      );
+
+      hexCells.forEach(cell => {
+        // Build closed polygon ring [lng, lat]
+        const ring: [number, number][] = [
+          ...cell.path.map(p => [p.lng, p.lat] as [number, number]),
+          [cell.path[0].lng, cell.path[0].lat] as [number, number]
+        ];
+
+        hexFeatures.push({
+          type: 'Feature',
+          properties: { id: cell.id, name: cell.name },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [ring]
+          }
+        });
+      });
+    });
+
+    const hexGeoJson: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: hexFeatures
+    };
+
+    upsertGeoJsonSource(map, 'hq-hex-zones', hexGeoJson);
+
+    if (!map.getLayer('hq-hex-zones-outline')) {
+      map.addLayer({
+        id: 'hq-hex-zones-outline',
+        type: 'line',
+        source: 'hq-hex-zones',
+        paint: {
+          'line-color': '#38BDF8',
+          'line-width': 2.5,
+          'line-opacity': 0.90
+        }
+      });
+    }
+  }, [mapReady, showHeadquarters, headquarters]);
+
+  // 8. Render Hydro Hazard Depth Circles
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    const floodEvents = sosEvents.filter(
+      e => (e.status === 'ACTIVE' || e.status === 'ACKNOWLEDGED') &&
+        ((e.waterDepthCm ?? 0) > 0 || ['WATERLOGGING', 'SUBMERGED_UNDERPASS'].includes(e.severity)) &&
+        e.coordinates
+    );
+
+    const circleFeatures: GeoJSON.Feature[] = floodEvents.map(e => {
+      const depth = e.waterDepthCm ?? 30;
+      const radiusKm = Math.min(1.5, Math.max(0.4, (depth / 100) * 0.8));
+      const ring = createGeoJsonCircle(e.coordinates![1], e.coordinates![0], radiusKm);
+
+      return {
+        type: 'Feature',
+        properties: { id: e.id, depth },
+        geometry: {
+          type: 'Polygon',
+          coordinates: [ring]
+        }
+      };
+    });
+
+    const hydroGeoJson: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: circleFeatures
+    };
+
+    upsertGeoJsonSource(map, 'hydro-hazards', hydroGeoJson);
+
+    if (!map.getLayer('hydro-hazards-fill')) {
+      map.addLayer({
+        id: 'hydro-hazards-fill',
+        type: 'fill',
+        source: 'hydro-hazards',
+        paint: {
+          'fill-color': '#0284C7',
+          'fill-opacity': 0.22
+        }
+      });
+    }
+    if (!map.getLayer('hydro-hazards-outline')) {
+      map.addLayer({
+        id: 'hydro-hazards-outline',
+        type: 'line',
+        source: 'hydro-hazards',
+        paint: {
+          'line-color': '#38BDF8',
+          'line-width': 1.8,
+          'line-opacity': 0.75
+        }
+      });
+    }
+  }, [mapReady, sosEvents]);
+
+  // 9. Render Detour Simulation Overlays (Origin A, Dest B, Red Direct Line, Safe Green Bypass)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    // 9.1 Origin Marker Pin (A)
+    if (detourOrigin) {
+      const [lat, lng] = detourOrigin;
+      if (!detourOriginMarkerRef.current) {
+        const img = document.createElement('img');
+        img.src = buildDetourPinSvg('A', '#10B981');
+        img.style.width = '36px';
+        img.style.height = '46px';
+        const marker = new maplibregl.Marker({ element: img, anchor: 'bottom' })
+          .setLngLat([lng, lat])
+          .addTo(map);
+        detourOriginMarkerRef.current = marker;
+      } else {
+        detourOriginMarkerRef.current.setLngLat([lng, lat]);
+      }
+    } else if (detourOriginMarkerRef.current) {
+      detourOriginMarkerRef.current.remove();
+      detourOriginMarkerRef.current = null;
+    }
+
+    // 9.2 Destination Marker Pin (B)
+    if (detourDest) {
+      const [lat, lng] = detourDest;
+      if (!detourDestMarkerRef.current) {
+        const img = document.createElement('img');
+        img.src = buildDetourPinSvg('B', '#F59E0B');
+        img.style.width = '36px';
+        img.style.height = '46px';
+        const marker = new maplibregl.Marker({ element: img, anchor: 'bottom' })
+          .setLngLat([lng, lat])
+          .addTo(map);
+        detourDestMarkerRef.current = marker;
+      } else {
+        detourDestMarkerRef.current.setLngLat([lng, lat]);
+      }
+    } else if (detourDestMarkerRef.current) {
+      detourDestMarkerRef.current.remove();
+      detourDestMarkerRef.current = null;
+    }
+
+    // 9.3 Blocked Direct Route (Dashed Red Line)
+    const blockedFeatures: GeoJSON.Feature[] = [];
+    if (detourOrigin && detourDest) {
+      blockedFeatures.push({
+        type: 'Feature',
+        properties: {},
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [detourOrigin[1], detourOrigin[0]],
+            [detourDest[1], detourDest[0]]
+          ]
+        }
+      });
+    }
+
+    upsertGeoJsonSource(map, 'detour-blocked-line', {
+      type: 'FeatureCollection',
+      features: blockedFeatures
+    });
+
+    if (!map.getLayer('detour-blocked-line-layer')) {
+      map.addLayer({
+        id: 'detour-blocked-line-layer',
+        type: 'line',
+        source: 'detour-blocked-line',
+        paint: {
+          'line-color': '#EF4444',
+          'line-width': 3,
+          'line-dasharray': [2, 2],
+          'line-opacity': 0.85
+        }
+      });
+    }
+
+    // 9.4 Safe Detour Line (Glowing Green)
+    const safeFeatures: GeoJSON.Feature[] = [];
+    if (detourResult?.recommendedRouteGeoJson?.coordinates) {
+      const rawCoords = detourResult.recommendedRouteGeoJson.coordinates;
+      safeFeatures.push({
+        type: 'Feature',
+        properties: {},
+        geometry: {
+          type: 'LineString',
+          coordinates: rawCoords // Already [lng, lat]
+        }
+      });
+
+      // Fit bounds to show entire safe detour
+      const bounds = new maplibregl.LngLatBounds();
+      rawCoords.forEach((pt: number[]) => bounds.extend([pt[0], pt[1]]));
+      map.fitBounds(bounds, { padding: 70 });
+    }
+
+    upsertGeoJsonSource(map, 'detour-safe-line', {
+      type: 'FeatureCollection',
+      features: safeFeatures
+    });
+
+    if (!map.getLayer('detour-safe-line-layer')) {
+      map.addLayer({
+        id: 'detour-safe-line-layer',
+        type: 'line',
+        source: 'detour-safe-line',
+        paint: {
+          'line-color': '#22C55E',
+          'line-width': 5,
+          'line-opacity': 0.95
+        }
+      });
+    }
+  }, [mapReady, detourOrigin, detourDest, detourResult]);
+
+  // 10. Render Tactical Multi-Factor Route Matrix & Waypoint Pins
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    // Clear previous step & origin markers
+    if (originMarkerRef.current) {
+      originMarkerRef.current.remove();
+      originMarkerRef.current = null;
+    }
+    stepMarkersRef.current.forEach(m => m.remove());
+    stepMarkersRef.current.clear();
+
+    if (
+      !optimizedRouteData ||
+      !Array.isArray(optimizedRouteData.optimizedRoute) ||
+      optimizedRouteData.optimizedRoute.length === 0
+    ) {
+      if (map.getSource('tactical-route')) {
+        upsertGeoJsonSource(map, 'tactical-route', { type: 'FeatureCollection', features: [] });
+      }
+      return;
+    }
+
+    const pathPoints: [number, number][] = [];
+
+    const getPt = (loc: any): [number, number] | null => {
+      if (!loc) return null;
+      if (typeof loc === 'object') {
+        const lat = Number(loc.lat ?? loc.latitude);
+        const lng = Number(loc.lng ?? loc.longitude);
+        if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) return [lng, lat];
+        if (Array.isArray(loc.coordinates) && loc.coordinates.length === 2) {
+          const lngC = Number(loc.coordinates[0]);
+          const latC = Number(loc.coordinates[1]);
+          if (!isNaN(latC) && !isNaN(lngC) && latC !== 0 && lngC !== 0) return [lngC, latC];
+        }
+      }
+      return null;
+    };
+
+    const origPt = getPt(optimizedRouteData.origin?.location);
+    if (origPt) pathPoints.push(origPt);
+
+    optimizedRouteData.optimizedRoute.forEach((step: any) => {
+      const pt = getPt(step.location);
+      if (pt) pathPoints.push(pt);
+    });
+
+    let routeCoordinates: [number, number][] = [];
+    if (
+      optimizedRouteData.encodedPolyline &&
+      typeof optimizedRouteData.encodedPolyline === 'string'
+    ) {
+      routeCoordinates = decodePolyline(optimizedRouteData.encodedPolyline);
+    } else {
+      routeCoordinates = pathPoints;
+    }
+
+    const routeFeatures: GeoJSON.Feature[] = [];
+    if (routeCoordinates.length >= 2) {
+      routeFeatures.push({
+        type: 'Feature',
+        properties: {},
+        geometry: {
+          type: 'LineString',
+          coordinates: routeCoordinates
+        }
+      });
+    }
+
+    upsertGeoJsonSource(map, 'tactical-route', {
+      type: 'FeatureCollection',
+      features: routeFeatures
+    });
+
+    if (!map.getLayer('tactical-route-layer')) {
+      map.addLayer({
+        id: 'tactical-route-layer',
+        type: 'line',
+        source: 'tactical-route',
+        paint: {
+          'line-color': '#10B981',
+          'line-width': 5,
+          'line-opacity': 0.95
+        }
+      });
+    }
+
+    // Place Origin Headquarters Pin
+    if (origPt) {
+      const originName = optimizedRouteData.origin?.name || 'Headquarters';
+      const hqSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="56" height="64" viewBox="0 0 56 64">
+        <path d="M28 3 C14 3 4 13.5 4 27 C4 43 28 61 28 61 C28 61 52 43 52 27 C52 13.5 42 3 28 3Z"
+          fill="#0E7490" stroke="#2DD4BF" stroke-width="2.5"/>
+        <path d="M20 38V24a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v14M16 38h24M25 30h6M25 34h6M25 37h6"
+          fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>`;
+
+      const el = document.createElement('div');
+      el.style.cssText = 'display:flex; flex-direction:column; align-items:center; cursor:default; filter:drop-shadow(0 0 8px #2DD4BF66);';
+      el.innerHTML = hqSvg;
+
+      const label = document.createElement('div');
+      label.style.cssText = 'margin-top:2px; font-size:10px; font-weight:800; font-family:monospace; background:#0B132B; color:#2DD4BF; border:1px solid #2DD4BF88; border-radius:4px; padding:1px 6px; white-space:nowrap;';
+      label.textContent = `HQ: ${originName}`;
+      el.appendChild(label);
+
+      const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+        .setLngLat(origPt)
+        .addTo(map);
+
+      originMarkerRef.current = marker;
+    }
+
+    // Place Step Waypoint Pins (1, 2, 3...)
+    optimizedRouteData.optimizedRoute.forEach((step: any) => {
+      const pt = getPt(step.location);
+      if (!pt) return;
+
+      const el = document.createElement('div');
+      el.style.cssText = 'cursor:pointer;';
+      const img = document.createElement('img');
+      img.src = buildStepMarkerSvg(step.step, step.category || 'REGULAR');
+      img.style.width = '44px';
+      img.style.height = '44px';
+      el.appendChild(img);
+
+      const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+        .setLngLat(pt)
+        .addTo(map);
+
+      stepMarkersRef.current.set(`step-${step.step}`, marker);
+    });
+
+    // Auto-fit route bounds
+    if (pathPoints.length > 0) {
+      const bounds = new maplibregl.LngLatBounds();
+      pathPoints.forEach(p => bounds.extend(p));
+      map.fitBounds(bounds, { padding: 80, maxZoom: 15 });
+    }
+  }, [mapReady, optimizedRouteData]);
 
   return (
     <>
@@ -1262,40 +1112,16 @@ export function SosLiveMap({
         }
       `}</style>
 
-      <APIProvider apiKey={apiKey} libraries={['marker', 'routes', 'maps', 'geometry']}>
-        {!mapReady && <MapSkeleton />}
+      <div className="absolute inset-0 w-full h-full overflow-hidden">
+        <div ref={mapContainerRef} className="w-full h-full" />
 
-        <Map
-          defaultCenter={DEFAULT_CENTER}
-          defaultZoom={6}
-          mapId="zerogrid-sos-map"
-          styles={DARK_MAP_STYLE}
-          disableDefaultUI={false}
-          gestureHandling="greedy"
-          clickableIcons={false}
-          className="absolute inset-0 w-full h-full"
-          style={{ width: '100%', height: '100%' }}
-          reuseMaps
-        >
-          <MapController
-            sosEvents={sosEvents}
-            headquarters={headquarters}
-            showHeadquarters={showHeadquarters}
-            selectedSosId={selectedSosId}
-            selectedHqId={selectedHqId}
-            optimizedRouteData={optimizedRouteData}
-            detourMode={detourMode}
-            detourOrigin={detourOrigin}
-            detourDest={detourDest}
-            detourResult={detourResult}
-            isDetourLoading={isDetourLoading}
-            onDetourMapClick={onDetourMapClick}
-            onMarkerClick={onMarkerClick}
-            onMarkerDoubleClick={onMarkerDoubleClick}
-            onHqMarkerClick={onHqMarkerClick}
-            onMapReady={handleMapReady}
-          />
-        </Map>
+        {!mapReady && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0d1424] gap-2">
+            <Loader2 className="w-8 h-8 text-brandTeal animate-spin" />
+            <p className="text-xs font-semibold text-primaryText">Initializing Amazon Location Service Map...</p>
+            <p className="text-[11px] text-mutedGray">Binding MapLibre GL • Region {region}</p>
+          </div>
+        )}
 
         {mapReady && (
           <MapHUD
@@ -1310,7 +1136,7 @@ export function SosLiveMap({
             onToggleDetour={onToggleDetour}
           />
         )}
-      </APIProvider>
+      </div>
     </>
   );
 }
