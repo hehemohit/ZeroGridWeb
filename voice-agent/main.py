@@ -63,7 +63,7 @@ class AutonomousOrchestrateRequest(BaseModel):
     incident_type: Optional[str] = "SUBSTATION_WATER_INGRESS"
     severity: Optional[str] = "CRITICAL"
     coordinates: Optional[List[float]] = None
-    water_depth_cm: Optional[float] = 45.0
+    water_depth_cm: Optional[float] = 0.0
     affected_node_id: Optional[str] = None
     message: Optional[str] = None
     telemetry: Optional[Dict[str, Any]] = None
@@ -74,7 +74,7 @@ class NegotiationPipelineRequest(BaseModel):
     incident_type: Optional[str] = "SUBSTATION_WATER_INGRESS"
     severity: Optional[str] = "CRITICAL"
     coordinates: Optional[List[float]] = None
-    water_depth_cm: Optional[float] = 45.0
+    water_depth_cm: Optional[float] = 0.0
     affected_node_id: Optional[str] = None
     message: Optional[str] = None
     telemetry: Optional[Dict[str, Any]] = None
@@ -102,7 +102,7 @@ class UniversalMicroserviceRequest(BaseModel):
     incident_type: Optional[str] = "SUBSTATION_WATER_INGRESS"
     severity: Optional[str] = "CRITICAL"
     coordinates: Optional[List[float]] = None
-    water_depth_cm: Optional[float] = 45.0
+    water_depth_cm: Optional[float] = 0.0
     affected_node_id: Optional[str] = None
     message: Optional[str] = None
     telemetry: Optional[Dict[str, Any]] = None
@@ -317,7 +317,7 @@ async def handle_universal_gateway(payload: UniversalMicroserviceRequest):
             incident_type=payload.incident_type or "SUBSTATION_WATER_INGRESS",
             severity=payload.severity or "CRITICAL",
             coordinates=payload.coordinates,
-            water_depth_cm=payload.water_depth_cm or 45.0,
+            water_depth_cm=payload.water_depth_cm if payload.water_depth_cm is not None else 0.0,
             affected_node_id=payload.affected_node_id,
             message=payload.message,
             telemetry=payload.telemetry
@@ -330,7 +330,7 @@ async def handle_universal_gateway(payload: UniversalMicroserviceRequest):
             incident_type=payload.incident_type or "SUBSTATION_WATER_INGRESS",
             severity=payload.severity or "CRITICAL",
             coordinates=payload.coordinates,
-            water_depth_cm=payload.water_depth_cm or 45.0,
+            water_depth_cm=payload.water_depth_cm if payload.water_depth_cm is not None else 0.0,
             affected_node_id=payload.affected_node_id,
             message=payload.message,
             telemetry=payload.telemetry

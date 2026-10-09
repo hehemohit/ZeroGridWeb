@@ -55,7 +55,7 @@ function triggerAgentZeroOrchestrationAsync(sosEvent, io) {
           incident_id: sosEvent._id.toString(),
           step: 'CONFIDENCE_CALCULATION',
           status: 'RUNNING',
-          summary: `Evaluating alert credibility against flood zone (Depth: ${sosEvent.waterDepthCm || 0}cm)...`,
+          summary: `Evaluating alert credibility against zone telemetry (Category: ${sosEvent.category || 'EMERGENCY'}, Depth: ${sosEvent.waterDepthCm ?? 0}cm)...`,
           timestamp: new Date().toISOString()
         });
       }
@@ -64,13 +64,13 @@ function triggerAgentZeroOrchestrationAsync(sosEvent, io) {
         action: 'flow',
         incident_id: sosEvent._id.toString(),
         incident_type: sosEvent.category || 'SUBSTATION_WATER_INGRESS',
-        severity: (sosEvent.waterDepthCm || 0) >= 40 ? 'CRITICAL' : 'HIGH',
+        severity: (sosEvent.waterDepthCm ?? 0) >= 40 ? 'CRITICAL' : 'HIGH',
         coordinates: [resolvedNode.coordinates[0], resolvedNode.coordinates[1]],
-        water_depth_cm: sosEvent.waterDepthCm || 35,
+        water_depth_cm: sosEvent.waterDepthCm !== undefined && sosEvent.waterDepthCm !== null ? Number(sosEvent.waterDepthCm) : 0,
         affected_node_id: resolvedNode.nodeId,
         message:
           sosEvent.message ||
-          `Emergency incident logged at coordinates [${coordinates.join(', ')}] with water depth ${sosEvent.waterDepthCm || 0}cm.`,
+          `Emergency incident logged at coordinates [${coordinates.join(', ')}] with category ${sosEvent.category || 'EMERGENCY'} (water depth: ${sosEvent.waterDepthCm ?? 0}cm).`,
         telemetry: {
           batteryPercentage: sosEvent.batteryPercentage,
           transport: sosEvent.transport,
@@ -111,7 +111,7 @@ function triggerAgentZeroOrchestrationAsync(sosEvent, io) {
         console.log(`[Agent Zero Webhook] Synthesizing autonomous local directive for SOS ${sosEvent._id}...`);
         directive = {
           executive_summary: `Autonomous response dispatched to grid sector ${resolvedNode.name || 'Virar East'}. Immediate squad mobilized for civilian protection.`,
-          overall_threat_score: (sosEvent.waterDepthCm || 0) >= 40 ? 88 : 74,
+          overall_threat_score: (sosEvent.waterDepthCm ?? 0) >= 40 ? 88 : 74,
           hospital_lifeline_protocol: 'Ensure hospital secondary feeder priority on nearest substation busbar.',
           immediate_automated_actions: ['Isolate local feeder breakers', 'Notify area emergency squad'],
           field_operations_checklist: ['Deploy field rescue squad to reported coordinates', 'Linemen verify zero-voltage boundary']
