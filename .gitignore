@@ -1,0 +1,47 @@
+# ZeroGrid Root .gitignore
+# Prevents accidental commits of secrets, local configs, and build artifacts
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment variables & secrets
+.env
+.env.*
+.env.local
+.env.*.local
+!.env.example
+*.pem
+*.key
+*.cert
+*.crt
+serviceAccount*.json
+
+# Build outputs
+.next/
+out/
+build/
+dist/
+coverage/
+
+# Python virtual environment & cache
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE & OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*

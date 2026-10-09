@@ -17,7 +17,7 @@ const bcrypt = require('bcrypt');
 const User = require('../models/User');
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/zerogrid';
-const DEFAULT_PASSWORD = 'ZeroGrid@Admin2026!';
+const DEFAULT_PASSWORD = process.env.ADMIN_SEED_PASSWORD || 'ZeroGrid@Admin2026!';
 
 const FLOOD_NAMES = [
   'Aarav Sharma (Flood Lead)', 'Rohan Kulkarni', 'Priya Deshmukh', 'Vikram Patil', 'Ananya Joshi',

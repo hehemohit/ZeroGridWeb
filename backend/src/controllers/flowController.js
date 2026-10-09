@@ -9,9 +9,7 @@ const tideService = require('../utils/tideService');
 const weatherService = require('../utils/weatherService');
 const { resolveNearestGridNode } = require('../utils/gridNodeResolver');
 
-const VOICE_AGENT_LAMBDA_URL =
-  process.env.VOICE_AGENT_LAMBDA_URL ||
-  'https://j6uweuhbak.execute-api.ap-south-1.amazonaws.com/default/voice-agent-microservice';
+const VOICE_AGENT_LAMBDA_URL = process.env.VOICE_AGENT_LAMBDA_URL || '';
 const VOICE_AGENT_LOCAL_URL = process.env.VOICE_AGENT_LOCAL_URL || 'http://localhost:8000';
 
 /**
@@ -221,12 +219,14 @@ async function executeFlowPipeline(req, res) {
     let pipelineResponse = null;
     let targetEndpoint = null;
 
-    // Check Local microservice first, then Lambda
+    // Check Local microservice first, then Lambda if configured
     const candidateUrls = [
       `${VOICE_AGENT_LOCAL_URL}/api/negotiation-pipeline`,
-      `${VOICE_AGENT_LAMBDA_URL}/api/negotiation-pipeline`,
-      VOICE_AGENT_LAMBDA_URL // fallback universal POST
-    ];
+      ...(VOICE_AGENT_LAMBDA_URL ? [
+        `${VOICE_AGENT_LAMBDA_URL}/api/negotiation-pipeline`,
+        VOICE_AGENT_LAMBDA_URL
+      ] : [])
+    ].filter(Boolean);
 
     for (const url of candidateUrls) {
       try {

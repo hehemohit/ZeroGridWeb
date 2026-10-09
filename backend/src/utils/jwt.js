@@ -1,6 +1,13 @@
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'zerogrid_jwt_fallback_secret_key';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('FATAL: JWT_SECRET environment variable must be set in production!');
+  }
+  console.warn('[SECURITY WARNING] JWT_SECRET is not set in environment. Using development fallback.');
+}
+const SECRET_KEY = JWT_SECRET || 'zerogrid_jwt_dev_fallback_secret_key';
 const JWT_EXPIRY = '7d';
 
 /**
@@ -14,7 +21,7 @@ function signJwt(user) {
     role: user.role
   };
 
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRY });
+  return jwt.sign(payload, SECRET_KEY, { expiresIn: JWT_EXPIRY });
 }
 
 /**
@@ -24,7 +31,7 @@ function signJwt(user) {
  * @returns {Object} Decoded payload
  */
 function verifyJwt(token) {
-  return jwt.verify(token, JWT_SECRET);
+  return jwt.verify(token, SECRET_KEY);
 }
 
 module.exports = {
