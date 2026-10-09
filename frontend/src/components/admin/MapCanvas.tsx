@@ -20,6 +20,7 @@ export function MapCanvas({
   systemStats,
   sosEvents = [],
   headquarters = [],
+  showHeadquarters = true,
   selectedSosId,
   selectedHqId,
   optimizedRouteData,
@@ -82,7 +83,7 @@ export function MapCanvas({
               <span>RAM: {systemStats.memory.rssMb} MB</span>
             </span>
           )}
-          {headquarters.length > 0 && (
+          {showHeadquarters && headquarters.length > 0 && (
             <span className="font-mono text-[11px] text-brandTeal bg-brandTeal/10 px-2 py-0.5 rounded border border-brandTeal/20 font-semibold">
               HQs: {headquarters.length}
             </span>
@@ -98,6 +99,7 @@ export function MapCanvas({
         <SosLiveMap
           sosEvents={sosEvents}
           headquarters={headquarters}
+          showHeadquarters={showHeadquarters}
           selectedSosId={selectedSosId}
           selectedHqId={selectedHqId}
           optimizedRouteData={optimizedRouteData}
@@ -191,7 +193,7 @@ export function MapCanvas({
         )}
 
         {/* Mini Quick-Info Card Overlay for Selected HQ */}
-        {selectedHq && !selectedSos && (
+        {showHeadquarters && selectedHq && !selectedSos && (
           <div className="absolute bottom-3 right-3 z-30 max-w-[280px] sm:max-w-sm w-full bg-surfaceCard/95 backdrop-blur-md border border-brandTeal/30 shadow-2xl rounded-2xl p-3.5 space-y-2.5 animate-fade-in text-primaryText">
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-2.5 min-w-0">

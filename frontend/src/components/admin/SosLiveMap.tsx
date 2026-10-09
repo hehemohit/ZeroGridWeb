@@ -27,6 +27,8 @@ export interface SosLiveMapProps {
   sosEvents?: SosEventUI[];
   /** Registered Headquarters list */
   headquarters?: HqMarkerItem[];
+  /** Whether to render Headquarters markers & hexagonal zones (defaults to true) */
+  showHeadquarters?: boolean;
   /** The currently selected SOS id (display id or rawId) */
   selectedSosId?: string | null;
   /** The currently selected HQ id */
@@ -73,17 +75,87 @@ const DARK_MAP_STYLE: google.maps.MapTypeStyle[] = [
   { featureType: 'water', elementType: 'labels.text.stroke', stylers: [{ color: '#071016' }] },
 ];
 
-function buildMarkerSvg(status: 'ACTIVE' | 'ACKNOWLEDGED', isSelected: boolean): string {
-  const isActive = status === 'ACTIVE';
-  const outerColor = isActive ? '#EF4444' : '#2DD4BF';
-  const innerColor = isActive ? '#FF6B6B' : '#14B8A6';
-  const ringOpacity = isSelected ? '0.45' : '0.20';
+function buildMarkerSvg(sos: SosEventUI, isSelected: boolean): string {
+  const isAck = sos.status === 'ACKNOWLEDGED';
+  const categoryUpper = (sos.category || '').toUpperCase();
+  const severityUpper = (sos.severity || '').toUpperCase();
+  const msgLower = (sos.message || '').toLowerCase();
+  const depth = sos.waterDepthCm ?? 0;
+
+  // Determine crisis domain
+  const isFlood =
+    categoryUpper.includes('FLOOD') ||
+    categoryUpper.includes('WATER') ||
+    severityUpper.includes('WATERLOGGING') ||
+    severityUpper.includes('SUBMERGED') ||
+    severityUpper.includes('DRAINAGE') ||
+    depth > 0 ||
+    msgLower.includes('flood') ||
+    msgLower.includes('water') ||
+    msgLower.includes('submerged');
+
+  const isPowerGrid =
+    categoryUpper.includes('GRID') ||
+    categoryUpper.includes('ELECTRICAL') ||
+    categoryUpper.includes('POWER') ||
+    categoryUpper.includes('FALLEN') ||
+    msgLower.includes('grid') ||
+    msgLower.includes('transformer') ||
+    msgLower.includes('substation') ||
+    msgLower.includes('breaker') ||
+    msgLower.includes('feeder');
+
+  const isHeatwave =
+    categoryUpper.includes('HEAT') ||
+    severityUpper.includes('HEAT') ||
+    msgLower.includes('heat') ||
+    msgLower.includes('temperature');
+
+  let outerColor = '#EF4444'; // Red default (Medical / Trapped / Critical)
+  let innerColor = '#F87171';
+  let coreColor = '#DC2626';
+  let glyphSvg = '';
+
+  if (isAck) {
+    outerColor = '#10B981'; // Emerald
+    innerColor = '#34D399';
+    coreColor = '#059669';
+    // Shield Checkmark Glyph
+    glyphSvg = `<path d="M19 24l3.5 3.5 6.5-6.5" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`;
+  } else if (isFlood) {
+    outerColor = '#0284C7'; // Hydro Blue
+    innerColor = '#38BDF8';
+    coreColor = '#0369A1';
+    // Water Droplet Glyph
+    glyphSvg = `<path d="M24 16 C24 16 18 23.5 18 26.5 C18 29.8 20.7 32.5 24 32.5 C27.3 32.5 30 29.8 30 26.5 C30 23.5 24 16 24 16 Z" fill="#FFFFFF"/>`;
+  } else if (isPowerGrid) {
+    outerColor = '#F59E0B'; // Voltage Gold / Amber
+    innerColor = '#FDE047';
+    coreColor = '#D97706';
+    // Lightning Bolt Glyph
+    glyphSvg = `<polygon points="25,15 18,24 23,24 21,33 29,22 24,22" fill="#FFFFFF"/>`;
+  } else if (isHeatwave) {
+    outerColor = '#EA580C'; // Flame Orange
+    innerColor = '#FB923C';
+    coreColor = '#C2410C';
+    // Sun / Thermal Flame Glyph
+    glyphSvg = `<circle cx="24" cy="24" r="4.5" fill="#FFFFFF"/><path d="M24 15v2M24 31v2M15 24h2M31 24h2M17.5 17.5l1.5 1.5M29 29l1.5 1.5M17.5 30.5l1.5-1.5M29 19l1.5-1.5" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>`;
+  } else {
+    // Critical Alert / Medical / Emergency SOS (Red)
+    outerColor = '#EF4444';
+    innerColor = '#F87171';
+    coreColor = '#DC2626';
+    // Emergency Cross Glyph
+    glyphSvg = `<path d="M22 17h4v14h-4zM17 22h14v4h-14z" fill="#FFFFFF"/>`;
+  }
+
+  const ringOpacity = isSelected ? '0.45' : '0.22';
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
   <circle cx="24" cy="24" r="22" fill="${outerColor}" opacity="${ringOpacity}" />
-  <circle cx="24" cy="24" r="13" fill="${outerColor}" />
-  <circle cx="24" cy="24" r="6" fill="${innerColor}" />
-  ${isSelected ? `<circle cx="24" cy="24" r="21" fill="none" stroke="${outerColor}" stroke-width="2" opacity="0.8"/>` : ''}
+  <circle cx="24" cy="24" r="14" fill="${coreColor}" stroke="${innerColor}" stroke-width="2.2" />
+  ${glyphSvg}
+  ${isSelected ? `<circle cx="24" cy="24" r="23" fill="none" stroke="${innerColor}" stroke-width="2.5" opacity="0.95"/>` : ''}
 </svg>`;
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
@@ -190,6 +262,7 @@ interface MapControllerProps extends SosLiveMapProps {
 function MapController({
   sosEvents = [],
   headquarters = [],
+  showHeadquarters = true,
   selectedSosId,
   selectedHqId,
   optimizedRouteData,
@@ -276,21 +349,23 @@ function MapController({
       }
     });
 
-    validHqs.forEach(hq => {
-      bounds.extend({ lat: hq.coords[0], lng: hq.coords[1] });
-    });
+    if (showHeadquarters) {
+      validHqs.forEach(hq => {
+        bounds.extend({ lat: hq.coords[0], lng: hq.coords[1] });
+      });
+    }
 
-    if (validEvents.length === 1 && validHqs.length === 0 && validEvents[0].coordinates) {
+    if (validEvents.length === 1 && (!showHeadquarters || validHqs.length === 0) && validEvents[0].coordinates) {
       map.setCenter({ lat: validEvents[0].coordinates[0], lng: validEvents[0].coordinates[1] });
       map.setZoom(14);
-    } else if (validHqs.length === 1 && validEvents.length === 0) {
+    } else if (showHeadquarters && validHqs.length === 1 && validEvents.length === 0) {
       map.setCenter({ lat: validHqs[0].coords[0], lng: validHqs[0].coords[1] });
       map.setZoom(14);
-    } else {
+    } else if (!bounds.isEmpty()) {
       map.fitBounds(bounds, { top: 60, right: 40, bottom: 60, left: 40 });
     }
     hasAutoFit.current = true;
-  }, [map, isReady, sosEvents, headquarters]);
+  }, [map, isReady, sosEvents, headquarters, showHeadquarters]);
 
   // Smooth Zoom Animation Helper
   const animateSmoothZoom = useCallback(
@@ -432,7 +507,7 @@ function MapController({
         const existing = markersRef.current.get(key)!;
         const wrapper = existing.content as HTMLElement;
         const img = (wrapper.tagName === 'IMG' ? wrapper : wrapper.querySelector('img')) as HTMLImageElement;
-        img.src = buildMarkerSvg(sos.status as 'ACTIVE' | 'ACKNOWLEDGED', isSelected);
+        img.src = buildMarkerSvg(sos, isSelected);
         existing.zIndex = isSelected ? 999 : sos.status === 'ACTIVE' ? 10 : 5;
 
         if (isSelected) {
@@ -448,7 +523,7 @@ function MapController({
         currentKeys.delete(key);
       } else {
         const img = document.createElement('img');
-        img.src = buildMarkerSvg(sos.status as 'ACTIVE' | 'ACKNOWLEDGED', isSelected);
+        img.src = buildMarkerSvg(sos, isSelected);
         img.style.cursor = 'pointer';
         img.style.transition = 'transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)';
         img.draggable = false;
@@ -490,69 +565,71 @@ function MapController({
       }
     });
 
-    // 2. Render HQ Markers
-    headquarters.forEach((hq, idx) => {
-      const key = `hq-${hq.id}`;
-      const isSelected = selectedHqId === hq.id;
-      const coords = hq.coordinates || parseHqCoords(hq.location, idx);
+    // 2. Render HQ Markers (only if showHeadquarters is enabled)
+    if (showHeadquarters) {
+      headquarters.forEach((hq, idx) => {
+        const key = `hq-${hq.id}`;
+        const isSelected = selectedHqId === hq.id;
+        const coords = hq.coordinates || parseHqCoords(hq.location, idx);
 
-      if (markersRef.current.has(key)) {
-        const existing = markersRef.current.get(key)!;
-        const wrapper = existing.content as HTMLElement;
-        const img = (wrapper.tagName === 'IMG' ? wrapper : wrapper.querySelector('img')) as HTMLImageElement;
-        img.src = buildHqMarkerSvg(hq.status, isSelected);
-        existing.zIndex = isSelected ? 999 : 8;
+        if (markersRef.current.has(key)) {
+          const existing = markersRef.current.get(key)!;
+          const wrapper = existing.content as HTMLElement;
+          const img = (wrapper.tagName === 'IMG' ? wrapper : wrapper.querySelector('img')) as HTMLImageElement;
+          img.src = buildHqMarkerSvg(hq.status, isSelected);
+          existing.zIndex = isSelected ? 999 : 8;
 
-        if (isSelected) {
-          img.style.animation = 'markerSpringBounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
-          img.style.transform = 'scale(1.25)';
-        } else {
-          img.style.animation = 'none';
-          img.style.transform = 'scale(1)';
-        }
-        currentKeys.delete(key);
-      } else {
-        const img = document.createElement('img');
-        img.src = buildHqMarkerSvg(hq.status, isSelected);
-        img.style.cursor = 'pointer';
-        img.style.transition = 'transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)';
-        img.draggable = false;
-
-        if (isSelected) {
-          img.style.animation = 'markerSpringBounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
-          img.style.transform = 'scale(1.25)';
-        }
-
-        const wrapper = createCenteredMarkerWrapper(img, 52, 52);
-
-        const marker = new markerLib.AdvancedMarkerElement({
-          map,
-          position: { lat: coords[0], lng: coords[1] },
-          content: wrapper,
-          title: `[Headquarters] ${hq.name} (${hq.status})`,
-          zIndex: isSelected ? 999 : 8,
-        });
-
-        marker.addListener('click', () => {
-          if (onHqMarkerClick) {
-            onHqMarkerClick(hq.id);
-          } else if (onMarkerClick) {
-            onMarkerClick(hq.id);
+          if (isSelected) {
+            img.style.animation = 'markerSpringBounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+            img.style.transform = 'scale(1.25)';
+          } else {
+            img.style.animation = 'none';
+            img.style.transform = 'scale(1)';
           }
-          animateSmoothZoom(coords[0], coords[1], 15);
-        });
+          currentKeys.delete(key);
+        } else {
+          const img = document.createElement('img');
+          img.src = buildHqMarkerSvg(hq.status, isSelected);
+          img.style.cursor = 'pointer';
+          img.style.transition = 'transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)';
+          img.draggable = false;
 
-        img.addEventListener('mouseenter', () => {
-          if (selectedHqId !== hq.id) img.style.transform = 'scale(1.25)';
-        });
-        img.addEventListener('mouseleave', () => {
-          if (selectedHqId !== hq.id) img.style.transform = 'scale(1)';
-        });
+          if (isSelected) {
+            img.style.animation = 'markerSpringBounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+            img.style.transform = 'scale(1.25)';
+          }
 
-        markersRef.current.set(key, marker);
-        currentKeys.delete(key);
-      }
-    });
+          const wrapper = createCenteredMarkerWrapper(img, 52, 52);
+
+          const marker = new markerLib.AdvancedMarkerElement({
+            map,
+            position: { lat: coords[0], lng: coords[1] },
+            content: wrapper,
+            title: `[Headquarters] ${hq.name} (${hq.status})`,
+            zIndex: isSelected ? 999 : 8,
+          });
+
+          marker.addListener('click', () => {
+            if (onHqMarkerClick) {
+              onHqMarkerClick(hq.id);
+            } else if (onMarkerClick) {
+              onMarkerClick(hq.id);
+            }
+            animateSmoothZoom(coords[0], coords[1], 15);
+          });
+
+          img.addEventListener('mouseenter', () => {
+            if (selectedHqId !== hq.id) img.style.transform = 'scale(1.25)';
+          });
+          img.addEventListener('mouseleave', () => {
+            if (selectedHqId !== hq.id) img.style.transform = 'scale(1)';
+          });
+
+          markersRef.current.set(key, marker);
+          currentKeys.delete(key);
+        }
+      });
+    }
 
     // 3. Remove stale markers
     currentKeys.forEach(key => {
@@ -564,6 +641,7 @@ function MapController({
     markerLib,
     sosEvents,
     headquarters,
+    showHeadquarters,
     selectedSosId,
     selectedHqId,
     onMarkerClick,
@@ -576,6 +654,12 @@ function MapController({
   // Render 10–15 km Hexagonal Zone Grid Overlays around Headquarters
   useEffect(() => {
     if (!map || !isReady || !mapsLib) return;
+
+    if (!showHeadquarters) {
+      hexPolygonsRef.current.forEach(poly => poly.setMap(null));
+      hexPolygonsRef.current.clear();
+      return;
+    }
 
     const activeKeys = new Set<string>();
 
@@ -592,17 +676,21 @@ function MapController({
         const key = cell.id;
         activeKeys.add(key);
 
-        const strokeColor = '#FACC15';
-        const fillColor = '#EAB308';
-        const fillOpacity = 0.30;
+        const strokeColor = '#38BDF8';
+        const strokeOpacity = 0.90;
+        const strokeWeight = 2.5;
+        const fillColor = '#000000';
+        const fillOpacity = 0.0;
 
         if (hexPolygonsRef.current.has(key)) {
           const polygon = hexPolygonsRef.current.get(key)!;
           polygon.setOptions({
             strokeColor,
+            strokeOpacity,
+            strokeWeight,
             fillColor,
             fillOpacity,
-            strokeWeight: 2.0,
+            clickable: false,
           });
         } else {
           const PolygonClass = mapsLib.Polygon || (typeof google !== 'undefined' && google.maps?.Polygon);
@@ -610,16 +698,12 @@ function MapController({
             const polygon = new PolygonClass({
               paths: cell.path,
               strokeColor,
-              strokeOpacity: 0.85,
-              strokeWeight: 2.0,
+              strokeOpacity: 0.90,
+              strokeWeight: 2.5,
               fillColor,
-              fillOpacity,
-              clickable: true,
+              fillOpacity: 0.0,
+              clickable: false,
               map,
-            });
-
-            polygon.addListener('click', () => {
-              animateSmoothZoom(cell.center.lat, cell.center.lng, 14);
             });
 
             hexPolygonsRef.current.set(key, polygon);
@@ -635,7 +719,7 @@ function MapController({
         hexPolygonsRef.current.delete(key);
       }
     });
-  }, [map, isReady, mapsLib, headquarters, sosEvents, animateSmoothZoom]);
+  }, [map, isReady, mapsLib, showHeadquarters, headquarters, sosEvents, animateSmoothZoom]);
 
   // Render Detour Overlays (Origin, Destination, Red blocked direct line, Green Strands safe route)
   useEffect(() => {
@@ -985,6 +1069,7 @@ function MapSkeleton() {
 function MapHUD({
   sosEvents = [],
   headquarters = [],
+  showHeadquarters = true,
   detourMode = false,
   isDetourLoading = false,
   detourOrigin = null,
@@ -994,6 +1079,7 @@ function MapHUD({
 }: {
   sosEvents?: SosEventUI[];
   headquarters?: HqMarkerItem[];
+  showHeadquarters?: boolean;
   detourMode?: boolean;
   isDetourLoading?: boolean;
   detourOrigin?: [number, number] | null;
@@ -1012,7 +1098,7 @@ function MapHUD({
   return (
     <div className="absolute top-3 left-3 z-20 flex flex-col gap-1.5 pointer-events-none">
       <div className="flex flex-wrap items-center gap-1.5">
-        {hqActiveCount > 0 && (
+        {showHeadquarters && hqActiveCount > 0 && (
           <div className="flex items-center gap-2 px-3 py-1.5 bg-surfaceCard/90 backdrop-blur-md border border-brandTeal/30 rounded-full text-[11px] shadow-glow-teal">
             <Building2 className="w-3.5 h-3.5 text-brandTeal" />
             <span className="font-bold text-brandTeal font-mono">{hqActiveCount}</span>
@@ -1136,6 +1222,7 @@ const DEFAULT_CENTER = { lat: 20.5937, lng: 78.9629 }; // India center fallback
 export function SosLiveMap({
   sosEvents = [],
   headquarters = [],
+  showHeadquarters = true,
   selectedSosId,
   selectedHqId,
   optimizedRouteData,
@@ -1193,6 +1280,7 @@ export function SosLiveMap({
           <MapController
             sosEvents={sosEvents}
             headquarters={headquarters}
+            showHeadquarters={showHeadquarters}
             selectedSosId={selectedSosId}
             selectedHqId={selectedHqId}
             optimizedRouteData={optimizedRouteData}
@@ -1210,23 +1298,17 @@ export function SosLiveMap({
         </Map>
 
         {mapReady && (
-          <>
-            <MapHUD
-              sosEvents={sosEvents}
-              headquarters={headquarters}
-              detourMode={detourMode}
-              isDetourLoading={isDetourLoading}
-              detourOrigin={detourOrigin}
-              detourDest={detourDest}
-              detourResult={detourResult}
-              onToggleDetour={onToggleDetour}
-            />
-
-            {/* Top-Right: Atmospheric Coastal Tidal Telemetry Strip */}
-            <div className="absolute top-3 right-3 z-20 pointer-events-auto">
-              <TidalTelemetryStrip onOpenCrisisCommand={onOpenCrisisCommand} />
-            </div>
-          </>
+          <MapHUD
+            sosEvents={sosEvents}
+            headquarters={headquarters}
+            showHeadquarters={showHeadquarters}
+            detourMode={detourMode}
+            isDetourLoading={isDetourLoading}
+            detourOrigin={detourOrigin}
+            detourDest={detourDest}
+            detourResult={detourResult}
+            onToggleDetour={onToggleDetour}
+          />
         )}
       </APIProvider>
     </>

@@ -85,6 +85,7 @@ function mapSosFromBackend(raw: any): SosEventUI {
     role: isAuthority ? 'AUTHORITY' : 'REGULAR',
     status: raw.status || 'ACTIVE',
     severity: raw.category || 'HIGH',
+    category: raw.category || raw.severity || 'SOS',
     location: locStr,
     coordinates: Array.isArray(coords) ? [coords[1], coords[0]] : undefined,
     timestamp: raw.createdAt || new Date().toISOString(),
@@ -613,6 +614,7 @@ const handleToggleDetourMode = useCallback(() => {
 
         {/* UPPER: Geo-Spatial Map Canvas */}
         <MapCanvas
+          showHeadquarters={false}
           activeSosCount={activeSosCount}
           systemStats={systemStats}
           sosEvents={sosEvents.filter(e => e.status === 'ACTIVE' || e.status === 'ACKNOWLEDGED')}

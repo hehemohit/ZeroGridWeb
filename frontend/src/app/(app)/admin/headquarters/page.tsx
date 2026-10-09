@@ -364,6 +364,7 @@ export default function HeadquartersPage() {
 
       {/* Geo-Spatial Telemetry Map Canvas for Headquarters */}
       <MapCanvas
+        showHeadquarters={true}
         activeSosCount={0}
         headquarters={hqs}
         selectedHqId={selectedHqId}

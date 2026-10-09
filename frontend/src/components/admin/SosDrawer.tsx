@@ -50,6 +50,7 @@ export interface SosEventUI {
   role: 'AUTHORITY' | 'REGULAR';
   status: 'ACTIVE' | 'ACKNOWLEDGED' | 'RESOLVED';
   severity: string;
+  category?: string;
   location: string;
   coordinates?: [number, number];
   timestamp: string;
