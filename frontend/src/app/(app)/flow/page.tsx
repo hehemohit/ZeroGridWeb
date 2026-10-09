@@ -83,6 +83,7 @@ export default function FlowTestingPage() {
   const [timelineEvents, setTimelineEvents] = useState<PipelineTimelineEntry[]>([]);
   const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'CHECKPOINT' | 'NEGOTIATION' | 'DIRECTIVE' | 'RAW'>('OVERVIEW');
   const [showConfigDrawer, setShowConfigDrawer] = useState<boolean>(false);
+  const [socketConnected, setSocketConnected] = useState<boolean>(false);
 
   // Active step highlights
   const [stepStatuses, setStepStatuses] = useState<Record<string, StepStatus>>({
@@ -200,10 +201,20 @@ export default function FlowTestingPage() {
   // Connect to Socket.io /sos namespace for live step events
   useEffect(() => {
     const socket = io(`${api.baseUrl}/sos`, {
-      transports: ['websocket', 'polling'],
-      reconnectionAttempts: 5,
+      transports: ['polling', 'websocket'],
+      reconnectionAttempts: 10,
     });
     socketRef.current = socket;
+
+    socket.on('connect', () => {
+      console.log('✅ Flow page connected to Socket.io /sos namespace');
+      setSocketConnected(true);
+    });
+
+    socket.on('disconnect', () => {
+      console.log('⚠️ Flow page disconnected from Socket.io');
+      setSocketConnected(false);
+    });
 
     socket.on('flow:step:update', (data: any) => {
       setTimelineEvents((prev) => [
@@ -266,15 +277,16 @@ export default function FlowTestingPage() {
     socket.on('sos:agent_zero_orchestrated', (data: any) => {
       console.log('⚡ Agent Zero Live Orchestration received:', data);
       if (data.directive) {
+        const allocatedSquads = data.assignedSquad ? [data.assignedSquad] : (data.directive?.assignedSquad ? [data.directive.assignedSquad] : ['TEAM_NDRF_ALPHA']);
         setExecutionResult({
           incident_id: data.sosId,
           status: 'VERIFIED_AND_ASSIGNED',
-          assigned_teams: data.directive.assignedSquad ? [data.directive.assignedSquad] : ['TEAM_NDRF_ALPHA'],
+          assigned_teams: allocatedSquads,
           agent_zero_directive: data.directive,
           sub_agents: data.orchestration?.sub_agents,
           resource_negotiation: {
             rounds_count: 1,
-            assigned_teams: data.directive.assignedSquad ? [data.directive.assignedSquad] : ['TEAM_NDRF_ALPHA']
+            assigned_teams: allocatedSquads
           }
         });
         setStepStatuses({
@@ -457,6 +469,16 @@ export default function FlowTestingPage() {
               </h1>
               <span className="px-2 py-0.5 text-[10px] font-mono font-semibold rounded-full bg-brandTeal/15 text-brandTeal border border-brandTeal/25 uppercase tracking-wider">
                 Multi-Agent Loop
+              </span>
+              <span
+                className={`px-2 py-0.5 text-[10px] font-mono font-semibold rounded-full border uppercase tracking-wider flex items-center gap-1.5 ${
+                  socketConnected
+                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                    : 'bg-amber-500/15 text-amber-400 border-amber-500/30 animate-pulse'
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${socketConnected ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                {socketConnected ? 'Live SOS Stream Active' : 'Connecting to Stream...'}
               </span>
             </div>
             <p className="text-xs text-secondaryText">

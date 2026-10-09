@@ -89,6 +89,9 @@ function mapSosFromBackend(raw: any): SosEventUI {
     message: raw.message || '',
     notes: notesList,
     assignedAdmin: assignedAdminData,
+    assignedSquad: raw.assignedSquad || null,
+    agentZeroAdvisory: raw.agentZeroAdvisory || null,
+    affectedNodeId: raw.affectedNodeId || null,
     waterDepthCm: typeof raw.waterDepthCm === 'number' ? raw.waterDepthCm : 0,
     passability: raw.passability || 'ALL_PASSABLE',
     relayedByMule: Boolean(raw.relayedByMule),
@@ -465,6 +468,52 @@ const handleToggleDetourMode = useCallback(() => {
     }
   };
 
+  const handleAssignSquad = async (id: string, squadId: string | null) => {
+    const targetEvent = sosEvents.find(s => s.id === id || s.rawId === id);
+    if (!targetEvent) return;
+    setActionLoading(true);
+    try {
+      const res = await api.put<{ message: string; sos: any }>(`/api/sos/${targetEvent.rawId || targetEvent.id}/assign-squad`, { squadId });
+      showToast(squadId ? `Tactical Squad [${squadId.replace('TEAM_', '').replace(/_/g, ' ')}] deployed and locked in Redis!` : `Squad unassigned for [${targetEvent.id}].`);
+      await fetchSosEvents();
+      if (res && res.sos) setSelectedSosDetails(mapSosFromBackend(res.sos));
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update squad assignment', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const [isBatchRunning, setIsBatchRunning] = useState(false);
+
+  const handleRunBatchDispatch = async () => {
+    setIsBatchRunning(true);
+    try {
+      const res = await api.post<{
+        success: boolean;
+        totalActive: number;
+        clustersProcessed: number;
+        acknowledgedCount: number;
+        message?: string;
+      }>('/api/admin/sos/batch-dispatch');
+
+      if (res && res.success) {
+        showToast(
+          res.acknowledgedCount > 0
+            ? `Consolidated ${res.totalActive} alerts into ${res.clustersProcessed} tactical cluster(s). All marked ACKNOWLEDGED with squads deployed!`
+            : res.message || 'Batch cycle complete: 0 active alerts awaiting dispatch.'
+        );
+        await fetchSosEvents();
+      } else {
+        showToast(res?.message || 'Batch dispatch encountered an error', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to execute batch dispatch', 'error');
+    } finally {
+      setIsBatchRunning(false);
+    }
+  };
+
   const handlePromoteAdmin = async (userEmail: string, userName: string) => {
     try {
       await api.post('/api/admin/admins', { email: userEmail });
@@ -623,6 +672,25 @@ const handleToggleDetourMode = useCallback(() => {
                 <span className="sm:hidden">Command</span>
                 <span className="hidden md:inline-block text-[9px] bg-brandTeal/20 text-brandTeal px-1 rounded font-mono">
                   AWS STRANDS
+                </span>
+              </button>
+
+              {/* ⚡ 5-Minute Batch Consolidation & Tactical Squad Dispatch */}
+              <button
+                onClick={handleRunBatchDispatch}
+                disabled={isBatchRunning || actionLoading}
+                title="Runs the 5-Minute Autonomous Consolidation Engine: Clusters nearby active alerts, contextualizes root causes, and deploys tactical squads."
+                className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-cyan-500/15 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/25 hover:border-cyan-400 hover:shadow-glow-teal transition-all shadow-sm disabled:opacity-50"
+              >
+                {isBatchRunning ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+                ) : (
+                  <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                )}
+                <span className="hidden sm:inline">5m Batch Dispatch</span>
+                <span className="sm:hidden">Batch</span>
+                <span className="text-[9px] bg-cyan-500/25 text-cyan-200 px-1 py-0.5 rounded font-mono font-bold">
+                  AUTO 5M
                 </span>
               </button>
 
@@ -833,6 +901,25 @@ const handleToggleDetourMode = useCallback(() => {
                               {isAuthority ? 'Authority Node' : 'Regular Node'}
                             </span>
                             <p className="text-[10px] sm:text-[11px] text-mutedGray truncate mt-1">{sos.location}</p>
+
+                            {/* Tactical Squad Tag Badge */}
+                            <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                              {sos.assignedSquad ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold font-mono bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                                  <Shield className="w-2.5 h-2.5 text-cyan-400" />
+                                  <span>{sos.assignedSquad.replace('TEAM_', '').replace(/_/g, ' ')}</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold font-mono bg-surfaceElevated text-mutedGray border border-hairline">
+                                  <span>Squad: Standby</span>
+                                </span>
+                              )}
+                              {typeof sos.waterDepthCm === 'number' && sos.waterDepthCm > 0 && (
+                                <span className="text-[9px] font-mono text-cyan-400 font-semibold">
+                                  💧 {sos.waterDepthCm}cm
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -877,6 +964,7 @@ const handleToggleDetourMode = useCallback(() => {
           onAddNote={handleAddNote}
           onAssignAdmin={handleAssignAdmin}
           onAutoAssignNearest={handleAutoAssignNearestAdmin}
+          onAssignSquad={handleAssignSquad}
           formatTime={formatTime}
         />
       )}

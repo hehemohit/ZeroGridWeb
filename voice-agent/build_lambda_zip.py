@@ -53,9 +53,15 @@ def build_lambda_zip():
         src_path = os.path.join(SCRIPT_DIR, filename)
         if os.path.exists(src_path):
             shutil.copy2(src_path, os.path.join(STAGING_DIR, filename))
-            print(f"    -> Copied {filename}")
         else:
             print(f"    [!] Warning: {filename} not found in {SCRIPT_DIR}")
+
+    # Copy agents/ modular package directory
+    agents_dir = os.path.join(SCRIPT_DIR, "agents")
+    if os.path.exists(agents_dir):
+        dest_agents = os.path.join(STAGING_DIR, "agents")
+        shutil.copytree(agents_dir, dest_agents, dirs_exist_ok=True)
+        print("    -> Copied agents/ modular package")
 
 
     print(f"[*] Compressing package into {ZIP_OUTPUT} ...")

@@ -11,7 +11,8 @@ const {
   clearAllSosEvents,
   optimizeAdminRoute,
   getSystemStats,
-  getSosDossier
+  getSosDossier,
+  triggerBatchDispatch
 } = require('../controllers/adminController');
 
 const router = express.Router();
@@ -62,6 +63,9 @@ router.get('/sos', getActiveSosEvents);
 
 // POST /api/admin/sos/auto-assign — Auto-assign active SOS events to nearest admin responder
 router.post('/sos/auto-assign', autoAssignNearestAdmin);
+
+// POST /api/admin/sos/batch-dispatch — Autonomous 5-minute spatial clustering and squad dispatch
+router.post('/sos/batch-dispatch', triggerBatchDispatch);
 
 // POST /api/admin/sos/optimize-route — Compute multi-factor rescue route sequence for assigned SOS events
 router.post('/sos/optimize-route', optimizeAdminRoute);

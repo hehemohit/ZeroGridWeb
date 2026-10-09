@@ -78,6 +78,9 @@ interface IncidentData {
     acknowledgedAt: string;
   }>;
   assignedAdmin?: AssignedAdmin | null;
+  assignedSquad?: string | null;
+  affectedNodeId?: string | null;
+  agentZeroAdvisory?: any;
   createdAt: string;
   updatedAt: string;
 }
@@ -633,6 +636,17 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
                 <span className="text-mutedGray font-mono">Assigned Officer:</span>
                 <span className="font-mono text-secondaryText truncate max-w-[120px]">
                   {incident.assignedAdmin?.displayName || 'Unassigned'}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-mutedGray font-mono">Tactical Squad:</span>
+                <span className={`font-mono text-[11px] font-bold px-2 py-0.5 rounded ${
+                  incident.assignedSquad
+                    ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30'
+                    : 'bg-surfaceElevated text-mutedGray'
+                }`}>
+                  {incident.assignedSquad ? incident.assignedSquad.replace('TEAM_', '').replace(/_/g, ' ') : 'Standby / Unassigned'}
                 </span>
               </div>
 

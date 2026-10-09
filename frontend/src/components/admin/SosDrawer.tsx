@@ -56,6 +56,9 @@ export interface SosEventUI {
   message?: string;
   notes: NoteItem[];
   assignedAdmin?: AssignedAdminUI | string | null;
+  assignedSquad?: string | null;
+  affectedNodeId?: string | null;
+  agentZeroAdvisory?: any;
   waterDepthCm?: number;
   passability?: 'ALL_PASSABLE' | 'HIGH_CLEARANCE_ONLY' | 'PEDESTRIAN_ONLY' | 'IMPASSABLE';
   relayedByMule?: boolean;
@@ -76,6 +79,7 @@ interface SosDrawerProps {
   onAddNote: (e: React.FormEvent) => void;
   onAssignAdmin?: (sosId: string, adminId: string | null) => void;
   onAutoAssignNearest?: () => void;
+  onAssignSquad?: (sosId: string, squadId: string | null) => void;
   formatTime: (isoString: string) => string;
 }
 
@@ -93,6 +97,7 @@ export function SosDrawer({
   onAddNote,
   onAssignAdmin,
   onAutoAssignNearest,
+  onAssignSquad,
   formatTime,
 }: SosDrawerProps) {
   const [brief, setBrief] = useState<{
@@ -571,6 +576,81 @@ export function SosDrawer({
                         </select>
                       </div>
                     )}
+                  </div>
+                )}
+              </div>
+
+              {/* Tactical Emergency Squad (Redis Atomic Distributed Lock) */}
+              <div className="p-3 sm:p-4 bg-surfaceCard rounded-16dp border border-cyan-500/30 shadow-glow-teal">
+                <div className="flex items-center justify-between mb-3">
+                  <h5 className="text-[11px] sm:text-xs font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5 font-display">
+                    <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                    Tactical Response Squad (Redis Pool)
+                  </h5>
+                  <span
+                    className={`text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full uppercase font-mono border ${
+                      sos.assignedSquad
+                        ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/40 animate-pulse'
+                        : 'bg-surfaceElevated text-mutedGray border-hairline'
+                    }`}
+                  >
+                    {sos.assignedSquad ? 'LOCKED & MOBILIZED' : 'POOL STANDBY'}
+                  </span>
+                </div>
+
+                {/* Current Squad Status Display */}
+                <div className="p-2.5 sm:p-3 rounded-xl bg-canvas border border-cyan-500/20 mb-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs border bg-cyan-500/10 text-cyan-400 border-cyan-500/30">
+                      <Shield className="w-4 h-4 text-cyan-400" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-bold text-primaryText truncate">
+                        {sos.assignedSquad
+                          ? sos.assignedSquad.replace('TEAM_', '').replace(/_/g, ' ')
+                          : 'No Squad Assigned'}
+                      </p>
+                      <p className="text-[10px] text-cyan-400/80 font-mono truncate">
+                        {sos.assignedSquad ? `Distributed Key: zerogrid:team:${sos.assignedSquad}:lock` : 'Auto-negotiation or manual deploy available'}
+                      </p>
+                    </div>
+                  </div>
+                  {sos.assignedSquad && (
+                    <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                      SET NX EX
+                    </span>
+                  )}
+                </div>
+
+                {/* Squad Selector and Quick Actions */}
+                {onAssignSquad && (
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                      <select
+                        disabled={actionLoading}
+                        value={sos.assignedSquad || ''}
+                        onChange={(e) => onAssignSquad(sos.id, e.target.value || null)}
+                        className="flex-1 bg-canvas border border-cyan-500/30 rounded-xl px-3 py-2 text-xs text-primaryText focus:outline-none focus:border-cyan-400 font-medium cursor-pointer"
+                      >
+                        <option value="">-- Deploy Emergency Tactical Unit --</option>
+                        <option value="TEAM_NDRF_ALPHA">NDRF Flood Rescue Alpha (8 Crew • Boats • Pumps)</option>
+                        <option value="TEAM_NDRF_BRAVO">NDRF Rapid Evacuation Bravo (12 Crew • High-Clearance Trucks)</option>
+                        <option value="TEAM_PUMP_CREW_01">Municipal Dewatering Squad 01 (4 Crew • 500-HP Pumps)</option>
+                        <option value="TEAM_LINEMEN_SQUAD_04">MSEDCL High-Voltage Linemen (6 Crew • Hot Sticks)</option>
+                        <option value="TEAM_VASAI_RESCUE_02">Civil Defense Quick Response 02 (6 Crew • Ambulance)</option>
+                      </select>
+
+                      {sos.assignedSquad && (
+                        <button
+                          disabled={actionLoading}
+                          onClick={() => onAssignSquad(sos.id, null)}
+                          className="px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-xl text-xs font-semibold transition-colors shrink-0"
+                          title="Release squad lock back to IDLE pool"
+                        >
+                          Release Lock
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

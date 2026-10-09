@@ -1048,6 +1048,9 @@ async function getSosDossier(req, res) {
               photoUrl: sos.assignedAdmin.photoUrl
             }
           : null,
+        assignedSquad: sos.assignedSquad || null,
+        affectedNodeId: sos.affectedNodeId || null,
+        agentZeroAdvisory: sos.agentZeroAdvisory || null,
         createdAt: sos.createdAt,
         updatedAt: sos.updatedAt
       },
@@ -1077,6 +1080,22 @@ async function getSosDossier(req, res) {
   }
 }
 
+/**
+ * POST /api/admin/sos/batch-dispatch
+ * Manually or periodically triggers the Autonomous 5-Minute Batch Consolidation & Dispatch engine.
+ */
+async function triggerBatchDispatch(req, res) {
+  try {
+    const { runAutonomousBatchDispatchCycle } = require('../utils/batchDispatchAgent');
+    const io = getIo(req);
+    const result = await runAutonomousBatchDispatchCycle({ io, manual: true });
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error('[Admin Controller] triggerBatchDispatch error:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
 module.exports = {
   getActiveSosEvents,
   getSosHistory,
@@ -1087,6 +1106,7 @@ module.exports = {
   clearAllSosEvents,
   optimizeAdminRoute,
   getSystemStats,
-  getSosDossier
+  getSosDossier,
+  triggerBatchDispatch
 };
 

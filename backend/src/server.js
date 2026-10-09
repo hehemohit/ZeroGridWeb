@@ -151,6 +151,8 @@ if (!mongoUri) {
     .connect(mongoUri)
     .then(() => {
       console.log('[MongoDB] Connected successfully to database');
+      const { initBatchDispatchScheduler } = require('./utils/batchDispatchAgent');
+      initBatchDispatchScheduler(io);
     })
     .catch((err) => {
       console.error('[MongoDB] Connection error:', err.message);
