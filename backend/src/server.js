@@ -16,6 +16,7 @@ const familyRoutes = require('./routes/familyRoutes');
 const hqRoutes = require('./routes/hqRoutes');
 const zoneRoutes = require('./routes/zoneRoutes');
 const publicRoutes = require('./routes/publicRoutes');
+const flowRoutes = require('./routes/flowRoutes');
 const { getPrometheusMetrics } = require('./utils/metrics');
 
 const app = express();
@@ -127,6 +128,7 @@ app.use('/api/admin/zones', zoneRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/family', familyRoutes);
 app.use('/api/v1/public', publicRoutes);
+app.use('/api/flow', flowRoutes);
 
 // Global Error Handler
 app.use((err, req, res, next) => {

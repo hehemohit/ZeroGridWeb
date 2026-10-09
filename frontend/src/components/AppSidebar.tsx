@@ -17,7 +17,8 @@ import {
   Activity,
   AlertTriangle,
   Cpu,
-  Building2
+  Building2,
+  GitBranch
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { api } from '@/lib/api';
@@ -122,6 +123,12 @@ function SidebarNavContent() {
       label: 'Nodes & Peering',
       icon: Cpu,
       active: pathname === '/admin' && currentModal === 'nodes',
+    },
+    {
+      href: '/flow',
+      label: 'Agent Flow Test',
+      icon: GitBranch,
+      active: pathname.startsWith('/flow'),
     },
   ];
 

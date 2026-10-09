@@ -18,7 +18,7 @@ from grid_graph import (
     TABLE_NAME,
     AWS_REGION
 )
-from agents import synthesize_agent_zero
+from agents import synthesize_agent_zero, run_autonomous_negotiation_pipeline
 from redis_manager import redis_manager
 from spatial_memory import spatial_memory
 
@@ -67,6 +67,20 @@ class AutonomousOrchestrateRequest(BaseModel):
     affected_node_id: Optional[str] = None
     message: Optional[str] = None
     telemetry: Optional[Dict[str, Any]] = None
+
+
+class NegotiationPipelineRequest(BaseModel):
+    incident_id: Optional[str] = "INC_01"
+    incident_type: Optional[str] = "SUBSTATION_WATER_INGRESS"
+    severity: Optional[str] = "CRITICAL"
+    coordinates: Optional[List[float]] = None
+    water_depth_cm: Optional[float] = 45.0
+    affected_node_id: Optional[str] = None
+    message: Optional[str] = None
+    telemetry: Optional[Dict[str, Any]] = None
+    weather_context: Optional[Dict[str, Any]] = None
+    simulated_available_teams: Optional[List[str]] = None
+    inject_fault_at_step: Optional[str] = None
 
 
 class TeamLockRequest(BaseModel):
@@ -140,6 +154,48 @@ async def autonomous_orchestrate(payload: AutonomousOrchestrateRequest):
         return orchestration_output
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Agent Zero orchestration failure: {str(e)}")
+
+
+@app.post("/api/negotiation-pipeline")
+@app.post("/voice-agent-microservice/api/negotiation-pipeline")
+@app.post("/default/voice-agent-microservice/api/negotiation-pipeline")
+async def execute_negotiation_pipeline(payload: NegotiationPipelineRequest):
+    """
+    Autonomous Multi-Agent Negotiation Pipeline Entrypoint:
+    1. Evaluates alert via Confidence Calculator Agent.
+    2. Runs Triage, Grid, and Dispatch sub-agents concurrently.
+    3. Formulates tactical squad requirements.
+    4. Executes recursive resource negotiation loop matching against Redis atomic units.
+    5. Preserves state checkpoint at every stage with complete fault-tolerance.
+    """
+    try:
+        resolved_node = resolve_nearest_node(
+            coordinates=payload.coordinates,
+            incident_type=payload.incident_type,
+            explicit_node_id=payload.affected_node_id
+        )
+
+        record_node_incident_metric(resolved_node)
+        subgraph = fetch_localized_subgraph(start_node_id=resolved_node, max_hops=2)
+
+        spatial_ctx = spatial_memory.synthesize_proximity_recommendations(
+            target_coords=payload.coordinates,
+            redis_manager_instance=redis_manager
+        )
+
+        pipeline_result = await run_autonomous_negotiation_pipeline(
+            incident=payload.model_dump(),
+            graph_context=subgraph,
+            spatial_context=spatial_ctx,
+            weather_context=payload.weather_context,
+            redis_manager_instance=redis_manager,
+            simulated_available_teams=payload.simulated_available_teams,
+            inject_fault_at_step=payload.inject_fault_at_step
+        )
+
+        return pipeline_result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Autonomous pipeline execution failure: {str(e)}")
 
 
 # --- 2. Team Concurrency & Atomic Lock Endpoints ---
@@ -255,6 +311,19 @@ async def handle_universal_gateway(payload: UniversalMicroserviceRequest):
         return release_team(TeamReleaseRequest(team_id=payload.team_id))
 
     # 3. Autonomous Orchestration
+    if payload.action in ["flow", "negotiation-pipeline", "pipeline"]:
+        pipe_req = NegotiationPipelineRequest(
+            incident_id=payload.incident_id or "INC_01",
+            incident_type=payload.incident_type or "SUBSTATION_WATER_INGRESS",
+            severity=payload.severity or "CRITICAL",
+            coordinates=payload.coordinates,
+            water_depth_cm=payload.water_depth_cm or 45.0,
+            affected_node_id=payload.affected_node_id,
+            message=payload.message,
+            telemetry=payload.telemetry
+        )
+        return await execute_negotiation_pipeline(pipe_req)
+
     if payload.action in ["orchestrate", "autonomous-orchestrate"] or payload.incident_id or payload.coordinates:
         orch_req = AutonomousOrchestrateRequest(
             incident_id=payload.incident_id or "INC_01",
