@@ -273,6 +273,31 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
     }
   };
 
+  const handleConsolidateSector = async () => {
+    try {
+      setActionLoading(true);
+      const res = await api.post<{
+        success: boolean;
+        totalActive: number;
+        clustersProcessed: number;
+        acknowledgedCount: number;
+        message?: string;
+      }>('/api/admin/sos/batch-dispatch', {});
+      if (res && res.success) {
+        alert(
+          res.acknowledgedCount > 0
+            ? `Consolidated ${res.totalActive} alerts into ${res.clustersProcessed} tactical cluster(s). All marked ACKNOWLEDGED with squads deployed!`
+            : res.message || 'Batch cycle complete: 0 active alerts awaiting dispatch.'
+        );
+        await fetchDossier();
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Failed to execute sector batch consolidation');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleAddNote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!noteInput.trim()) return;
@@ -655,6 +680,20 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
                 <span className="font-mono text-brandTeal font-bold">
                   {familyNetwork.totalLinked} Members Linked
                 </span>
+              </div>
+
+              {/* Quick Action: Manual Consolidate & Auto-Dispatch Sector */}
+              <div className="pt-2">
+                <button
+                  type="button"
+                  disabled={actionLoading}
+                  onClick={handleConsolidateSector}
+                  className="w-full py-2 px-3 bg-gradient-to-r from-cyan-500/15 via-sky-500/15 to-teal-500/15 hover:from-cyan-500/25 hover:to-teal-500/25 border border-cyan-400/40 rounded-xl text-xs font-bold text-cyan-300 flex items-center justify-center gap-1.5 transition-all shadow-sm disabled:opacity-50"
+                  title="Immediately clusters all active alerts in this sector, identifies common hazard cause, and assigns one tactical team"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+                  <span>Manual Consolidate Sector Alerts</span>
+                </button>
               </div>
             </div>
           </div>

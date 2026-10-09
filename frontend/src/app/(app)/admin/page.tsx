@@ -22,7 +22,8 @@ import {
   Route,
   Navigation,
   Zap,
-  RotateCcw
+  RotateCcw,
+  Sparkles
 } from 'lucide-react';
 import { MapCanvas } from '@/components/admin/MapCanvas';
 import { SosDrawer, SosEventUI, NoteItem } from '@/components/admin/SosDrawer';
@@ -676,22 +677,22 @@ const handleToggleDetourMode = useCallback(() => {
                 </span>
               </button>
 
-              {/* ⚡ 5-Minute Batch Consolidation & Tactical Squad Dispatch */}
+              {/* ⚡ Manual Consolidation & Tactical Batch Dispatch Button */}
               <button
                 onClick={handleRunBatchDispatch}
                 disabled={isBatchRunning || actionLoading}
-                title="Runs the 5-Minute Autonomous Consolidation Engine: Clusters nearby active alerts, contextualizes root causes, and deploys tactical squads."
-                className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-cyan-500/15 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/25 hover:border-cyan-400 hover:shadow-glow-teal transition-all shadow-sm disabled:opacity-50"
+                title="Manual Consolidate: Immediately scans all active SOS beacons, clusters nearby alerts into shared incident zones, contextualizes root causes, and assigns tactical teams."
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-gradient-to-r from-cyan-500/20 via-sky-500/20 to-teal-500/20 text-cyan-300 border border-cyan-400/50 hover:border-cyan-300 hover:shadow-glow-teal transition-all shadow-sm disabled:opacity-50"
               >
                 {isBatchRunning ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400" />
                 ) : (
-                  <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                  <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
                 )}
-                <span className="hidden sm:inline">5m Batch Dispatch</span>
-                <span className="sm:hidden">Batch</span>
-                <span className="text-[9px] bg-cyan-500/25 text-cyan-200 px-1 py-0.5 rounded font-mono font-bold">
-                  AUTO 5M
+                <span className="hidden sm:inline">Manual Consolidate</span>
+                <span className="sm:hidden">Consolidate</span>
+                <span className="text-[9px] bg-cyan-500/30 text-cyan-200 px-1 py-0.5 rounded font-mono font-bold">
+                  AUTO / ON-DEMAND
                 </span>
               </button>
 
@@ -966,6 +967,7 @@ const handleToggleDetourMode = useCallback(() => {
           onAssignAdmin={handleAssignAdmin}
           onAutoAssignNearest={handleAutoAssignNearestAdmin}
           onAssignSquad={handleAssignSquad}
+          onManualConsolidate={handleRunBatchDispatch}
           formatTime={formatTime}
         />
       )}

@@ -80,6 +80,7 @@ interface SosDrawerProps {
   onAssignAdmin?: (sosId: string, adminId: string | null) => void;
   onAutoAssignNearest?: () => void;
   onAssignSquad?: (sosId: string, squadId: string | null) => void;
+  onManualConsolidate?: () => void;
   formatTime: (isoString: string) => string;
 }
 
@@ -98,6 +99,7 @@ export function SosDrawer({
   onAssignAdmin,
   onAutoAssignNearest,
   onAssignSquad,
+  onManualConsolidate,
   formatTime,
 }: SosDrawerProps) {
   const [brief, setBrief] = useState<{
@@ -651,6 +653,20 @@ export function SosDrawer({
                         </button>
                       )}
                     </div>
+
+                    {/* Manual Consolidate Cluster Quick Action */}
+                    {onManualConsolidate && (
+                      <button
+                        type="button"
+                        disabled={actionLoading}
+                        onClick={onManualConsolidate}
+                        className="w-full mt-2 py-2 px-3 bg-gradient-to-r from-cyan-500/15 to-blue-500/15 hover:from-cyan-500/25 hover:to-blue-500/25 border border-cyan-400/40 rounded-xl text-xs font-bold text-cyan-300 flex items-center justify-center gap-1.5 transition-all shadow-sm"
+                        title="Immediately clusters all active alerts in this sector, identifies common hazard cause, and assigns one tactical team"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+                        <span>Manual Consolidate & Auto-Dispatch Alerts</span>
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
