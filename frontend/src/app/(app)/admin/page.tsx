@@ -10,6 +10,7 @@ import {
   Search,
   CheckCircle,
   Shield,
+  ShieldCheck,
   User,
   Battery,
   Radio,
@@ -495,7 +496,7 @@ const handleToggleDetourMode = useCallback(() => {
         clustersProcessed: number;
         acknowledgedCount: number;
         message?: string;
-      }>('/api/admin/sos/batch-dispatch');
+      }>('/api/admin/sos/batch-dispatch', {});
 
       if (res && res.success) {
         showToast(
