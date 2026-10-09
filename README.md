@@ -211,7 +211,9 @@ Built on **Node.js 20 LTS**, **Express 5**, **Mongoose 9**, and **Socket.IO 4**.
 | **Workforce** | `/api/admin/workforce/stats` | `GET` | Live availability of the 160 Admin departments. |
 | **Flow Bench** | `/api/flow/run` | `POST` | Execute full 4-phase circular multi-agent pipeline. |
 | | `/api/flow/presets` | `GET` | Retrieve emergency scenario benchmarks. |
-| **Predictive** | `/api/admin/predictive/tide-summary` | `GET` | Real-time coastal tides and precipitation. |
+| **Predictive** | `/api/admin/predictive/24h-chaos` | `GET` | 24-hour compound chaos curve, wire placements & staging. |
+| | `/api/admin/predictive/preemptive-stage` | `POST` | Dispatch preemptive standby orders to 160-admin roster. |
+| | `/api/admin/predictive/tide-summary` | `GET` | Real-time coastal tides and precipitation. |
 | | `/api/admin/predictive/drainage-timeline` | `POST` | Hydrodynamic recession forecasting. |
 | **Routes** | `/api/routes/optimize` | `POST` | Multi-factor waypoint sequence rescue matrix. |
 | | `/api/routes/detour` | `POST` | AWS Strands 3-tier routing engine bypassing active flood zones. |
@@ -220,6 +222,7 @@ Built on **Node.js 20 LTS**, **Express 5**, **Mongoose 9**, and **Socket.IO 4**.
 * `sos:new`: Emitted immediately upon new incident registration.
 * `sos:agent_zero_orchestrated`: Emitted when Agent 0 completes autonomous decisions (threat score, domain, squad demands).
 * `sos:workforce:dispatched`: Emitted when administrative personnel are locked.
+* `workforce:preemptively_staged`: Broadcast when preemptive 24h hazard standby orders are deployed.
 * `flow:step:update`: Streamed step-by-step progress during pipeline execution.
 * `sos:updated`: Broadcast upon status transitions (acknowledged, resolved, notes added).
 
@@ -229,6 +232,11 @@ Built on **Node.js 20 LTS**, **Express 5**, **Mongoose 9**, and **Socket.IO 4**.
 
 Built on **Next.js 16** (App Router), **React 19**, **Tailwind CSS v4**, and **MapLibre GL JS**:
 
+* **24-Hour Chaos Prediction Console (`/prediction`)**:
+  * Multi-vector forecasting synthesizing: past MongoDB history, 24-hour Open-Meteo precipitation/wind gusts, Arabian Sea tides, area depth, and 33kV/11kV transmission wire placements.
+  * Interactive 24-Hour Hour-by-Hour Chaos Curve HUD identifying peak danger windows.
+  * Wire Placement & Substation Vulnerability Matrix (monitoring overhead wire sway, 45cm plinth clearance, and underground hospital conduit ingress).
+  * 160-Admin Preemptive Manpower Staging Hub with 1-click standby order deployment.
 * **Agent Zero Command Center (`/dashboard`)**:
   * Real-time executive KPIs (Veracity pass rate, active distress signals, 160 Admin mobilization).
   * 160-Admin Department Readiness Matrix (live idle/assigned counters & tactical equipment tags).

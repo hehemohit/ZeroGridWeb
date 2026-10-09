@@ -231,8 +231,41 @@ async function getTideConditions(lat = 19.4534, lng = 72.8061, options = {}) {
   };
 }
 
+/**
+ * Returns hourly tide profile for the next 24 hours
+ */
+function get24HourTideProfile(startDate = new Date()) {
+  const startMs = startDate.getTime();
+  const profile = [];
+
+  for (let hour = 0; hour < 24; hour++) {
+    const timeMs = startMs + hour * 3600000;
+    const tideHeight = calculateAstronomicalTide(timeMs);
+    const isSluiceClosed = tideHeight >= SLUICE_GATE_CLOSE_METERS;
+
+    profile.push({
+      hourOffset: hour,
+      time: new Date(timeMs).toISOString(),
+      tideMeters: tideHeight,
+      isSluiceClosed,
+      drainageCapacityPercent: isSluiceClosed ? 0 : tideHeight > GRAVITY_DRAINAGE_RESUME_METERS ? 35 : 100
+    });
+  }
+
+  const maxTide = Math.max(...profile.map(p => p.tideMeters));
+  const closedHoursCount = profile.filter(p => p.isSluiceClosed).length;
+
+  return {
+    profile24h: profile,
+    maxTideMeters: maxTide,
+    closedHoursCount,
+    evaluatedAt: startDate.toISOString()
+  };
+}
+
 module.exports = {
   getTideConditions,
+  get24HourTideProfile,
   calculateAstronomicalTide,
   SLUICE_GATE_CLOSE_METERS,
   GRAVITY_DRAINAGE_RESUME_METERS

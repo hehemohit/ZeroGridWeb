@@ -170,8 +170,112 @@ async function getRainfall(lat, lng) {
   }
 }
 
+/**
+ * Fetch 24-hour hourly meteorological forecast (rain, wind, gusts, temp)
+ */
+async function get24HourForecast(lat, lng) {
+  const latitude = typeof lat === 'number' ? lat : parseFloat(lat);
+  const longitude = typeof lng === 'number' ? lng : parseFloat(lng);
+
+  if (isNaN(latitude) || isNaN(longitude)) {
+    throw new Error(`Invalid coordinates: lat=${lat}, lng=${lng}`);
+  }
+
+  const cacheKey = `24h_${getCacheKey(latitude, longitude)}`;
+  const cached = weatherCache.get(cacheKey);
+  if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
+    return cached.data;
+  }
+
+  const url = 'https://api.open-meteo.com/v1/forecast';
+  const params = {
+    latitude,
+    longitude,
+    hourly: 'precipitation,weather_code,wind_speed_10m,wind_gusts_10m,temperature_2m',
+    forecast_days: 2,
+    timezone: 'auto'
+  };
+
+  try {
+    const response = await axios.get(url, { params, timeout: 6000 });
+    const data = response.data;
+    const hourlyTimes = data.hourly?.time || [];
+    const hourlyPrecip = data.hourly?.precipitation || [];
+    const hourlyCodes = data.hourly?.weather_code || [];
+    const hourlyWind = data.hourly?.wind_speed_10m || [];
+    const hourlyGusts = data.hourly?.wind_gusts_10m || [];
+    const hourlyTemp = data.hourly?.temperature_2m || [];
+
+    const nowIso = new Date().toISOString().slice(0, 13); // YYYY-MM-DDTHH
+    let startIndex = hourlyTimes.findIndex(t => t.startsWith(nowIso));
+    if (startIndex < 0) startIndex = 0;
+
+    const forecast24h = [];
+    for (let i = startIndex; i < Math.min(startIndex + 24, hourlyTimes.length); i++) {
+      const precip = Number((hourlyPrecip[i] ?? 0).toFixed(1));
+      const code = hourlyCodes[i] ?? 0;
+      forecast24h.push({
+        hourOffset: i - startIndex,
+        time: hourlyTimes[i],
+        precipitationMmHr: precip,
+        intensityLevel: categorizeRainfall(precip),
+        windSpeedKmh: Number((hourlyWind[i] ?? 12).toFixed(1)),
+        windGustsKmh: Number((hourlyGusts[i] ?? 20).toFixed(1)),
+        temperatureC: Number((hourlyTemp[i] ?? 29).toFixed(1)),
+        weatherCode: code,
+        summary: getWeatherDescription(code, precip)
+      });
+    }
+
+    const result = {
+      success: true,
+      coordinates: { lat: latitude, lng: longitude },
+      forecast24h,
+      totalAccumulatedRainMm: Number(forecast24h.reduce((acc, h) => acc + h.precipitationMmHr, 0).toFixed(1)),
+      maxWindGustKmh: Math.max(...forecast24h.map(h => h.windGustsKmh), 0),
+      timestamp: new Date().toISOString()
+    };
+
+    weatherCache.set(cacheKey, { data: result, timestamp: Date.now() });
+    return result;
+  } catch (error) {
+    if (cached && cached.data) {
+      return cached.data;
+    }
+    // Synthetic fallback for 24h simulation
+    const now = new Date();
+    const fallback24h = Array.from({ length: 24 }).map((_, idx) => {
+      const t = new Date(now.getTime() + idx * 3600000);
+      return {
+        hourOffset: idx,
+        time: t.toISOString(),
+        precipitationMmHr: idx >= 3 && idx <= 8 ? 28.5 : 4.0,
+        intensityLevel: idx >= 3 && idx <= 8 ? 'MODERATE' : 'LIGHT',
+        windSpeedKmh: 18.0,
+        windGustsKmh: 34.0,
+        temperatureC: 28.5,
+        weatherCode: 61,
+        summary: 'Monsoon showers'
+      };
+    });
+
+    const fallbackResult = {
+      success: true,
+      isEstimated: true,
+      coordinates: { lat: latitude, lng: longitude },
+      forecast24h: fallback24h,
+      totalAccumulatedRainMm: 120.0,
+      maxWindGustKmh: 34.0,
+      timestamp: new Date().toISOString()
+    };
+    weatherCache.set(cacheKey, { data: fallbackResult, timestamp: Date.now() - (CACHE_TTL_MS - 2 * 60 * 1000) });
+    return fallbackResult;
+  }
+}
+
 module.exports = {
   getRainfall,
+  get24HourForecast,
   categorizeRainfall,
   getWeatherDescription
 };

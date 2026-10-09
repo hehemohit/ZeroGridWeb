@@ -243,6 +243,56 @@ async function getChronicHotspots(req, res, next) {
   }
 }
 
+/**
+ * GET /api/admin/predictive/24h-chaos
+ * Returns 24-hour hour-by-hour chaos trajectory, wire placement analysis, and preemptive manpower staging.
+ */
+async function get24HourChaosPrediction(req, res, next) {
+  try {
+    const lat = req.query.lat ? parseFloat(req.query.lat) : 19.456;
+    const lng = req.query.lng ? parseFloat(req.query.lng) : 72.812;
+
+    const chaosPredictionAgent = require('../utils/chaosPredictionAgent');
+    const prediction = await chaosPredictionAgent.predict24HourChaos({ lat, lng });
+
+    res.status(200).json(prediction);
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * POST /api/admin/predictive/preemptive-stage
+ * Deploys preemptive hold order to the 160-admin workforce and emits real-time alerts.
+ */
+async function preemptiveStageWorkforce(req, res, next) {
+  try {
+    const { stagedDepartments, directiveNotes } = req.body;
+    const io = req.app.get('io');
+
+    const stagedPayload = {
+      orderId: `ORDER_PREEMPTIVE_${Date.now()}`,
+      issuedBy: req.user?.email || 'Incident Commander',
+      issuedAt: new Date().toISOString(),
+      stagedDepartments: stagedDepartments || [],
+      directiveNotes: directiveNotes || 'Preemptive 24h hazard hold active.',
+      status: 'ON_HOLD_STANDBY'
+    };
+
+    if (io) {
+      io.of('/sos').emit('workforce:preemptively_staged', stagedPayload);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Preemptive manpower standby orders dispatched successfully',
+      stagingOrder: stagedPayload
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   getTideSummary,
   getDrainageTimeline,
@@ -250,5 +300,7 @@ module.exports = {
   auditCredibility,
   generateSitRep,
   broadcastAdvisory,
-  getChronicHotspots
+  getChronicHotspots,
+  get24HourChaosPrediction,
+  preemptiveStageWorkforce
 };

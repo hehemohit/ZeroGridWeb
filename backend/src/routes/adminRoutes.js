@@ -28,13 +28,21 @@ const {
   auditCredibility,
   generateSitRep,
   broadcastAdvisory,
-  getChronicHotspots
+  getChronicHotspots,
+  get24HourChaosPrediction,
+  preemptiveStageWorkforce
 } = require('../controllers/predictiveController');
 
 // All admin routes require: (1) valid JWT, (2) DB-verified ADMIN role + adminApproved: true
 router.use(verifyToken, verifyAdminRole);
 
 // ─── Autonomous Predictive Crisis Command Routes ─────────────────────────────
+// GET /api/admin/predictive/24h-chaos — 24-Hour Compound Chaos, Wire Placement & Staging
+router.get('/predictive/24h-chaos', get24HourChaosPrediction);
+
+// POST /api/admin/predictive/preemptive-stage — Deploy Preemptive Standby Orders to 160-Admin Workforce
+router.post('/predictive/preemptive-stage', preemptiveStageWorkforce);
+
 // GET /api/admin/predictive/tide-summary — Real-time coastal tides & rain metrics
 router.get('/predictive/tide-summary', getTideSummary);
 

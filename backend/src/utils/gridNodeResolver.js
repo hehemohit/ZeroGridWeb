@@ -114,7 +114,94 @@ function resolveNearestGridNode(coordinates, explicitNodeId) {
   };
 }
 
+// ─── Electrical Wire & Transmission Line Placement Topology ─────────────────
+const KNOWN_POWER_LINES = [
+  {
+    lineId: 'LINE_33KV_VIRAR_CORRIDOR',
+    name: '33kV Virar East-West Overhead Corridor',
+    voltage: '33kV',
+    type: 'OVERHEAD',
+    fromNode: 'SUB_VIRAR_EAST_01',
+    toNode: 'XFMR_WARD4_02',
+    pathCoordinates: [
+      [19.456, 72.812],
+      [19.457, 72.8135],
+      [19.458, 72.815]
+    ],
+    groundClearanceM: 6.2,
+    floodVulnerability: 'HIGH', // Traverses low-lying flood bowl
+    windThresholdKmh: 45,
+    criticalFacilities: ['PUMP_STATION_04', 'COMMUNITY_CENTER']
+  },
+  {
+    lineId: 'LINE_11KV_HOSPITAL_FEEDER',
+    name: '11kV Sanjeevani Dedicated Underground Feeder',
+    voltage: '11kV',
+    type: 'UNDERGROUND_CONDUIT',
+    fromNode: 'XFMR_WARD4_02',
+    toNode: 'NODE_HOSPITAL_09',
+    pathCoordinates: [
+      [19.458, 72.815],
+      [19.456, 72.8165],
+      [19.454, 72.818]
+    ],
+    groundClearanceM: -1.2, // Subsurface conduit
+    floodVulnerability: 'CRITICAL', // Submersible trench vulnerable to road water ingress
+    waterIngressThresholdCm: 35,
+    criticalFacilities: ['HOSPITAL_SANJEEVANI_ICU', 'TRAUMA_CENTER']
+  },
+  {
+    lineId: 'LINE_33KV_VASAI_TIE_LINE',
+    name: '33kV Vasai-Virar Substation Interconnect',
+    voltage: '33kV',
+    type: 'OVERHEAD_INTERCONNECT',
+    fromNode: 'SUB_VIRAR_EAST_01',
+    toNode: 'SUB_VASAI_WEST_03',
+    pathCoordinates: [
+      [19.456, 72.812],
+      [19.444, 72.806],
+      [19.432, 72.801]
+    ],
+    groundClearanceM: 7.5,
+    floodVulnerability: 'MEDIUM',
+    windThresholdKmh: 50,
+    criticalFacilities: ['VASAI_CIVIL_HOSPITAL', 'TRANSIT_TERMINAL']
+  },
+  {
+    lineId: 'LINE_11KV_PUMPING_FEEDER',
+    name: '11kV Municipal Pumping Station Arterial Conduit',
+    voltage: '11kV',
+    type: 'UNDERGROUND_CONDUIT',
+    fromNode: 'XFMR_WARD4_02',
+    toNode: 'SUB_VIRAR_EAST_01',
+    pathCoordinates: [
+      [19.458, 72.815],
+      [19.457, 72.813],
+      [19.456, 72.812]
+    ],
+    groundClearanceM: -0.8,
+    floodVulnerability: 'HIGH',
+    waterIngressThresholdCm: 45,
+    criticalFacilities: ['PUMP_STATION_04']
+  }
+];
+
+/**
+ * Returns power lines in the vicinity of given coordinates
+ */
+function getPowerLinesNearLocation(lat, lng, radiusKm = 2.5) {
+  return KNOWN_POWER_LINES.filter(line => {
+    return line.pathCoordinates.some(([pLat, pLng]) => {
+      const dLat = (pLat - lat) * 111;
+      const dLng = (pLng - lng) * 111 * Math.cos(lat * Math.PI / 180);
+      return Math.sqrt(dLat * dLat + dLng * dLng) <= radiusKm;
+    });
+  });
+}
+
 module.exports = {
   KNOWN_GRID_NODES,
-  resolveNearestGridNode
+  KNOWN_POWER_LINES,
+  resolveNearestGridNode,
+  getPowerLinesNearLocation
 };

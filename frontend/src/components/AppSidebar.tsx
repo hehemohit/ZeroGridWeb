@@ -18,7 +18,8 @@ import {
   AlertTriangle,
   Cpu,
   Building2,
-  GitBranch
+  GitBranch,
+  TrendingUp
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { api } from '@/lib/api';
@@ -111,6 +112,12 @@ function SidebarNavContent() {
       icon: AlertTriangle,
       active: pathname === '/admin' && currentFilter === 'ACTIVE',
       badge: activeSosCount > 0 ? activeSosCount : undefined,
+    },
+    {
+      href: '/prediction',
+      label: 'Prediction',
+      icon: TrendingUp,
+      active: pathname.startsWith('/prediction'),
     },
     {
       href: '/admin/headquarters',
