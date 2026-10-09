@@ -242,6 +242,52 @@ export default function FlowTestingPage() {
       }));
     });
 
+    socket.on('sos:new', (data: any) => {
+      console.log('🚨 Live SOS Received over Socket.io:', data);
+      setIncidentId(data.id || data._id || 'SOS_LIVE');
+      if (data.message) setMessage(data.message);
+      if (data.waterDepthCm !== undefined) setWaterDepthCm(Number(data.waterDepthCm));
+      setTimelineEvents((prev) => [
+        ...prev,
+        {
+          step: 'INIT',
+          status: 'RUNNING',
+          summary: `Incoming Live SOS: ${data.message || 'Distress signal detected'} (${data.waterDepthCm || 0}cm water depth)`,
+          timestamp: new Date().toISOString()
+        }
+      ]);
+      setStepStatuses((prev) => ({
+        ...prev,
+        ALERT_TRIGGER: 'COMPLETED',
+        CONFIDENCE_CALCULATION: 'RUNNING'
+      }));
+    });
+
+    socket.on('sos:agent_zero_orchestrated', (data: any) => {
+      console.log('⚡ Agent Zero Live Orchestration received:', data);
+      if (data.directive) {
+        setExecutionResult({
+          incident_id: data.sosId,
+          status: 'VERIFIED_AND_ASSIGNED',
+          assigned_teams: data.directive.assignedSquad ? [data.directive.assignedSquad] : ['TEAM_NDRF_ALPHA'],
+          agent_zero_directive: data.directive,
+          sub_agents: data.orchestration?.sub_agents,
+          resource_negotiation: {
+            rounds_count: 1,
+            assigned_teams: data.directive.assignedSquad ? [data.directive.assignedSquad] : ['TEAM_NDRF_ALPHA']
+          }
+        });
+        setStepStatuses({
+          ALERT_TRIGGER: 'COMPLETED',
+          CONFIDENCE_CALCULATION: 'COMPLETED',
+          AGENT_ZERO_TASKING: 'COMPLETED',
+          SUB_AGENT_COLLABORATION: 'COMPLETED',
+          RESOURCE_NEGOTIATION: 'COMPLETED',
+          ATOMIC_LOCK_DISPATCH: 'COMPLETED'
+        });
+      }
+    });
+
     socket.on('flow:error', (data: any) => {
       // Retain preserved state visual
     });

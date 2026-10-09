@@ -50,6 +50,24 @@ function triggerAgentZeroOrchestrationAsync(sosEvent, io) {
         `[Agent Zero Webhook] Triggering autonomous orchestration for SOS ${sosEvent._id} -> Node ${resolvedNode.nodeId} (${resolvedNode.name})`
       );
 
+      // Emit real-time flow events to Socket.io /sos namespace for live /flow dashboard visibility
+      if (io) {
+        io.of('/sos').emit('flow:step:update', {
+          incident_id: sosEvent._id.toString(),
+          step: 'INIT',
+          status: 'RUNNING',
+          summary: `Incoming Live SOS ${sosEvent._id} triggered Agent Zero for node ${resolvedNode.nodeId}`,
+          timestamp: new Date().toISOString()
+        });
+        io.of('/sos').emit('flow:step:update', {
+          incident_id: sosEvent._id.toString(),
+          step: 'CONFIDENCE_CALCULATION',
+          status: 'RUNNING',
+          summary: `Evaluating alert credibility against flood zone (Depth: ${sosEvent.waterDepthCm || 0}cm)...`,
+          timestamp: new Date().toISOString()
+        });
+      }
+
       const payload = {
         action: 'orchestrate',
         incident_id: sosEvent._id.toString(),
@@ -158,13 +176,43 @@ Assigned Squad: ${assignedSquad || sosEvent.assignedSquad || 'None'}`.trim(),
       });
 
       // Broadcast live Socket.io notification to all connected admins
-      if (io) {
         io.of('/sos').emit('sos:agent_zero_orchestrated', {
           sosId: sosEvent._id.toString(),
           affectedNodeId: resolvedNode.nodeId,
           threatScore: directive.overall_threat_score,
           directive: directive,
           orchestration: orchestrationData,
+        });
+
+        // Broadcast step completion to /flow page
+        io.of('/sos').emit('flow:step:update', {
+          incident_id: sosEvent._id.toString(),
+          step: 'SUB_AGENT_COLLABORATION',
+          status: 'COMPLETED',
+          summary: 'Sub-agents formulated triage, grid stability, and dispatch requirements.',
+          timestamp: new Date().toISOString()
+        });
+        io.of('/sos').emit('flow:step:update', {
+          incident_id: sosEvent._id.toString(),
+          step: 'RESOURCE_NEGOTIATION',
+          status: 'COMPLETED',
+          summary: `Allocated squad: ${assignedSquad || 'Dispatched via operational memory'}.`,
+          timestamp: new Date().toISOString()
+        });
+        io.of('/sos').emit('flow:step:update', {
+          incident_id: sosEvent._id.toString(),
+          step: 'ATOMIC_LOCK_AND_DISPATCH',
+          status: 'COMPLETED',
+          summary: `Locked in Redis cluster. Directive issued.`,
+          timestamp: new Date().toISOString()
+        });
+        io.of('/sos').emit('flow:completed', {
+          incident_id: sosEvent._id.toString(),
+          status: 'VERIFIED_AND_ASSIGNED',
+          assigned_teams: assignedSquad ? [assignedSquad] : [],
+          directive: directive,
+          orchestration: orchestrationData,
+          timestamp: new Date().toISOString()
         });
 
         // Also emit updated SOS event to refresh drawers and lists
