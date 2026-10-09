@@ -20,72 +20,95 @@ const VOICE_AGENT_LOCAL_URL = process.env.VOICE_AGENT_LOCAL_URL || 'http://local
 function getScenarioPresets(req, res) {
   const presets = [
     {
-      id: 'scenario_resource_deficit',
-      title: 'Resource Deficit & Sub-Agent Reformulation Loop',
-      badge: 'Negotiation Loop',
+      id: 'scenario_grid_flood_fallback',
+      title: 'Flooded 33kV Switchyard (Breaker Tripped)',
+      badge: 'Substation Water Ingress',
       badgeColor: 'amber',
-      description: 'Sub-agent requests 4 rescue squads, but only 1 IDLE unit is free in Redis. Triggers live recursive feedback loop and plan reformulation.',
+      description: '33kV switchyard flooded, feeder breaker tripped, risk of arc flash. Agent 0 autonomously classifies electrical hazard, routes to Power Grid Agent, detects personnel shortfall, and triggers fallback to Flood dewatering units.',
       incident: {
-        incident_id: 'INC_DEFICIT_VIRAR_01',
+        incident_id: 'TICKET_GRID_301',
         incident_type: 'SUBSTATION_WATER_INGRESS',
+        category: 'FALLEN_GRID',
         severity: 'CRITICAL',
-        coordinates: [19.4534, 72.8061],
+        coordinates: [19.4555, 72.8115],
         water_depth_cm: 55.0,
-        message: 'Severe flood surge in Virar East switchyard. Standing water approaching 33kV busbars. Immediate multi-squad intervention demanded.'
+        message: '33kV switchyard submerged. Feeder breaker tripped. Linemen needed for air-gap isolation and emergency dewatering pumps to drain yard.'
       },
-      simulated_available_teams: ['TEAM_NDRF_ALPHA'], // Only 1 team free
+      simulated_available_teams: ['admin.grid.01@zerogrid.org'],
       inject_fault_at_step: null
     },
     {
-      id: 'scenario_optimal_dispatch',
-      title: 'Optimal Multi-Agent Dispatch (Direct Allocation)',
-      badge: 'Happy Path',
+      id: 'scenario_flood_direct',
+      title: 'Submerged Railway Underpass (Rising Water)',
+      badge: 'Severe Waterlogging',
       badgeColor: 'emerald',
-      description: 'Sufficient emergency units are free in Redis. Triage, Grid, and Dispatch sub-agents formulate requirements and Agent Zero locks units in single pass.',
+      description: 'Underpass flooded with 48cm standing water and stranded vehicles. Agent 0 autonomously classifies flood emergency, routes to Flood Management Agent, and assigns full squad quota directly.',
       incident: {
-        incident_id: 'INC_OPTIMAL_VASAI_02',
-        incident_type: 'SUBSTATION_WATER_INGRESS',
+        incident_id: 'TICKET_FLOOD_101',
+        incident_type: 'SUBMERGED_UNDERPASS',
+        category: 'WATERLOGGING',
         severity: 'HIGH',
-        coordinates: [19.3820, 72.8280],
-        water_depth_cm: 38.0,
-        message: 'Water ingress at Vasai West primary substation. Drain channels obstructed. Linemen and pump crews required.'
+        coordinates: [19.4580, 72.8140],
+        water_depth_cm: 48.0,
+        message: 'Ward 4 underpass flooded with 48cm standing water. Stranded vehicles requiring zodiac boats and high-capacity pump extraction.'
       },
-      simulated_available_teams: ['TEAM_NDRF_ALPHA', 'TEAM_PUMP_CREW_01', 'TEAM_LINEMEN_SQUAD_04'],
+      simulated_available_teams: ['admin.flood.01@zerogrid.org', 'admin.flood.02@zerogrid.org'],
+      inject_fault_at_step: null
+    },
+    {
+      id: 'scenario_heatwave_crisis',
+      title: 'Transit Terminal Urban Heatwave (44°C)',
+      badge: 'Thermal Distress',
+      badgeColor: 'red',
+      description: 'Extreme wet-bulb crisis, heat index 44°C, multiple citizens collapsing. Agent 0 autonomously classifies thermal hazard, routes to Heatwave Management Agent, and deploys cooling hydration canopies.',
+      incident: {
+        incident_id: 'TICKET_HEAT_201',
+        incident_type: 'HEATWAVE_SURGE',
+        category: 'HEATWAVE',
+        severity: 'HIGH',
+        coordinates: [19.4520, 72.8150],
+        water_depth_cm: 0,
+        temperature_c: 44.2,
+        message: 'Severe heatwave emergency. Multiple civilians collapsing due to heat exhaustion at Virar terminal. Urgent hydration misting shelter needed.'
+      },
+      simulated_available_teams: ['admin.heat.01@zerogrid.org', 'admin.heat.02@zerogrid.org'],
+      inject_fault_at_step: null
+    },
+    {
+      id: 'scenario_rescue_entrapment',
+      title: 'Submerged Basement Structural Entrapment',
+      badge: 'Structural Entrapment',
+      badgeColor: 'blue',
+      description: 'Civilians trapped in basement structure due to rapid ingress and partial collapse. Agent 0 autonomously classifies life-safety entrapment and routes to Rescue Management Agent.',
+      incident: {
+        incident_id: 'TICKET_RESCUE_401',
+        incident_type: 'STRUCTURAL_ENTRAPMENT',
+        category: 'TRAPPED',
+        severity: 'CRITICAL',
+        coordinates: [19.4420, 72.8020],
+        water_depth_cm: 35.0,
+        message: 'Civilians trapped inside submerged lower ground floor following partial ceiling collapse. Rapid extraction and trauma triage paramedics required.'
+      },
+      simulated_available_teams: ['admin.rescue.01@zerogrid.org', 'admin.rescue.02@zerogrid.org'],
       inject_fault_at_step: null
     },
     {
       id: 'scenario_false_alert',
-      title: 'False Alarm & Anomaly Noise Filtering',
-      badge: 'Confidence Filter',
-      badgeColor: 'blue',
-      description: 'Spurious sensor noise or unverified report. Confidence Calculator Agent evaluates low credibility (< 0.70) and short-circuits before downstream runs.',
+      title: 'Spurious Sensor Spike (Clear Skies)',
+      badge: 'Low Confidence Noise',
+      badgeColor: 'purple',
+      description: 'Sensor artifact during dry weather. Confidence Calculator scores alert at 42% (< 65% threshold) and safely filters alert before reaching Agent 0.',
       incident: {
-        incident_id: 'INC_FALSE_ALARM_03',
+        incident_id: 'TICKET_NOISE_999',
         incident_type: 'SENSOR_ANOMALY',
+        category: 'OTHER',
         severity: 'LOW',
         coordinates: [19.4500, 72.8100],
-        water_depth_cm: 4.0,
-        message: 'Brief water sensor flicker detected during dry clear skies. No visual flooding confirmed.'
+        water_depth_cm: 3.0,
+        message: 'Transient sensor spike detected. No rainfall, tide normal, no citizen corroboration.'
       },
       simulated_available_teams: null,
       inject_fault_at_step: null
-    },
-    {
-      id: 'scenario_fault_injection',
-      title: 'Mid-Pipeline Fault Injection & State Preservation',
-      badge: 'Fault Recovery',
-      badgeColor: 'red',
-      description: 'Injects a synthetic failure at Step 4 (Resource Negotiation). The checkpoint engine intercepts error, preserves last valid agent state, and allows recovery.',
-      incident: {
-        incident_id: 'INC_FAULT_TEST_04',
-        incident_type: 'SUBSTATION_WATER_INGRESS',
-        severity: 'CRITICAL',
-        coordinates: [19.4534, 72.8061],
-        water_depth_cm: 60.0,
-        message: 'Critical emergency scenario used to verify fault resilience and state checkpoint integrity.'
-      },
-      simulated_available_teams: ['TEAM_NDRF_ALPHA'],
-      inject_fault_at_step: 'RESOURCE_NEGOTIATION'
     }
   ];
 
@@ -97,7 +120,7 @@ function getScenarioPresets(req, res) {
  * Socket.io step broadcasting, and proxy to the voice-agent microservice.
  */
 async function executeFlowPipeline(req, res) {
-  const io = req.app.get('io');
+  const io = req.app?.get ? req.app.get('io') : null;
   const sosNamespace = io ? io.of('/sos') : null;
 
   try {
@@ -208,7 +231,8 @@ async function executeFlowPipeline(req, res) {
     for (const url of candidateUrls) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s timeout for LLMs
+        const timeoutMs = url.includes('localhost') ? 2500 : 3500;
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
         const res = await fetch(url, {
           method: 'POST',
@@ -348,18 +372,98 @@ async function executeFlowPipeline(req, res) {
 }
 
 /**
+ * Agent 0 Autonomous Crisis Classifier
+ * Analyzes raw incident text, sensor telemetry, and affected infrastructure
+ * to autonomously classify the crisis domain and route to the corresponding sub-agent.
+ */
+function classifyCrisisDomain(payload) {
+  const text = `${payload.message || ''} ${payload.incident_type || ''} ${payload.category || ''}`.toLowerCase();
+  const waterDepth = Number(payload.water_depth_cm || 0);
+  const temp = Number(payload.temperature_c || 0);
+
+  // 1. Heatwave indicators
+  if (temp >= 40 || text.includes('heatwave') || text.includes('sunstroke') || text.includes('heat exhaustion') || text.includes('misting') || text.includes('cooling')) {
+    return {
+      domain: 'HEATWAVE',
+      targetDepartment: 'HEATWAVE_MANAGEMENT',
+      fallbackDepartment: 'RESCUE_MANAGEMENT',
+      requiredRole: 'MEDICAL_TRIAGE',
+      teamCount: 2,
+      requiredTags: ['HYDRATION', 'COOLING_SHELTER', 'MEDICAL_TRIAGE'],
+      fallbackTags: ['PARAMEDIC', 'AMBULANCE_EVAC'],
+      reasoning: `Thermal emergency detected (Ambient Temp: ${temp || 44}°C, heat exhaustion markers). Agent 0 autonomously routes to Heatwave Management Agent.`,
+      operationalBrief: 'Establish rapid hydration points and misting canopies at high-density transit nodes.',
+      tacticalPrecautions: 'Deploy electrolyte stores; prep emergency saline IV drips for heatstroke victims.'
+    };
+  }
+
+  // 2. Power Grid indicators (switchyard, substation, transformer, arc, voltage, linemen, breaker, feeder)
+  if (text.includes('grid') || text.includes('switchyard') || text.includes('substation') || text.includes('transformer') || text.includes('breaker') || text.includes('feeder') || text.includes('linemen') || text.includes('voltage') || text.includes('wire')) {
+    return {
+      domain: 'POWER_GRID',
+      targetDepartment: 'POWER_GRID_MANAGEMENT',
+      fallbackDepartment: 'FLOOD_MANAGEMENT',
+      requiredRole: 'HV_LINEMAN',
+      teamCount: 3,
+      requiredTags: ['HV_LINEMEN', 'SUBSTATION_OPS'],
+      fallbackTags: ['DEWATERING', 'WATER_RESCUE'],
+      reasoning: 'Critical electrical distribution hazard identified (substation/feeder ingress, arc flash danger). Agent 0 autonomously routes to Power Grid Management Agent.',
+      operationalBrief: '33kV switchyard flooded. Isolate upstream breaker and deploy high-capacity pumps to de-energize yard.',
+      tacticalPrecautions: 'Air-gap verification mandatory before yard entry. Zero voltage proof required before water contact.'
+    };
+  }
+
+  // 3. Structural / Rescue indicators (trapped, basement, collapse, rubble, paramedic, evacuation)
+  if (text.includes('trapped') || text.includes('collapse') || text.includes('basement') || text.includes('rubble') || text.includes('debris') || text.includes('rescue')) {
+    return {
+      domain: 'RESCUE',
+      targetDepartment: 'RESCUE_MANAGEMENT',
+      fallbackDepartment: 'HEATWAVE_MANAGEMENT',
+      requiredRole: 'SEARCH_RESCUE',
+      teamCount: 2,
+      requiredTags: ['SEARCH_RESCUE', 'EVACUATION', 'CIVIL_DEFENSE', 'PARAMEDIC'],
+      fallbackTags: ['FIRST_AID', 'HYDRATION'],
+      reasoning: 'Human entrapment / structural hazard detected. Agent 0 autonomously routes to Rescue Management Agent.',
+      operationalBrief: 'Search and extract trapped civilians from submerged/collapsed structure. Triage trauma victims.',
+      tacticalPrecautions: 'Perform structural shoring before entry; monitor for toxic gas accumulation in confined spaces.'
+    };
+  }
+
+  // 4. Default / Flood indicators (water, submerged, underpass, drainage, flood, surge)
+  return {
+    domain: 'FLOOD',
+    targetDepartment: 'FLOOD_MANAGEMENT',
+    fallbackDepartment: 'RESCUE_MANAGEMENT',
+    requiredRole: 'DEEP_WATER_RESQ',
+    teamCount: 2,
+    requiredTags: ['WATER_RESCUE', 'DEWATERING', 'ZODIAC_BOAT', 'SUBMERSIBLE_PUMP_500HP'],
+    fallbackTags: ['SEARCH_RESCUE', 'EVACUATION'],
+    reasoning: `Severe hydrologic flood risk confirmed (Water depth: ${waterDepth}cm). Agent 0 autonomously routes to Flood Management Agent.`,
+    operationalBrief: 'Deploy zodiac boat extraction and high-volume 500HP submersible dewatering pumps.',
+    tacticalPrecautions: 'Map open drainage manholes beneath standing water; wear life jackets and secure tether lines.'
+  };
+}
+
+/**
  * Built-in fallback execution engine that mirrors the Python logic
  * when the Python FastAPI server is not currently running.
  */
 function executeDeterministicPipeline(payload, weatherContext) {
-  const { incident_id, water_depth_cm, inject_fault_at_step, simulated_available_teams } = payload;
-  const isFalseAlert = water_depth_cm < 10.0;
+  const { incident_id = 'INC_01', water_depth_cm = 0, temperature_c = 28, message = '', inject_fault_at_step, simulated_available_teams } = payload;
+  const msgLower = (message || '').toLowerCase();
+  const isHeatwave = Number(temperature_c) >= 38 || msgLower.includes('heat') || msgLower.includes('temperature') || msgLower.includes('sunstroke');
+  const isPowerGrid = msgLower.includes('substation') || msgLower.includes('breaker') || msgLower.includes('transformer') || msgLower.includes('switchyard') || msgLower.includes('grid');
+  const isRescue = msgLower.includes('entrap') || msgLower.includes('trap') || msgLower.includes('collapse') || msgLower.includes('evacuat');
+  
+  // A false alarm is specifically a transient unverified sensor glitch or puddle where no actual crisis markers exist
+  const isGlitchPreset = incident_id.includes('glitch') || incident_id.includes('spike') || msgLower.includes('transient spike');
+  const isFalseAlert = isGlitchPreset || (!isHeatwave && !isPowerGrid && !isRescue && Number(water_depth_cm) < 10.0);
 
   const timeline = [];
   const now = () => new Date().toISOString();
 
-  // Step 1: Confidence
-  timeline.push({ step: 'CONFIDENCE_CALCULATION', status: 'RUNNING', summary: 'Scoring alert credibility...', time_iso: now() });
+  // Phase 1: Confidence Gatekeeper
+  timeline.push({ step: 'CONFIDENCE_CALCULATION', status: 'RUNNING', summary: 'Confidence Calculator Agent scoring incoming alert credibility...', time_iso: now() });
   
   const confidenceScore = isFalseAlert ? 0.42 : 0.91;
   const confidenceData = {
@@ -367,11 +471,15 @@ function executeDeterministicPipeline(payload, weatherContext) {
     confidence_score: confidenceScore,
     is_valid_alert: !isFalseAlert,
     veracity_classification: isFalseAlert ? 'FALSE_ALARM' : 'VERIFIED_CRITICAL',
-    context: `Correlated with high-risk coastal drainage corridor (Rain: ${weatherContext.rainfall_mm_per_hr}mm/hr).`
+    context: isFalseAlert
+      ? 'Alert filtered: isolated sensor variance below actionable physical crisis threshold.'
+      : isHeatwave
+      ? `Correlated with extreme thermal telemetry (Temp: ${temperature_c}°C).`
+      : `Correlated with high-risk corridor telemetry (Rain: ${weatherContext?.rainfall_mm_per_hr || 0}mm/hr, Depth: ${water_depth_cm}cm).`
   };
 
   if (isFalseAlert) {
-    timeline.push({ step: 'CONFIDENCE_CALCULATION', status: 'FILTERED_FALSE_ALERT', summary: 'Alert filtered due to low confidence score.', time_iso: now() });
+    timeline.push({ step: 'CONFIDENCE_CALCULATION', status: 'FILTERED_FALSE_ALERT', summary: 'Alert filtered by Confidence Agent (< 65% veracity threshold). Stand down without mobilizing squads.', time_iso: now() });
     return {
       incident_id,
       status: 'FALSE_ALERT_FILTERED',
@@ -380,131 +488,230 @@ function executeDeterministicPipeline(payload, weatherContext) {
     };
   }
 
-  timeline.push({ step: 'CONFIDENCE_CALCULATION', status: 'COMPLETED', summary: `Confidence validated at ${confidenceScore * 100}%`, time_iso: now() });
+  timeline.push({ step: 'CONFIDENCE_CALCULATION', status: 'COMPLETED', summary: `Confidence validated at ${confidenceScore * 100}%. Forwarding verified alert to Agent 0.`, time_iso: now() });
 
-  // Step 2: Sub-Agents
-  timeline.push({ step: 'SUB_AGENT_COLLABORATION', status: 'RUNNING', summary: 'Executing Triage, Grid, and Dispatch sub-agents...', time_iso: now() });
-  
-  if (inject_fault_at_step === 'SUB_AGENT_COLLABORATION') {
-    timeline.push({ step: 'SUB_AGENT_COLLABORATION', status: 'ERROR_PRESERVED', summary: 'Synthetic error injected.', time_iso: now() });
-    return {
-      incident_id,
-      status: 'ERROR_PRESERVED_STATE',
-      failed_step: 'SUB_AGENT_COLLABORATION',
-      error: 'Synthetic error injected during SUB_AGENT_COLLABORATION.',
-      preserved_state: { confidence: confidenceData },
-      execution_timeline: timeline,
-      can_resume: true
-    };
-  }
+  // Phase 2: Agent 0 Intake, Deduplication & Autonomous Classification
+  const isDuplicate = incident_id.includes('GRID') || water_depth_cm > 50;
+  const classification = classifyCrisisDomain(payload);
+  const domain = classification.domain;
 
-  const subAgentsData = {
-    triage: {
-      agent: 'TRIAGE_COMMANDER',
-      threat_level: 'CRITICAL',
-      human_safety_hazard: 'Critical',
-      casualty_risk_assessment: 'Standing water approaching live transformer busbar.',
-      evacuation_recommended: true
-    },
-    grid: {
-      agent: 'GRID_OPERATIONS',
-      grid_stability_status: 'CRITICAL_RISK',
-      cascade_risk: 'High',
-      immediate_breakers_to_trip: ['FEEDER_33KV_L1', 'XFMR_WARD4_02_BREAKER'],
-      hospital_power_isolation_plan: 'Energize tie-line from SUB_VASAI_WEST_03 to Sanjeevani Hospital ICU.'
-    },
-    dispatch: {
-      agent: 'TACTICAL_DISPATCH',
-      team_type_needed: 'FLOOD_RESCUE',
-      team_count_needed: 3,
-      staging_area: 'Virar East Elevated Overpass (+14m)'
-    }
+  const dedupData = {
+    is_duplicate: isDuplicate,
+    report_count: isDuplicate ? 3 : 1,
+    priority: isDuplicate ? 'CRITICAL' : 'HIGH',
+    priority_score: isDuplicate ? 88 : 75,
+    domain: domain
   };
 
-  timeline.push({ step: 'SUB_AGENT_COLLABORATION', status: 'COMPLETED', summary: 'Sub-agents formulated triage, grid isolation, and dispatch requirements.', time_iso: now() });
+  timeline.push({
+    step: 'AGENT_ZERO_INTAKE_AND_CLASSIFICATION',
+    status: 'COMPLETED',
+    summary: `Agent 0 deduplication check complete (${isDuplicate ? 'Report Count: 3x -> Priority escalated to CRITICAL' : 'New ticket registered'}). Autonomous Classification: ${domain} (${classification.reasoning})`,
+    time_iso: now()
+  });
 
-  // Step 3: Requirements
-  timeline.push({ step: 'REQUIREMENTS_GENERATION', status: 'COMPLETED', summary: 'Requirements generated: 3 squads needed.', time_iso: now() });
+  // Phase 3: Routed Domain Sub-Agent Tactical Assessment & Workforce Demand
+  const domainDemand = {
+    targetDepartment: classification.targetDepartment,
+    requiredRole: classification.requiredRole,
+    teamCount: classification.teamCount,
+    requiredTags: classification.requiredTags,
+    fallbackDepartment: classification.fallbackDepartment,
+    fallbackTags: classification.fallbackTags,
+    operationalBrief: classification.operationalBrief,
+    tacticalPrecautions: classification.tacticalPrecautions
+  };
 
-  // Step 4: Resource Negotiation Loop
-  timeline.push({ step: 'RESOURCE_NEGOTIATION', status: 'RUNNING', summary: 'Agent Zero checking Redis atomic lock pool...', time_iso: now() });
+  timeline.push({
+    step: 'SUB_AGENT_TACTICAL_ASSESSMENT',
+    status: 'COMPLETED',
+    summary: `${classification.targetDepartment} evaluated crisis. Formulated demand for ${domainDemand.teamCount} squad(s) with tags: [${domainDemand.requiredTags.join(', ')}]. Submitting demand to Agent 0.`,
+    time_iso: now()
+  });
 
-  if (inject_fault_at_step === 'RESOURCE_NEGOTIATION') {
-    timeline.push({ step: 'RESOURCE_NEGOTIATION', status: 'ERROR_PRESERVED', summary: 'Synthetic error intercepted. Prior state safely checkpointed.', time_iso: now() });
+  // Phase 4: Agent 0 Workforce Allocation & Iterative Fallback Loop
+  timeline.push({
+    step: 'AGENT_ZERO_WORKFORCE_ALLOCATION',
+    status: 'RUNNING',
+    summary: `Agent 0 evaluating MongoDB 160 admin availability for ${domainDemand.targetDepartment}...`,
+    time_iso: now()
+  });
+
+  if (inject_fault_at_step === 'AGENT_ZERO_WORKFORCE_ALLOCATION' || inject_fault_at_step === 'RESOURCE_NEGOTIATION') {
+    timeline.push({ step: 'AGENT_ZERO_WORKFORCE_ALLOCATION', status: 'ERROR_PRESERVED', summary: 'Synthetic error intercepted. Prior state safely checkpointed.', time_iso: now() });
     return {
       incident_id,
       status: 'ERROR_PRESERVED_STATE',
-      failed_step: 'RESOURCE_NEGOTIATION',
-      error: 'Synthetic error injected during RESOURCE_NEGOTIATION.',
+      failed_step: 'AGENT_ZERO_WORKFORCE_ALLOCATION',
+      error: 'Synthetic error injected during AGENT_ZERO_WORKFORCE_ALLOCATION.',
       preserved_state: {
         confidence: confidenceData,
-        sub_agents: subAgentsData,
-        requirements: { team_count_needed: 3, team_type: 'FLOOD_RESCUE' }
+        deduplication: dedupData,
+        classification: classification,
+        domain_demand: domainDemand
       },
       execution_timeline: timeline,
       can_resume: true
     };
   }
 
-  const availablePool = Array.isArray(simulated_available_teams) ? simulated_available_teams : ['TEAM_NDRF_ALPHA'];
-  let assignedTeams = [];
+  const availablePool = Array.isArray(simulated_available_teams) ? simulated_available_teams : [];
+  const isShortfall = availablePool.length > 0 && availablePool.length < domainDemand.teamCount;
+
+  let assignedPersonnel = [];
   let roundsCount = 1;
+  let fallbackDepartmentUsed = null;
   const negotiationLog = [];
 
-  if (availablePool.length < 3) {
+  if (isShortfall || domain === 'POWER_GRID') {
     roundsCount = 2;
+    fallbackDepartmentUsed = domainDemand.fallbackDepartment;
     negotiationLog.push({
       round: 1,
-      status: 'CONSTRAINT_REFORMULATING',
-      requested: 3,
-      available: availablePool.length,
-      adjusted_to: availablePool.length,
-      reformulation_notes: `Sub-agent adjusted requirements from 3 down to ${availablePool.length} units. Prioritizing primary lifeline transformer.`
+      department: domainDemand.targetDepartment,
+      demanded: domainDemand.teamCount,
+      secured: 1,
+      shortfall: domainDemand.teamCount - 1,
+      status: 'SHORTFALL_DETECTED'
     });
-    assignedTeams = availablePool;
+    negotiationLog.push({
+      round: 2,
+      department: domainDemand.fallbackDepartment,
+      demanded: domainDemand.teamCount - 1,
+      secured: domainDemand.teamCount - 1,
+      remaining_shortfall: 0,
+      status: 'FALLBACK_SATISFIED'
+    });
+
+    if (domain === 'POWER_GRID') {
+      assignedPersonnel = [
+        { displayName: 'Er. Devendra Dixit (Grid Lead)', email: 'admin.grid.01@zerogrid.org', department: 'POWER_GRID_MANAGEMENT' },
+        { displayName: 'Priya Deshmukh', email: 'admin.flood.03@zerogrid.org', department: 'FLOOD_MANAGEMENT' },
+        { displayName: 'Vikram Patil', email: 'admin.flood.04@zerogrid.org', department: 'FLOOD_MANAGEMENT' }
+      ];
+    } else {
+      assignedPersonnel = [
+        { displayName: 'Aarav Sharma (Flood Lead)', email: 'admin.flood.01@zerogrid.org', department: 'FLOOD_MANAGEMENT' },
+        { displayName: 'Cdr. Rakesh Chauhan (Rescue Lead)', email: 'admin.rescue.01@zerogrid.org', department: 'RESCUE_MANAGEMENT' }
+      ];
+    }
   } else {
-    assignedTeams = availablePool.slice(0, 3);
+    negotiationLog.push({
+      round: 1,
+      department: domainDemand.targetDepartment,
+      demanded: domainDemand.teamCount,
+      secured: domainDemand.teamCount,
+      shortfall: 0,
+      status: 'SATISFIED'
+    });
+
+    if (domain === 'HEATWAVE') {
+      assignedPersonnel = [
+        { displayName: 'Dr. Amit Verma (Heat Lead)', email: 'admin.heat.01@zerogrid.org', department: 'HEATWAVE_MANAGEMENT' },
+        { displayName: 'Sunita Rao', email: 'admin.heat.02@zerogrid.org', department: 'HEATWAVE_MANAGEMENT' }
+      ];
+    } else if (domain === 'RESCUE') {
+      assignedPersonnel = [
+        { displayName: 'Cdr. Rakesh Chauhan (Rescue Lead)', email: 'admin.rescue.01@zerogrid.org', department: 'RESCUE_MANAGEMENT' },
+        { displayName: 'Jaswinder Singh', email: 'admin.rescue.02@zerogrid.org', department: 'RESCUE_MANAGEMENT' }
+      ];
+    } else {
+      assignedPersonnel = [
+        { displayName: 'Aarav Sharma (Flood Lead)', email: 'admin.flood.01@zerogrid.org', department: 'FLOOD_MANAGEMENT' },
+        { displayName: 'Rohan Kulkarni', email: 'admin.flood.02@zerogrid.org', department: 'FLOOD_MANAGEMENT' }
+      ];
+    }
   }
 
+  const assignedNames = assignedPersonnel.map(p => p.displayName);
+
   timeline.push({
-    step: 'RESOURCE_NEGOTIATION',
+    step: 'AGENT_ZERO_WORKFORCE_ALLOCATION',
     status: 'COMPLETED',
-    summary: `Resource negotiation finalized in ${roundsCount} round(s). Teams secured: ${assignedTeams.join(', ')}.`,
+    summary: `Workforce allocation finalized in ${roundsCount} round(s). ${fallbackDepartmentUsed ? `Shortfall triggered fallback to ${fallbackDepartmentUsed}.` : 'Direct match satisfied.'} Mobilized: ${assignedNames.join(', ')}.`,
     time_iso: now()
   });
 
-  // Step 5: Master Synthesis
-  timeline.push({ step: 'MASTER_SYNTHESIS', status: 'COMPLETED', summary: 'Agent Zero master directive synthesized with hospital lifeline protocol.', time_iso: now() });
+  // Phase 5: Agent 0 Master Directive Synthesis & Atomic Lock
+  timeline.push({
+    step: 'AGENT_ZERO_MASTER_DISPATCH',
+    status: 'COMPLETED',
+    summary: `Agent 0 synthesized master directive with hospital lifeline protocol and atomically locked ${assignedPersonnel.length} personnel in Redis/MongoDB to EN_ROUTE.`,
+    time_iso: now()
+  });
 
-  // Step 6: Atomic Lock
-  timeline.push({ step: 'ATOMIC_LOCK_AND_DISPATCH', status: 'COMPLETED', summary: `Atomically locked ${assignedTeams.length} units in Redis cluster.`, time_iso: now() });
+  // Dispatch message with mandatory requiredTags
+  const fallbackStr = fallbackDepartmentUsed
+    ? `\n🔄 FALLBACK SUPPORT ENGAGED: ${fallbackDepartmentUsed}\n   Auxiliary Loadout: [${domainDemand.fallbackTags.join(', ')}]`
+    : '';
+
+  const dispatchMessage = `🚨 [URGENT DISPATCH - ZERO GRID CRISIS COMMAND]
+Incident: #${String(incident_id).slice(-8)} | Priority: ${dedupData.priority}
+Department: ${domainDemand.targetDepartment}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ MANDATORY GEAR & SKILL LOADOUT REQUIRED:
+👉 [${domainDemand.requiredTags.join(', ')}]${fallbackStr}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Assigned Personnel & Command Teams:
+${assignedPersonnel.map(p => `  • ${p.displayName} (${p.email}) - Dept: ${p.department}`).join('\n')}
+Brief: ${domainDemand.operationalBrief}
+Precautions: ${domainDemand.tacticalPrecautions}
+Status: ASSIGNED & EN_ROUTE. Confirm mobilization on operations console.`;
+
+  const workforceAllocation = {
+    success: true,
+    target_department: domainDemand.targetDepartment,
+    fallback_department_used: fallbackDepartmentUsed,
+    demanded_count: domainDemand.teamCount,
+    allocated_count: assignedPersonnel.length,
+    assigned_teams: assignedNames,
+    personnel_details: assignedPersonnel,
+    lead_commander: assignedPersonnel[0]?.displayName,
+    required_tags: domainDemand.requiredTags,
+    fallback_tags: domainDemand.fallbackTags,
+    dispatch_message: dispatchMessage,
+    iteration_log: negotiationLog
+  };
 
   return {
     incident_id,
     status: 'VERIFIED_AND_ASSIGNED',
-    assigned_teams: assignedTeams,
+    assigned_teams: assignedNames,
+    lead_commander: assignedPersonnel[0]?.displayName,
+    dispatch_message: dispatchMessage,
+    workforce_allocation: workforceAllocation,
+    deduplication: dedupData,
+    agent_zero_classification: classification,
+    domain_demand: domainDemand,
     agent_zero_directive: {
-      executive_summary: 'Critical water intrusion at Virar East Substation threatens 33kV switchyard. Feeder L1 trip executed; hospital backup tie-line energized.',
-      overall_threat_score: 89,
+      executive_summary: `${domainDemand.targetDepartment} active response underway for ${incident_id}. Automated grid safety and medical lifeline protocols operational.`,
+      overall_threat_score: dedupData.priority_score,
       hospital_lifeline_protocol: 'Sanjeevani Hospital isolated from flooded primary; energized via Vasai 33kV backup tie line.',
-      immediate_automated_actions: ['Trip FEEDER_33KV_L1 breaker', 'Energize Vasai backup tie-line'],
-      field_operations_checklist: ['Deploy dewatering pumps at switchyard', 'Linemen confirm zero-voltage verification']
+      immediate_automated_actions: ['Trip primary line breaker', 'Engage backup emergency tie-line'],
+      field_operations_checklist: ['Deploy required gear loadout', 'Confirm air-gap zero voltage verification']
     },
-    sub_agents: subAgentsData,
+    sub_agents: {
+      domain_demand: domainDemand,
+      triage: { threat_level: dedupData.priority, human_safety_hazard: 'Critical' },
+      grid: { grid_stability_status: 'CONTROLLED_ISOLATION', cascade_risk: 'Mitigated' },
+      dispatch: { staging_area: 'Virar East Overpass (+14m)' }
+    },
     confidence_data: confidenceData,
     resource_negotiation: {
       success: true,
       rounds_count: roundsCount,
-      assigned_teams: assignedTeams,
-      negotiation_log: negotiationLog
+      assigned_teams: assignedNames,
+      negotiation_log: negotiationLog,
+      workforce_allocation: workforceAllocation
     },
     pipeline_checkpoint: {
       step: 'ATOMIC_LOCK_AND_DISPATCH',
       execution_timeline: timeline,
       last_valid_data: {
         confidence: confidenceData,
-        sub_agents: subAgentsData,
-        locked_teams: assignedTeams
+        deduplication: dedupData,
+        domain_demand: domainDemand,
+        workforce_allocation: workforceAllocation
       }
     }
   };
@@ -512,5 +719,7 @@ function executeDeterministicPipeline(payload, weatherContext) {
 
 module.exports = {
   getScenarioPresets,
-  executeFlowPipeline
+  executeFlowPipeline,
+  executeDeterministicPipeline,
+  classifyCrisisDomain
 };
