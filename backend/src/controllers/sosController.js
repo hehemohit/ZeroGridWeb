@@ -7,6 +7,7 @@ const Zone = require('../models/Zone');
 const { sendSosPush } = require('../utils/fcm');
 const strandsRouterAgent = require('../utils/strandsRouterAgent');
 const { triggerAgentZeroOrchestrationAsync } = require('../utils/agentZeroWebhook');
+const { redisLockManager } = require('../utils/redisLockClient');
 
 /** Helper to get io instance from app (set in server.js) */
 function getIo(req) {
@@ -56,6 +57,9 @@ function buildSosPayload(sos, requestingUserId) {
     assignedAdmin: assignedAdminData,
     affectedNodeId: sos.affectedNodeId || null,
     agentZeroAdvisory: sos.agentZeroAdvisory || null,
+    assignedSquad: sos.assignedSquad || null,
+    resolvedAt: sos.resolvedAt || null,
+    resolutionNotes: sos.resolutionNotes || null,
     notes: sos.notes,
     createdAt: sos.createdAt,
     updatedAt: sos.updatedAt
@@ -183,6 +187,22 @@ async function triggerSos(req, res) {
       console.warn('[SOS Controller] Spatial zone resolution skipped:', spatialErr.message);
     }
 
+    // Optional pre-assigned squad
+    let requestedSquad = req.body.assignedSquad || null;
+    let initialAssignedSquad = null;
+    if (requestedSquad) {
+      try {
+        const lockRes = await redisLockManager.acquireTeamLock(requestedSquad, 'pending-sos');
+        if (lockRes.success) {
+          initialAssignedSquad = requestedSquad;
+        } else {
+          console.warn(`[SOS Controller] Pre-assigned squad ${requestedSquad} could not be locked: ${lockRes.error}`);
+        }
+      } catch (lockErr) {
+        console.warn('[SOS Controller] Error locking requested squad:', lockErr.message);
+      }
+    }
+
     // Create the SOS event document
     const sosEvent = await SosEvent.create({
       triggeredBy: req.user.userId,
@@ -203,8 +223,13 @@ async function triggerSos(req, res) {
       relayedByMule: !!relayedByMule,
       status: 'ACTIVE',
       zoneId: resolvedZoneId,
-      hqId: resolvedHqId
+      hqId: resolvedHqId,
+      assignedSquad: initialAssignedSquad
     });
+
+    if (initialAssignedSquad) {
+      await redisLockManager.acquireTeamLock(initialAssignedSquad, sosEvent._id.toString());
+    }
 
     // Populate triggeredBy for the response and Socket.io payload
     const populatedSos = await SosEvent.findById(sosEvent._id).populate({
@@ -619,7 +644,7 @@ async function getAcknowledgedSosForUser(req, res) {
 
 /**
  * PUT /api/sos/:id/resolve
- * Admin only. Transitions status to RESOLVED.
+ * Admin only. Transitions status to RESOLVED and releases atomic squad lock.
  */
 async function resolveSos(req, res) {
   try {
@@ -629,22 +654,38 @@ async function resolveSos(req, res) {
       return res.status(400).json({ message: 'Invalid SOS event ID' });
     }
 
-    const sos = await SosEvent.findOneAndUpdate(
-      { _id: id, status: { $in: ['ACTIVE', 'ACKNOWLEDGED'] } },
+    const existing = await SosEvent.findById(id);
+    if (!existing) {
+      return res.status(404).json({ message: 'SOS event not found' });
+    }
+    if (existing.status === 'RESOLVED') {
+      return res.status(400).json({ message: 'SOS event is already resolved' });
+    }
+
+    // Release Redis atomic lock if a squad was assigned
+    if (existing.assignedSquad) {
+      try {
+        await redisLockManager.releaseTeamLock(existing.assignedSquad);
+        console.log(`[SOS Resolve] Released atomic lock for squad: ${existing.assignedSquad}`);
+      } catch (lockErr) {
+        console.warn(`[SOS Resolve] Error releasing lock for ${existing.assignedSquad}:`, lockErr.message);
+      }
+    }
+
+    const resolutionNotes = req.body.notes || req.body.resolutionNotes || 'Incident resolved and area stabilized';
+
+    const sos = await SosEvent.findByIdAndUpdate(
+      id,
       {
         $set: {
           status: 'RESOLVED',
-          resolvedBy: req.user.userId
+          resolvedBy: req.user.userId,
+          resolvedAt: new Date(),
+          resolutionNotes: resolutionNotes
         }
       },
       { returnDocument: 'after' }
     ).populate('triggeredBy', 'displayName email phoneNumber photoUrl');
-
-    if (!sos) {
-      return res.status(404).json({
-        message: 'SOS event not found or is already resolved'
-      });
-    }
 
     const io = getIo(req);
     if (io) {
@@ -652,12 +693,95 @@ async function resolveSos(req, res) {
     }
 
     return res.status(200).json({
-      message: 'SOS event resolved',
+      message: 'SOS event resolved and response unit released',
       sos: buildSosPayload(sos, req.user.userId)
     });
   } catch (error) {
     console.error('[SOS] resolveSos error:', error);
     return res.status(500).json({ message: 'Failed to resolve SOS event.' });
+  }
+}
+
+/**
+ * PUT /api/sos/:id/assign-squad
+ * Admin only. Atomically locks an emergency response squad in Redis and assigns them to the SOS event.
+ * Body: { squadId: string }
+ */
+async function assignSquadToSos(req, res) {
+  try {
+    const { id } = req.params;
+    const { squadId } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid SOS event ID' });
+    }
+
+    if (!squadId || typeof squadId !== 'string') {
+      return res.status(400).json({ message: 'squadId is required' });
+    }
+
+    const sos = await SosEvent.findById(id);
+    if (!sos) {
+      return res.status(404).json({ message: 'SOS event not found' });
+    }
+
+    if (sos.status === 'RESOLVED') {
+      return res.status(400).json({ message: 'Cannot assign squad to a resolved SOS event' });
+    }
+
+    // If changing squad, release the previous lock
+    if (sos.assignedSquad && sos.assignedSquad !== squadId) {
+      await redisLockManager.releaseTeamLock(sos.assignedSquad);
+    }
+
+    // Atomically acquire lock for target squad
+    const lockResult = await redisLockManager.acquireTeamLock(squadId, id);
+    if (!lockResult.success && sos.assignedSquad !== squadId) {
+      return res.status(409).json({
+        message: lockResult.error || `Squad ${squadId} is currently assigned to another incident`,
+        lockState: lockResult
+      });
+    }
+
+    sos.assignedSquad = squadId;
+    await sos.save();
+
+    const populatedSos = await SosEvent.findById(id).populate({
+      path: 'triggeredBy',
+      select: 'displayName email phoneNumber photoUrl'
+    });
+
+    const io = getIo(req);
+    if (io) {
+      io.of('/sos').emit('sos:updated', buildSosPayload(populatedSos));
+    }
+
+    return res.status(200).json({
+      message: `Squad ${squadId} successfully assigned and locked`,
+      sos: buildSosPayload(populatedSos, req.user.userId),
+      lockState: lockResult
+    });
+  } catch (error) {
+    console.error('[SOS] assignSquadToSos error:', error);
+    return res.status(500).json({ message: 'Failed to assign emergency squad' });
+  }
+}
+
+/**
+ * GET /api/sos/teams/status
+ * Returns real-time Redis atomic lock status for all emergency response units
+ */
+async function getTeamsStatus(req, res) {
+  try {
+    const statuses = await redisLockManager.getAllTeamStatuses();
+    return res.status(200).json({
+      success: true,
+      teams: statuses,
+      source: redisLockManager.isSimulation ? 'IN_MEMORY_SIMULATION' : 'ELASTICACHE'
+    });
+  } catch (error) {
+    console.error('[SOS] getTeamsStatus error:', error);
+    return res.status(500).json({ message: 'Failed to fetch team statuses' });
   }
 }
 
@@ -861,7 +985,9 @@ module.exports = {
   bulkMuleUpload,
   getDetourRoute,
   generateSituationBrief,
-  orchestrateSosWithAgentZero
+  orchestrateSosWithAgentZero,
+  assignSquadToSos,
+  getTeamsStatus
 };
 
 

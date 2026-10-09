@@ -13,7 +13,9 @@ const {
   assignAdminToSos,
   bulkMuleUpload,
   generateSituationBrief,
-  orchestrateSosWithAgentZero
+  orchestrateSosWithAgentZero,
+  assignSquadToSos,
+  getTeamsStatus
 } = require('../controllers/sosController');
 
 const router = express.Router();
@@ -55,6 +57,9 @@ router.post('/:id/brief', verifyToken, generateSituationBrief);
 // POST /api/sos/:id/orchestrate - trigger Agent Zero Autonomous Orchestration manually
 router.post('/:id/orchestrate', verifyToken, orchestrateSosWithAgentZero);
 
+// GET /api/sos/teams/status - real-time atomic availability of emergency squads (Redis)
+router.get('/teams/status', verifyToken, getTeamsStatus);
+
 // GET /api/sos/:id - get a single SOS event (creator or admin only)
 router.get('/:id', verifyToken, getSosById);
 
@@ -65,11 +70,14 @@ router.get('/:id', verifyToken, getSosById);
 //   false = local area SOS: "Are you sure the surrounding area / peer is attended to?"
 router.put('/:id/acknowledge', verifyToken, acknowledgeSos);
 
-// PUT /api/sos/:id/resolve - admin only: mark as fully resolved
+// PUT /api/sos/:id/resolve - admin only: mark as fully resolved & unlock squad
 router.put('/:id/resolve', verifyToken, verifyAdminRole, resolveSos);
 
 // PUT /api/sos/:id/assign - admin only: assign or unassign event ownership
 router.put('/:id/assign', verifyToken, verifyAdminRole, assignAdminToSos);
+
+// PUT /api/sos/:id/assign-squad - admin only: atomically assign emergency squad
+router.put('/:id/assign-squad', verifyToken, verifyAdminRole, assignSquadToSos);
 
 // POST /api/sos/:id/notes - admin only: append a case note
 router.post('/:id/notes', verifyToken, verifyAdminRole, addNoteToSos);

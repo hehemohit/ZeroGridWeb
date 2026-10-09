@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const AWS_VOICE_AGENT_ENDPOINT =
-  process.env.NEXT_PUBLIC_VOICE_AGENT_URL ||
-  'https://j6uweuhbak.execute-api.ap-south-1.amazonaws.com/default/voice-agent-microservice';
+const AWS_VOICE_AGENT_ENDPOINT = process.env.NEXT_PUBLIC_VOICE_AGENT_URL || '';
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 

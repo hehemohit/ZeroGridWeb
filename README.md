@@ -551,7 +551,7 @@ The Voice-AI Dispatch Assistant provides emergency command center dispatchers wi
           ▼
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
 │ AWS API GATEWAY (HTTP API - Amazon Managed SSL)                                        │
-│ https://j6uweuhbak.execute-api.ap-south-1.amazonaws.com/default/voice-agent-microservice │
+│ https://<api-id>.execute-api.ap-south-1.amazonaws.com/default/voice-agent-microservice  │
 └─────────┼──────────────────────────────────────────────────────────────────────────────┘
           │ Lambda Proxy Integration ($default / ANY)
           ▼
@@ -863,7 +863,7 @@ SendSosScreen.kt
    ```env
    NEXT_PUBLIC_API_URL=http://localhost:5000
    NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=AIzaSy...
-   NEXT_PUBLIC_VOICE_AGENT_URL=https://j6uweuhbak.execute-api.ap-south-1.amazonaws.com/default/voice-agent-microservice
+   NEXT_PUBLIC_VOICE_AGENT_URL=https://<api-id>.execute-api.ap-south-1.amazonaws.com/default/voice-agent-microservice
    GROQ_API_KEY=gsk_...
    ```
 3. Install dependencies and start Next.js:

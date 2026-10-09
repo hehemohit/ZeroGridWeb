@@ -8,4 +8,6 @@ pydantic==2.6.4
 python-dotenv==1.0.1
 boto3==1.34.0
 botocore==1.34.0
+redis==5.0.1
+pymongo==4.6.2
 

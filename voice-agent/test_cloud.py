@@ -1,8 +1,11 @@
-import urllib.request
-import json
-import time
+import os
+from dotenv import load_dotenv
 
-endpoint = "https://j6uweuhbak.execute-api.ap-south-1.amazonaws.com/default/voice-agent-microservice"
+load_dotenv()
+
+endpoint = os.environ.get("VOICE_AGENT_URL", "")
+if not endpoint:
+    raise ValueError("VOICE_AGENT_URL environment variable must be set to run cloud test.")
 
 print("--- 1. Health Check (GET) ---")
 t0 = time.time()

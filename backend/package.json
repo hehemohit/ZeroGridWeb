@@ -27,6 +27,7 @@
     "express-rate-limit": "^8.7.0",
     "firebase-admin": "^13.10.0",
     "google-auth-library": "^10.9.1",
+    "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.3",
     "mongodb": "^7.6.0",
     "mongoose": "^9.10.1",

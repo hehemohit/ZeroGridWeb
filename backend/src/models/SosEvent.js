@@ -180,6 +180,19 @@ const sosEventSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: null
     },
+    assignedSquad: {
+      type: String,
+      default: null,
+      index: true
+    },
+    resolvedAt: {
+      type: Date,
+      default: null
+    },
+    resolutionNotes: {
+      type: String,
+      default: null
+    },
     notes: {
       type: [sosNoteSchema],
       default: []

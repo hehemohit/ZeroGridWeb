@@ -21,7 +21,12 @@ import {
   ShieldAlert,
   Flame,
   HeartPulse,
-  Navigation
+  Navigation,
+  Compass,
+  Radar,
+  Lock,
+  Unlock,
+  X
 } from 'lucide-react';
 import {
   triggerAutonomousOrchestration,
@@ -53,6 +58,8 @@ export function AgentZeroOrchestratorWidget({
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'ALL' | 'TRIAGE' | 'GRID' | 'DISPATCH'>('ALL');
   const [trippedBreakers, setTrippedBreakers] = useState<string[]>([]);
+  const [pendingBreaker, setPendingBreaker] = useState<string | null>(null);
+  const [hitlConfirmed, setHitlConfirmed] = useState<boolean>(false);
   const [squadsDispatched, setSquadsDispatched] = useState<boolean>(false);
   const [copiedNote, setCopiedNote] = useState(false);
 
@@ -71,23 +78,31 @@ export function AgentZeroOrchestratorWidget({
 
       const result = await triggerAutonomousOrchestration(payload);
       setOrchestration(result);
-      // Auto-initialize recommended breakers to trip
       if (result?.agent_zero_directive?.immediate_automated_actions) {
         setTrippedBreakers([]);
         setSquadsDispatched(false);
       }
     } catch (err: any) {
-      console.error('Agent Zero orchestration failed:', err);
+      console.warn('Agent Zero orchestration notice:', err);
       setError(err?.message || 'Failed to execute Agent Zero orchestration');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleToggleBreaker = (breaker: string) => {
-    setTrippedBreakers((prev) =>
-      prev.includes(breaker) ? prev.filter((b) => b !== breaker) : [...prev, breaker]
-    );
+  const requestBreakerToggle = (breaker: string) => {
+    if (trippedBreakers.includes(breaker)) {
+      setTrippedBreakers((prev) => prev.filter((b) => b !== breaker));
+    } else {
+      setPendingBreaker(breaker);
+      setHitlConfirmed(false);
+    }
+  };
+
+  const confirmHitlBreakerTrip = () => {
+    if (!pendingBreaker) return;
+    setTrippedBreakers((prev) => [...prev, pendingBreaker]);
+    setPendingBreaker(null);
   };
 
   const handleCopyDirectiveToNotes = () => {
@@ -289,11 +304,11 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
             )}
           </div>
 
-          {/* Sub-Agent Segregation Navigation Tabs */}
-          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-900/90 border border-white/5">
+          {/* Sub-Agent Segregation Navigation Tabs (Responsive) */}
+          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-900/90 border border-white/5 overflow-x-auto scrollbar-none">
             <button
               onClick={() => setActiveTab('ALL')}
-              className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all ${
+              className={`whitespace-nowrap flex-shrink-0 py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${
                 activeTab === 'ALL'
                   ? 'bg-cyan-500 text-slate-950 shadow-sm'
                   : 'text-slate-400 hover:text-white hover:bg-white/5'
@@ -303,35 +318,35 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
             </button>
             <button
               onClick={() => setActiveTab('TRIAGE')}
-              className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${
+              className={`whitespace-nowrap flex-shrink-0 py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${
                 activeTab === 'TRIAGE'
                   ? 'bg-rose-500 text-white shadow-sm'
                   : 'text-slate-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <AlertTriangle className="w-3 h-3" />
+              <AlertTriangle className="w-3 h-3 flex-shrink-0" />
               <span>Triage</span>
             </button>
             <button
               onClick={() => setActiveTab('GRID')}
-              className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${
+              className={`whitespace-nowrap flex-shrink-0 py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${
                 activeTab === 'GRID'
                   ? 'bg-amber-500 text-slate-950 shadow-sm'
                   : 'text-slate-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <Zap className="w-3 h-3" />
+              <Zap className="w-3 h-3 flex-shrink-0" />
               <span>Grid Ops</span>
             </button>
             <button
               onClick={() => setActiveTab('DISPATCH')}
-              className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${
+              className={`whitespace-nowrap flex-shrink-0 py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${
                 activeTab === 'DISPATCH'
                   ? 'bg-blue-500 text-white shadow-sm'
                   : 'text-slate-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <Truck className="w-3 h-3" />
+              <Truck className="w-3 h-3 flex-shrink-0" />
               <span>Dispatch</span>
             </button>
           </div>
@@ -440,7 +455,7 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
                           return (
                             <button
                               key={idx}
-                              onClick={() => handleToggleBreaker(breaker)}
+                              onClick={() => requestBreakerToggle(breaker)}
                               className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-left text-[11px] font-mono transition-all ${
                                 isTripped
                                   ? 'bg-rose-950/80 text-rose-300 border-rose-500/60 shadow-sm'
@@ -477,8 +492,8 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
 
             {/* STREAM 3: TACTICAL DISPATCH SUB-AGENT DECISION STREAM */}
             {(activeTab === 'ALL' || activeTab === 'DISPATCH') && subAgents?.dispatch && (
-              <div className="p-3.5 rounded-xl bg-slate-900/70 border border-blue-500/30 hover:border-blue-500/50 transition-all">
-                <div className="flex items-center justify-between mb-2">
+              <div className="p-3.5 rounded-xl bg-slate-900/70 border border-blue-500/30 hover:border-blue-500/50 transition-all space-y-3">
+                <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
                     <span className="p-1 rounded-lg bg-blue-500/20 text-blue-400">
                       <Truck className="w-3.5 h-3.5" />
@@ -491,6 +506,43 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
                     ROUTE: {subAgents.dispatch.route_accessibility_status}
                   </span>
                 </div>
+
+                {/* Spatial Proximity Advisory from MongoDB */}
+                {(orchestration?.spatial_memory?.tactical_proximity_advisory || subAgents?.dispatch?.spatial_proximity_advisory) && (
+                  <div className="p-2.5 rounded-lg bg-purple-950/40 border border-purple-500/30 flex items-start gap-2 text-[11px]">
+                    <Compass className="w-4 h-4 text-purple-400 flex-shrink-0 mt-0.5" />
+                    <p className="text-purple-200 font-medium">
+                      {orchestration?.spatial_memory?.tactical_proximity_advisory || subAgents?.dispatch?.spatial_proximity_advisory}
+                    </p>
+                  </div>
+                )}
+
+                {/* Candidate Proximity Teams */}
+                {(orchestration?.spatial_memory?.candidate_teams || subAgents?.dispatch?.candidate_proximity_teams || []).length > 0 && (
+                  <div className="space-y-1.5">
+                    <span className="text-[10px] font-mono text-purple-300 uppercase font-bold block">
+                      MongoDB Spatial Proximity Lookahead:
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {(orchestration?.spatial_memory?.candidate_teams || subAgents?.dispatch?.candidate_proximity_teams || []).slice(0, 2).map((cand, idx) => (
+                        <div
+                          key={idx}
+                          className="p-2.5 rounded-lg bg-[#050b14] border border-purple-500/30 flex flex-col justify-between"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-white text-[11px] truncate">{cand.team_name}</span>
+                            <span className="text-[9px] font-mono font-bold text-emerald-400">
+                              ⚡ -{cand.transit_savings_mins}m
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 mt-0.5">
+                            {cand.distance_km}km away &bull; Redis: {cand.redis_state}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-2.5 text-xs">
                   {/* Recommended Squads Breakdown */}
@@ -544,14 +596,14 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
             <div className="flex items-center gap-2">
               <button
                 onClick={() => {
-                  if (subAgents?.grid?.immediate_breakers_to_trip) {
-                    setTrippedBreakers(subAgents.grid.immediate_breakers_to_trip);
+                  if (subAgents?.grid?.immediate_breakers_to_trip?.length) {
+                    requestBreakerToggle(subAgents.grid.immediate_breakers_to_trip[0]);
                   }
                 }}
                 className="px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/40 font-bold text-[11px] flex items-center gap-1.5 transition-all"
               >
                 <Zap className="w-3.5 h-3.5" />
-                <span>Trip All Breakers ({subAgents?.grid?.immediate_breakers_to_trip?.length || 0})</span>
+                <span>Isolate Breakers (HITL Protected)</span>
               </button>
 
               <button
@@ -575,6 +627,76 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
               {copiedNote ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
               <span>{copiedNote ? 'Pasted to Incident Notes!' : 'Append to Notes'}</span>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* HITL Safety Gate Modal */}
+      {pendingBreaker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-md rounded-2xl bg-[#091322] border border-rose-500/60 shadow-2xl p-5 space-y-4">
+            <div className="flex items-start justify-between gap-3 border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-rose-500/20 text-rose-400 ring-2 ring-rose-500/30">
+                  <ShieldAlert className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-white uppercase tracking-wide font-display">
+                    Human-in-the-Loop Safety Gate
+                  </h3>
+                  <p className="text-[10px] text-rose-300 font-mono">
+                    MANDATORY OPERATOR AUTHORIZATION REQUIRED
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setPendingBreaker(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/5"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2.5 text-xs">
+              <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-500/30 space-y-1">
+                <span className="text-[10px] font-mono text-rose-400 uppercase font-bold block">
+                  Target Circuit Asset:
+                </span>
+                <p className="text-sm font-extrabold text-white font-mono">{pendingBreaker}</p>
+                <p className="text-rose-200 text-[11px]">
+                  Tripping this breaker disconnects the 33kV primary feed. Automatic standby tie-line to Vasai West must engage to keep ICU energized.
+                </p>
+              </div>
+
+              <label className="flex items-start gap-2 cursor-pointer text-slate-300 select-none p-2.5 rounded-lg bg-slate-950 border border-white/5">
+                <input
+                  type="checkbox"
+                  checked={hitlConfirmed}
+                  onChange={(e) => setHitlConfirmed(e.target.checked)}
+                  className="mt-0.5 rounded border-white/20 text-rose-500 focus:ring-0 accent-rose-500"
+                />
+                <span className="text-[11px] leading-relaxed">
+                  I verify air-gap clearance and authorize high-voltage breaker isolation.
+                </span>
+              </label>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                onClick={() => setPendingBreaker(null)}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white hover:bg-white/5 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmHitlBreakerTrip}
+                disabled={!hitlConfirmed}
+                className="px-4 py-2 rounded-xl text-xs font-extrabold bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                <span>Authorize & Trip</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

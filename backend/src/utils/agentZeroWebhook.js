@@ -6,10 +6,9 @@
 
 const SosEvent = require('../models/SosEvent');
 const { resolveNearestGridNode } = require('./gridNodeResolver');
+const { redisLockManager } = require('./redisLockClient');
 
-const VOICE_AGENT_LAMBDA_URL =
-  process.env.VOICE_AGENT_LAMBDA_URL ||
-  'https://j6uweuhbak.execute-api.ap-south-1.amazonaws.com/default/voice-agent-microservice';
+const VOICE_AGENT_LAMBDA_URL = process.env.VOICE_AGENT_LAMBDA_URL || '';
 
 /**
  * Evaluates whether an incoming SOS event qualifies for automated Agent Zero orchestration.
@@ -103,6 +102,26 @@ function triggerAgentZeroOrchestrationAsync(sosEvent, io) {
         `[Agent Zero Webhook] Orchestration completed successfully for SOS ${sosEvent._id}. Threat Score: ${directive.overall_threat_score}/100`
       );
 
+      // Check for recommended squad in dispatch plan or candidate proximity teams
+      const recommendedSquad =
+        orchestrationData.dispatch_plan?.assigned_squad_id ||
+        (orchestrationData.candidate_proximity_teams && orchestrationData.candidate_proximity_teams[0]?.team_id);
+
+      let assignedSquad = null;
+      if (recommendedSquad && !sosEvent.assignedSquad) {
+        try {
+          const lockResult = await redisLockManager.acquireTeamLock(recommendedSquad, sosEvent._id.toString());
+          if (lockResult.success) {
+            assignedSquad = recommendedSquad;
+            console.log(`[Agent Zero Webhook] Atomically locked squad ${recommendedSquad} for SOS ${sosEvent._id}`);
+          } else {
+            console.warn(`[Agent Zero Webhook] Squad ${recommendedSquad} collision: ${lockResult.error}`);
+          }
+        } catch (lockErr) {
+          console.warn('[Agent Zero Webhook] Redis lock acquisition error:', lockErr.message);
+        }
+      }
+
       // Construct automated system note summarizing Agent Zero's directive
       const automatedNote = {
         authorId: sosEvent.triggeredBy || sosEvent._id,
@@ -110,23 +129,29 @@ function triggerAgentZeroOrchestrationAsync(sosEvent, io) {
 Threat Score: ${directive.overall_threat_score}/100
 Executive Summary: ${directive.executive_summary}
 Automated Actions: ${directive.immediate_automated_actions?.join(', ') || 'None'}
-Hospital Lifeline: ${directive.hospital_lifeline_protocol || 'Standard Backup'}`.trim(),
+Hospital Lifeline: ${directive.hospital_lifeline_protocol || 'Standard Backup'}
+Assigned Squad: ${assignedSquad || sosEvent.assignedSquad || 'None'}`.trim(),
         timestamp: new Date(),
       };
 
-      // Persist advisory and affectedNodeId into MongoDB
+      const updateFields = {
+        agentZeroAdvisory: orchestrationData,
+        affectedNodeId: resolvedNode.nodeId,
+      };
+      if (assignedSquad) {
+        updateFields.assignedSquad = assignedSquad;
+      }
+
+      // Persist advisory, affectedNodeId, and assignedSquad into MongoDB
       const updatedDoc = await SosEvent.findByIdAndUpdate(
         sosEvent._id,
         {
-          $set: {
-            agentZeroAdvisory: orchestrationData,
-            affectedNodeId: resolvedNode.nodeId,
-          },
+          $set: updateFields,
           $push: {
             notes: automatedNote,
           },
         },
-        { new: true }
+        { returnDocument: 'after' }
       ).populate({
         path: 'triggeredBy',
         select: 'displayName email phoneNumber photoUrl',

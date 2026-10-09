@@ -49,7 +49,7 @@ def build_lambda_zip():
         return False
 
     print("[*] Copying application source files to package root...")
-    for filename in ["main.py", "grid_graph.py", "agents.py", "seed_data.json"]:
+    for filename in ["main.py", "grid_graph.py", "agents.py", "redis_manager.py", "spatial_memory.py", "seed_data.json"]:
         src_path = os.path.join(SCRIPT_DIR, filename)
         if os.path.exists(src_path):
             shutil.copy2(src_path, os.path.join(STAGING_DIR, filename))

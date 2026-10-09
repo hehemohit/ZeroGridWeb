@@ -14,15 +14,18 @@ from grid_graph import (
     resolve_nearest_node,
     fetch_localized_subgraph,
     seed_default_grid_topology,
+    record_node_incident_metric,
     TABLE_NAME,
     AWS_REGION
 )
 from agents import synthesize_agent_zero
+from redis_manager import redis_manager
+from spatial_memory import spatial_memory
 
 app = FastAPI(
     title="ZeroGrid Agentic & Voice Microservice",
     description="Autonomous Emergency Response, Grid Topology & Voice AI Sub-Agents",
-    version="2.0.0"
+    version="2.1.0"
 )
 
 # Enable CORS for Next.js, Express backend, and mobile applications
@@ -66,8 +69,18 @@ class AutonomousOrchestrateRequest(BaseModel):
     telemetry: Optional[Dict[str, Any]] = None
 
 
+class TeamLockRequest(BaseModel):
+    team_id: str
+    incident_id: str
+    ttl_seconds: Optional[int] = 1800
+
+
+class TeamReleaseRequest(BaseModel):
+    team_id: str
+
+
 class UniversalMicroserviceRequest(BaseModel):
-    action: Optional[str] = None  # "seed" | "orchestrate" | "chat"
+    action: Optional[str] = None  # "seed" | "orchestrate" | "chat" | "teams" | "lock_team" | "release_team"
     # Chat fields:
     transcript: Optional[str] = None
     # Orchestration fields:
@@ -79,6 +92,9 @@ class UniversalMicroserviceRequest(BaseModel):
     affected_node_id: Optional[str] = None
     message: Optional[str] = None
     telemetry: Optional[Dict[str, Any]] = None
+    # Team locking fields:
+    team_id: Optional[str] = None
+    ttl_seconds: Optional[int] = 1800
 
 
 # --- 1. Agent Zero Multi-Agent Autonomous Orchestration ---
@@ -90,9 +106,11 @@ async def autonomous_orchestrate(payload: AutonomousOrchestrateRequest):
     """
     Primary Agent Zero Entrypoint:
     1. Resolves coordinates to closest electrical grid node (e.g. SUB_VIRAR_EAST_01).
-    2. Retrieves localized electrical adjacency subgraph (DynamoDB / In-Memory Simulator).
-    3. Concurrently triggers Triage, Grid Operations, and Dispatch sub-agents via asyncio.gather.
-    4. Synthesizes master operational directive using Groq LPUs.
+    2. Atomically records dynamic node failure metric in DynamoDB.
+    3. Retrieves localized electrical adjacency subgraph (DynamoDB / In-Memory Simulator).
+    4. Queries MongoDB spatial-temporal operational memory & Redis atomic unit locks.
+    5. Concurrently triggers Triage, Grid Operations, and Dispatch sub-agents via asyncio.gather.
+    6. Synthesizes master operational directive using Groq LPUs.
     """
     try:
         resolved_node = resolve_nearest_node(
@@ -101,16 +119,61 @@ async def autonomous_orchestrate(payload: AutonomousOrchestrateRequest):
             explicit_node_id=payload.affected_node_id
         )
 
+        # Dynamic failure counter update
+        record_node_incident_metric(resolved_node)
+
+        # Topological graph retrieval
         subgraph = fetch_localized_subgraph(start_node_id=resolved_node, max_hops=2)
+
+        # MongoDB spatial-temporal memory + Redis lock cross-referencing
+        spatial_ctx = spatial_memory.synthesize_proximity_recommendations(
+            target_coords=payload.coordinates,
+            redis_manager_instance=redis_manager
+        )
 
         orchestration_output = await synthesize_agent_zero(
             incident=payload.model_dump(),
-            graph_context=subgraph
+            graph_context=subgraph,
+            spatial_context=spatial_ctx
         )
 
         return orchestration_output
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Agent Zero orchestration failure: {str(e)}")
+
+
+# --- 2. Team Concurrency & Atomic Lock Endpoints ---
+
+@app.get("/api/teams/status")
+@app.get("/voice-agent-microservice/api/teams/status")
+@app.get("/default/voice-agent-microservice/api/teams/status")
+def get_teams_status():
+    """Returns atomic availability states for all tactical emergency units."""
+    return {
+        "teams": redis_manager.get_all_team_statuses(),
+        "is_simulation": redis_manager.is_simulation
+    }
+
+
+@app.post("/api/teams/lock")
+@app.post("/voice-agent-microservice/api/teams/lock")
+@app.post("/default/voice-agent-microservice/api/teams/lock")
+def lock_team(payload: TeamLockRequest):
+    """Atomically locks a team to an incident in Redis (SET NX EX)."""
+    return redis_manager.acquire_team_lock(
+        team_id=payload.team_id,
+        incident_id=payload.incident_id,
+        ttl_seconds=payload.ttl_seconds or 1800
+    )
+
+
+@app.post("/api/teams/release")
+@app.post("/voice-agent-microservice/api/teams/release")
+@app.post("/default/voice-agent-microservice/api/teams/release")
+def release_team(payload: TeamReleaseRequest):
+    """Releases a team back to IDLE state upon incident resolution."""
+    return redis_manager.release_team_lock(team_id=payload.team_id)
+
 
 
 # --- 2. Deterministic Grid Topology & Seeding Endpoints ---
@@ -179,7 +242,19 @@ async def handle_universal_gateway(payload: UniversalMicroserviceRequest):
     if payload.action in ["seed", "seed-topology", "seed_topology"]:
         return seed_default_grid_topology()
 
-    # 2. Autonomous Orchestration
+    # 2. Team Concurrency & Atomic Locks
+    if payload.action in ["teams", "team_status", "get_teams"]:
+        return get_teams_status()
+    if payload.action in ["lock_team", "acquire_lock"] and payload.team_id:
+        return lock_team(TeamLockRequest(
+            team_id=payload.team_id,
+            incident_id=payload.incident_id or "INC_UNSPECIFIED",
+            ttl_seconds=payload.ttl_seconds or 1800
+        ))
+    if payload.action in ["release_team", "release_lock"] and payload.team_id:
+        return release_team(TeamReleaseRequest(team_id=payload.team_id))
+
+    # 3. Autonomous Orchestration
     if payload.action in ["orchestrate", "autonomous-orchestrate"] or payload.incident_id or payload.coordinates:
         orch_req = AutonomousOrchestrateRequest(
             incident_id=payload.incident_id or "INC_01",
@@ -193,11 +268,11 @@ async def handle_universal_gateway(payload: UniversalMicroserviceRequest):
         )
         return await autonomous_orchestrate(orch_req)
 
-    # 3. Voice Chat
+    # 4. Voice Chat
     if payload.transcript:
         return handle_voice_chat(VoiceTranscriptRequest(transcript=payload.transcript))
 
-    # 4. Fallback status
+    # 5. Fallback status
     return health_check()
 
 

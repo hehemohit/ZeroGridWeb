@@ -378,3 +378,60 @@ def seed_default_grid_topology() -> Dict[str, Any]:
             "region": AWS_REGION
         }
 
+
+def record_node_incident_metric(node_id: str) -> Dict[str, Any]:
+    """
+    Atomically increments historical_incident_count in DynamoDB for the affected grid node,
+    tracking repeat stress and equipment fatigue zones.
+    """
+    from datetime import datetime, timezone
+
+    pk = f"NODE#{node_id}" if not node_id.startswith("NODE#") else node_id
+    clean_id = node_id.replace("NODE#", "")
+    ts = datetime.now(timezone.utc).isoformat()
+
+    dynamo = get_dynamodb_resource()
+    if dynamo:
+        try:
+            table = dynamo.Table(TABLE_NAME)
+            resp = table.update_item(
+                Key={"PK": pk, "SK": "METADATA"},
+                UpdateExpression="ADD historical_incident_count :inc SET last_incident_timestamp = :ts",
+                ExpressionAttributeValues={
+                    ":inc": 1,
+                    ":ts": ts
+                },
+                ReturnValues="UPDATED_NEW"
+            )
+            updated_vals = convert_decimals_to_floats(resp.get("Attributes", {}))
+            logger.info(f"📊 DynamoDB node {pk} incident count incremented: {updated_vals}")
+            return {
+                "success": True,
+                "node_id": clean_id,
+                "historical_incident_count": int(updated_vals.get("historical_incident_count", 1)),
+                "last_incident_timestamp": ts,
+                "source": "DYNAMODB_CLOUD"
+            }
+        except Exception as e:
+            logger.warning(f"Could not update DynamoDB incident metric for {pk}: {e}")
+
+    # Fallback simulation counter
+    if clean_id in SIMULATION_NODES:
+        cnt = SIMULATION_NODES[clean_id].get("historical_incident_count", 0) + 1
+        SIMULATION_NODES[clean_id]["historical_incident_count"] = cnt
+        SIMULATION_NODES[clean_id]["last_incident_timestamp"] = ts
+        return {
+            "success": True,
+            "node_id": clean_id,
+            "historical_incident_count": cnt,
+            "last_incident_timestamp": ts,
+            "source": "IN_MEMORY_SIMULATION"
+        }
+
+    return {
+        "success": False,
+        "node_id": clean_id,
+        "error": "Node not found",
+        "source": "UNKNOWN"
+    }
+
