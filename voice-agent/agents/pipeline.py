@@ -86,20 +86,22 @@ async def run_autonomous_negotiation_pipeline(
         )
         state_checkpoint["last_valid_data"]["confidence"] = confidence_res
 
-        if not confidence_res.get("is_valid_alert") or confidence_res.get("confidence_score", 0) < 0.70:
+        if not confidence_res.get("is_valid_alert") or confidence_res.get("confidence_score", 0) < 0.65:
+            score_pct = int(confidence_res.get("raw_score", confidence_res.get("confidence_score", 0) * 100))
             record_step("CONFIDENCE_CALCULATION", "FILTERED_FALSE_ALERT", {
-                "summary": f"Alert filtered as false/low-confidence ({confidence_res.get('confidence_score'):.2f})"
+                "summary": f"Alert flagged as low-confidence/spam ({score_pct}% < 65% threshold). Awaiting HITL approval."
             })
             return {
                 "incident_id": incident_id,
-                "status": "FALSE_ALERT_FILTERED",
-                "message": "Incoming alert filtered out due to low confidence score.",
+                "status": "LOW_CONFIDENCE_FLAGGED_HITL",
+                "message": f"Alert failed confidence threshold ({score_pct}% < 65%). Dispatched to Admin Console awaiting human-in-the-loop review.",
                 "confidence_data": confidence_res,
                 "pipeline_checkpoint": state_checkpoint
             }
 
+        score_pct = int(confidence_res.get("raw_score", confidence_res.get("confidence_score", 0) * 100))
         record_step("CONFIDENCE_CALCULATION", "COMPLETED", {
-            "summary": f"Alert verified. Confidence: {confidence_res.get('confidence_score'):.2f}"
+            "summary": f"Alert verified ({score_pct}% >= 65%). Base 50 + Modifiers. Forwarded to Agent Zero."
         })
 
         # =========================================================================

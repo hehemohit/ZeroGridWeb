@@ -107,6 +107,7 @@ async def run_all_tests():
     error_res = await run_autonomous_negotiation_pipeline(
         incident=sample_incident,
         graph_context=graph_context,
+        weather_context={"rainfall_mm_per_hr": 45.0, "tidal_surge_m": 2.1},
         inject_fault_at_step="RESOURCE_NEGOTIATION"
     )
     print(f"  Status:         {error_res.get('status')}")

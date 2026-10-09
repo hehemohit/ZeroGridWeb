@@ -1,17 +1,31 @@
 """
-ZeroGrid Confidence Calculator Agent
-Evaluates incoming alerts, verifies veracity against historical flood data & telemetry,
-filters out false alarms/sensor noise, and enriches context before pipeline handoff.
-Uses FAST_MODEL (e.g. llama-3.3-70b-versatile) for sub-second classification.
+ZeroGrid Confidence Calculator Agent (Central Orchestrator)
+Orchestrates concurrent multi-modal verification:
+1. Historical Pattern Analyzer (MongoDB Memory)
+2. Real-Time Weather Agent (Open-Meteo Live API)
+3. OSM Spatial Validation Agent (OpenStreetMap Overpass API)
+
+Computes deterministic confidence score:
+    Total Score = 50 (Base) + M_historical + M_weather + M_osm
+Threshold:
+    Score >= 65% -> Trigger High-Confidence Pipeline (Forward to Agent Zero)
+    Score < 65%  -> Flag as Low-Confidence / Spam (Awaiting HITL Approval)
 """
 
+import asyncio
 import logging
 from typing import Dict, Any, List, Optional
 from .base import get_groq_async_client, extract_json_from_llm, FAST_MODEL
+from .confidence import (
+    historical_pattern_analyzer,
+    real_time_weather_agent,
+    osm_spatial_validation_agent
+)
 
 logger = logging.getLogger("zerogrid.agents.confidence")
 
-CONFIDENCE_THRESHOLD = 0.70
+CONFIDENCE_THRESHOLD = 0.65  # 65% Threshold as per system specification
+BASE_SCORE = 50
 
 
 async def confidence_calculator_agent(
@@ -20,85 +34,128 @@ async def confidence_calculator_agent(
     weather_context: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
-    Evaluates incoming alert and calculates confidence score (0.0 to 1.0).
-    Filters low-confidence noise/false alarms before heavy sub-agent runs.
+    Central Orchestrator:
+    Concurrently executes Historical, Weather, and OSM sub-agents via asyncio.gather,
+    sums the modifiers with base score 50, evaluates against 65% threshold,
+    and returns a transparent audit verification packet.
     """
-    coords = coordinates or incident.get("coordinates") or [19.4534, 72.8061]
-    desc = incident.get("message") or incident.get("description") or "Emergency alert received"
-    incident_type = incident.get("incident_type", "SUBSTATION_WATER_INGRESS")
-    water_depth = incident.get("water_depth_cm", 35.0)
+    coords = coordinates or incident.get("coordinates") or [19.4560, 72.8120]
+    category = incident.get("incident_type") or incident.get("category") or "FLOOD"
+    desc = incident.get("message") or incident.get("description") or "Emergency alert reported"
+    water_depth = incident.get("water_depth_cm", 0.0)
 
-    weather_summary = ""
-    if weather_context:
-        rainfall = weather_context.get("rainfall_mm_per_hr", weather_context.get("rainfall", "N/A"))
-        tidal_surge = weather_context.get("tidal_surge_m", weather_context.get("tide", "N/A"))
-        weather_summary = f"Weather/Tidal Telemetry: Rainfall={rainfall} mm/hr, Surge={tidal_surge} m."
+    # 1. Concurrently execute all 3 verification sub-agents
+    try:
+        hist_task = historical_pattern_analyzer(coords)
+        weather_task = real_time_weather_agent(coords, category, weather_context)
+        osm_task = osm_spatial_validation_agent(coords, category)
 
-    sys_prompt = (
-        "You are the ZeroGrid Confidence Calculator Agent. Your role is to critically analyze "
-        "incoming disaster/outage reports and compute an objective confidence score (0.00 to 1.00). "
-        "Filter out spurious sensor blips, false alarms, or vague noise. "
-        "Validate whether reported water depth and electrical hazards align with monsoonal realities. "
-        "Keep justifications strictly under 25 words. "
-        "You MUST respond ONLY with a valid JSON object without surrounding commentary."
+        hist_res, weather_res, osm_res = await asyncio.gather(
+            hist_task,
+            weather_task,
+            osm_task,
+            return_exceptions=False
+        )
+    except Exception as e:
+        logger.error(f"Error during parallel sub-agent execution: {e}")
+        # Graceful fallback sub-agent deliverables
+        hist_res = {"sub_agent": "HISTORICAL", "modifier": 5, "reason": "Fallback historical verification"}
+        weather_res = {"sub_agent": "WEATHER", "modifier": 0, "reason": "Fallback weather verification"}
+        osm_res = {"sub_agent": "OSM", "modifier": 0, "reason": "Fallback spatial verification"}
+
+    # 2. Extract quantitative modifiers
+    mod_hist = int(hist_res.get("modifier", 5))
+    mod_weather = int(weather_res.get("modifier", 0))
+    mod_osm = int(osm_res.get("modifier", 0))
+
+    # 3. Compute Deterministic Agent Confidence Score
+    raw_total = BASE_SCORE + mod_hist + mod_weather + mod_osm
+    clamped_score = max(0, min(100, raw_total))
+    confidence_fraction = round(clamped_score / 100.0, 2)
+    is_valid = clamped_score >= int(CONFIDENCE_THRESHOLD * 100)
+
+    veracity_classification = (
+        "VERIFIED_CRITICAL" if clamped_score >= 80 else (
+            "VERIFIED_HIGH_CONFIDENCE" if is_valid else "LOW_CONFIDENCE_SPAM"
+        )
     )
 
-    user_prompt = f"""
-Incoming Alert for Verification:
-- Incident Type: {incident_type}
-- Coordinates: {coords}
-- Water Depth (cm): {water_depth}
-- Alert Text: "{desc}"
-- {weather_summary}
+    action_directive = (
+        "TRIGGER_HIGH_CONFIDENCE_PIPELINE" if is_valid else "FLAG_LOW_CONFIDENCE_AWAITING_HITL"
+    )
 
-Schema:
-{{
-  "confidence_score": 0.92,
-  "is_valid_alert": true,
-  "veracity_classification": "VERIFIED_CRITICAL|PROBABLE|UNVERIFIED_LOW|FALSE_ALARM",
-  "context": "Concise geological and historical flood correlation statement",
-  "anomaly_detected": false,
-  "filtering_rationale": "Reason for accept or filter"
-}}
-"""
+    # 4. Generate concise commander audit summary
+    summary_text = (
+        f"Confidence Score {clamped_score}/100 [Base 50, Hist {mod_hist:+d}, Weather {mod_weather:+d}, OSM {mod_osm:+d}]. "
+        f"{'Passed 65% threshold -> forwarded to Agent Zero.' if is_valid else 'Failed 65% threshold -> flagged for HITL.'}"
+    )
 
+    # Attempt LLM synthesis for executive-ready briefing if Groq is available
+    executive_context = summary_text
     try:
         client = get_groq_async_client()
-        completion = await client.chat.completions.create(
-            model=FAST_MODEL,
-            messages=[
-                {"role": "system", "content": sys_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.1,
-            max_tokens=400
+        sys_prompt = (
+            "You are the ZeroGrid Confidence Calculator Agent. Summarize the multi-modal verification results "
+            "(Base 50, Historical, Live Weather, and OSM Spatial checks) into a punchy 1-sentence statement (under 25 words). "
+            "State whether the alert is verified or flagged for review."
         )
-        parsed = extract_json_from_llm(completion.choices[0].message.content or "")
-        score = float(parsed.get("confidence_score", 0.85))
-        is_valid = parsed.get("is_valid_alert", score >= CONFIDENCE_THRESHOLD)
+        user_prompt = f"""
+Alert Category: {category}
+Coordinates: {coords}
+Base Score: 50
+Historical Check: {hist_res.get('reason')} ({mod_hist:+d})
+Live Weather Check: {weather_res.get('reason')} ({mod_weather:+d})
+OSM Spatial Check: {osm_res.get('reason')} ({mod_osm:+d})
+Final Score: {clamped_score}% -> {'VERIFIED' if is_valid else 'FLAGGED AS SPAM'}
+"""
+        completion = await asyncio.wait_for(
+            client.chat.completions.create(
+                model=FAST_MODEL,
+                messages=[
+                    {"role": "system", "content": sys_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.1,
+                max_tokens=150
+            ),
+            timeout=1.8
+        )
+        llm_reply = completion.choices[0].message.content or ""
+        if llm_reply.strip():
+            executive_context = llm_reply.strip().replace('"', '')
+    except Exception as llm_err:
+        logger.debug(f"LLM briefing synthesis skipped ({llm_err}), using deterministic summary")
 
-        return {
-            "agent": "CONFIDENCE_CALCULATOR",
-            "confidence_score": score,
-            "is_valid_alert": is_valid,
-            "veracity_classification": parsed.get("veracity_classification", "VERIFIED_CRITICAL" if score >= 0.8 else "PROBABLE"),
-            "context": parsed.get("context", f"Incident correlated with high-risk drainage corridor near {coords}."),
-            "anomaly_detected": parsed.get("anomaly_detected", False),
-            "filtering_rationale": parsed.get("filtering_rationale", "Validated alert against live telemetry parameters."),
-            "model_used": FAST_MODEL
-        }
-    except Exception as e:
-        logger.error(f"Confidence calculator fallback triggered: {e}")
-        # Deterministic heuristic fallback
-        is_water_critical = float(water_depth) > 30.0 if water_depth else True
-        score = 0.88 if is_water_critical else 0.72
-        return {
-            "agent": "CONFIDENCE_CALCULATOR",
-            "confidence_score": score,
-            "is_valid_alert": score >= CONFIDENCE_THRESHOLD,
-            "veracity_classification": "VERIFIED_CRITICAL" if score >= 0.8 else "PROBABLE",
-            "context": f"Heavy monsoonal surge matched with historical substation flood zone near {coords}.",
-            "anomaly_detected": False,
-            "filtering_rationale": f"Heuristic validation applied (Fallback: {e})",
-            "model_used": "heuristic_fallback"
-        }
+    logger.info(
+        f"🎯 [Confidence Orchestrator] Final Score: {clamped_score}% ({confidence_fraction}) | Valid: {is_valid} | Directive: {action_directive}"
+    )
+
+    return {
+        "agent": "CONFIDENCE_CALCULATOR",
+        "confidence_score": confidence_fraction,
+        "raw_score": clamped_score,
+        "is_valid_alert": is_valid,
+        "veracity_classification": veracity_classification,
+        "action_directive": action_directive,
+        "threshold": CONFIDENCE_THRESHOLD,
+        "context": executive_context,
+        "anomaly_detected": not is_valid,
+        "filtering_rationale": (
+            "Multi-modal verification passed threshold (Score >= 65%)."
+            if is_valid
+            else f"Low confidence alert ({clamped_score}% < 65%). Telemetry or spatial attributes failed validation."
+        ),
+        "score_breakdown": {
+            "base_score": BASE_SCORE,
+            "historical_modifier": mod_hist,
+            "weather_modifier": mod_weather,
+            "osm_modifier": mod_osm,
+            "total_score": clamped_score
+        },
+        "sub_agents": {
+            "historical_analyzer": hist_res,
+            "weather_agent": weather_res,
+            "osm_spatial_agent": osm_res
+        },
+        "model_used": FAST_MODEL
+    }
