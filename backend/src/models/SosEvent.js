@@ -171,6 +171,15 @@ const sosEventSchema = new mongoose.Schema(
       default: null,
       index: true
     },
+    affectedNodeId: {
+      type: String,
+      default: null,
+      index: true
+    },
+    agentZeroAdvisory: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null
+    },
     notes: {
       type: [sosNoteSchema],
       default: []

@@ -12,7 +12,8 @@ const {
   addNoteToSos,
   assignAdminToSos,
   bulkMuleUpload,
-  generateSituationBrief
+  generateSituationBrief,
+  orchestrateSosWithAgentZero
 } = require('../controllers/sosController');
 
 const router = express.Router();
@@ -50,6 +51,9 @@ router.get('/acknowledged', verifyToken, getAcknowledgedSosForUser);
 
 // POST /api/sos/:id/brief - AWS Strands Agent situation brief for incident
 router.post('/:id/brief', verifyToken, generateSituationBrief);
+
+// POST /api/sos/:id/orchestrate - trigger Agent Zero Autonomous Orchestration manually
+router.post('/:id/orchestrate', verifyToken, orchestrateSosWithAgentZero);
 
 // GET /api/sos/:id - get a single SOS event (creator or admin only)
 router.get('/:id', verifyToken, getSosById);

@@ -6,6 +6,7 @@ const Headquarters = require('../models/Headquarters');
 const Zone = require('../models/Zone');
 const { sendSosPush } = require('../utils/fcm');
 const strandsRouterAgent = require('../utils/strandsRouterAgent');
+const { triggerAgentZeroOrchestrationAsync } = require('../utils/agentZeroWebhook');
 
 /** Helper to get io instance from app (set in server.js) */
 function getIo(req) {
@@ -53,6 +54,8 @@ function buildSosPayload(sos, requestingUserId) {
     isAcknowledgedByMe,
     resolvedBy: sos.resolvedBy,
     assignedAdmin: assignedAdminData,
+    affectedNodeId: sos.affectedNodeId || null,
+    agentZeroAdvisory: sos.agentZeroAdvisory || null,
     notes: sos.notes,
     createdAt: sos.createdAt,
     updatedAt: sos.updatedAt
@@ -221,7 +224,10 @@ async function triggerSos(req, res) {
       sos: buildSosPayload(populatedSos, req.user.userId)
     });
 
-    // 2. Fire FCM push to all linked emergency contacts asynchronously (non-blocking)
+    // 2. Trigger Agent Zero Autonomous Multi-Agent Orchestration asynchronously for flood/grid hazards
+    triggerAgentZeroOrchestrationAsync(populatedSos, io);
+
+    // 3. Fire FCM push to all linked emergency contacts asynchronously (non-blocking)
     setImmediate(async () => {
       try {
         const contacts = await Contact.find({ ownerId: req.user.userId }).populate({
@@ -360,6 +366,7 @@ async function bulkMuleUpload(req, res) {
       if (io) {
         for (const event of insertedEvents) {
           io.of('/sos').emit('sos:new', buildSosPayload(event));
+          triggerAgentZeroOrchestrationAsync(event, io);
         }
       }
     }
@@ -807,6 +814,41 @@ async function assignAdminToSos(req, res) {
   }
 }
 
+/**
+ * POST /api/sos/:id/orchestrate
+ * Manually or on-demand triggers Agent Zero Autonomous Multi-Agent Orchestration
+ * for an existing SOS event.
+ */
+async function orchestrateSosWithAgentZero(req, res) {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid SOS event ID' });
+    }
+
+    const sos = await SosEvent.findById(id).populate({
+      path: 'triggeredBy',
+      select: 'displayName email phoneNumber photoUrl'
+    });
+
+    if (!sos) {
+      return res.status(404).json({ message: 'SOS event not found' });
+    }
+
+    const io = getIo(req);
+    triggerAgentZeroOrchestrationAsync(sos, io);
+
+    return res.status(202).json({
+      message: 'Agent Zero autonomous multi-agent orchestration initiated asynchronously',
+      sosId: sos._id
+    });
+  } catch (error) {
+    console.error('[SOS] orchestrateSosWithAgentZero error:', error);
+    return res.status(500).json({ message: 'Failed to trigger Agent Zero orchestration' });
+  }
+}
+
 module.exports = {
   triggerSos,
   getSosById,
@@ -818,6 +860,8 @@ module.exports = {
   assignAdminToSos,
   bulkMuleUpload,
   getDetourRoute,
-  generateSituationBrief
+  generateSituationBrief,
+  orchestrateSosWithAgentZero
 };
+
 
