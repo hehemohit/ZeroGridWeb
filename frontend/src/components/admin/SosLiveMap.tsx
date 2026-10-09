@@ -490,10 +490,12 @@ export function SosLiveMap({
     };
   }, [apiKey, region, mapName]);
 
-  // 2. Detour Mode Map Click Listener
+  // 2. Detour Mode Map Click Listener & Crosshair Cursor
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
+
+    map.getCanvas().style.cursor = detourMode ? 'crosshair' : '';
 
     const handleClick = (e: maplibregl.MapMouseEvent) => {
       if (detourMode && onDetourMapClick) {
@@ -504,6 +506,7 @@ export function SosLiveMap({
     map.on('click', handleClick);
     return () => {
       map.off('click', handleClick);
+      map.getCanvas().style.cursor = '';
     };
   }, [mapReady, detourMode, onDetourMapClick]);
 
@@ -622,6 +625,10 @@ export function SosLiveMap({
         });
 
         el.addEventListener('click', (ev) => {
+          if (detourMode && onDetourMapClick && sos.coordinates) {
+            onDetourMapClick(sos.coordinates[0], sos.coordinates[1]);
+            return;
+          }
           ev.stopPropagation();
           handleMarkerClick(sos.id, sos.coordinates);
         });
@@ -681,6 +688,10 @@ export function SosLiveMap({
           });
 
           el.addEventListener('click', (ev) => {
+            if (detourMode && onDetourMapClick) {
+              onDetourMapClick(lat, lng);
+              return;
+            }
             ev.stopPropagation();
             if (onHqMarkerClick) {
               onHqMarkerClick(hq.id);
@@ -717,6 +728,8 @@ export function SosLiveMap({
     showHeadquarters,
     selectedSosId,
     selectedHqId,
+    detourMode,
+    onDetourMapClick,
     onMarkerClick,
     onHqMarkerClick,
     handleMarkerClick,
@@ -797,8 +810,10 @@ export function SosLiveMap({
     );
 
     const circleFeatures: GeoJSON.Feature[] = floodEvents.map(e => {
-      const depth = e.waterDepthCm ?? 30;
-      const radiusKm = Math.min(1.5, Math.max(0.4, (depth / 100) * 0.8));
+      const depth = e.waterDepthCm ?? 0;
+      // Exact match with backend safety bounds: 120m for >=60cm, 80m for >=30cm, 50m otherwise
+      const radiusMeters = depth >= 60 ? 120 : depth >= 30 ? 80 : 50;
+      const radiusKm = radiusMeters / 1000;
       const ring = createGeoJsonCircle(e.coordinates![1], e.coordinates![0], radiusKm);
 
       return {
