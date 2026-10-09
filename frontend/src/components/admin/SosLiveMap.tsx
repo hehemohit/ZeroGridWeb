@@ -450,11 +450,18 @@ export function SosLiveMap({
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
-    // Build style URL: Amazon Location Service endpoint with API Key
-    // If no API key is set yet, provide a dark fallback basemap so the app remains interactive in local testing
-    const styleUrl = apiKey
-      ? `https://maps.geo.${region}.amazonaws.com/maps/v0/maps/${mapName}/style-descriptor?key=${apiKey}`
-      : 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
+    if (typeof window !== 'undefined') {
+      maplibregl.setWorkerUrl('/maplibre-gl-worker.mjs');
+    }
+
+    // Build style URL: Amazon Location Service v2 endpoint with API Key
+    // Supports Monochrome Dark, Standard Dark, Hybrid, Satellite
+    let styleUrl = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
+    if (apiKey) {
+      const validStyles = ['Monochrome', 'Standard', 'Hybrid', 'Satellite'];
+      const styleName = validStyles.includes(mapName) ? mapName : 'Monochrome';
+      styleUrl = `https://maps.geo.${region}.amazonaws.com/v2/styles/${styleName}/descriptor?key=${apiKey}&color-scheme=Dark`;
+    }
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
