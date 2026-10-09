@@ -16,6 +16,40 @@ const { redisLockManager, DEFAULT_TEAMS } = require('./redisLockClient');
 const CLUSTER_RADIUS_KM = 1.2; // 1.2 km tactical radius for spatial grouping
 const BATCH_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
+let isAutoConsolidatePaused = false;
+let lastCycleTimestamp = null;
+let cachedIo = null;
+
+function pauseAutoConsolidate(io) {
+  isAutoConsolidatePaused = true;
+  console.log('[Batch Dispatch Agent] Auto-consolidation PAUSED by admin.');
+  const targetIo = io || cachedIo;
+  if (targetIo) {
+    targetIo.of('/sos').emit('batch:pause_state_changed', { isPaused: true, timestamp: new Date().toISOString() });
+  }
+  return { success: true, isPaused: true, message: 'Autonomous 5-minute consolidation paused.' };
+}
+
+function resumeAutoConsolidate(io) {
+  isAutoConsolidatePaused = false;
+  console.log('[Batch Dispatch Agent] Auto-consolidation RESUMED by admin.');
+  const targetIo = io || cachedIo;
+  if (targetIo) {
+    targetIo.of('/sos').emit('batch:pause_state_changed', { isPaused: false, timestamp: new Date().toISOString() });
+  }
+  return { success: true, isPaused: false, message: 'Autonomous 5-minute consolidation resumed.' };
+}
+
+function getAutoConsolidateStatus() {
+  return {
+    isPaused: isAutoConsolidatePaused,
+    intervalMinutes: 5,
+    intervalMs: BATCH_INTERVAL_MS,
+    clusterRadiusKm: CLUSTER_RADIUS_KM,
+    lastCycleTimestamp
+  };
+}
+
 function haversineDistanceMeters(lat1, lon1, lat2, lon2) {
   const R = 6371000; // Earth radius in meters
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -119,7 +153,20 @@ function chooseOptimalTeamCategory(cluster) {
  */
 async function runAutonomousBatchDispatchCycle({ io, manual = false } = {}) {
   const timestamp = new Date().toISOString();
+  if (io && !cachedIo) cachedIo = io;
+
+  // Check if paused for automatic interval runs
+  if (isAutoConsolidatePaused && !manual) {
+    console.log('[Batch Dispatch Agent] Autonomous consolidation is currently PAUSED. Skipping cycle.');
+    return {
+      success: true,
+      isPaused: true,
+      message: 'Autonomous consolidation is currently paused by admin.'
+    };
+  }
+
   console.log(`[Batch Dispatch Agent] Starting autonomous cycle at ${timestamp} (manual: ${manual})`);
+  lastCycleTimestamp = timestamp;
 
   try {
     // 1. Fetch all ACTIVE SOS events from MongoDB
@@ -323,6 +370,7 @@ Status Transition: ACKNOWLEDGED (Unified response en route)`.trim(),
  * Initializes the recurring 5-minute background loop for the server.
  */
 function initBatchDispatchScheduler(io) {
+  if (io && !cachedIo) cachedIo = io;
   console.log(`[Batch Dispatch Agent] Scheduler initialized (running every 5 minutes).`);
 
   // Run initial pass after a short delay on server start (10 seconds)
@@ -341,6 +389,9 @@ function initBatchDispatchScheduler(io) {
 module.exports = {
   runAutonomousBatchDispatchCycle,
   initBatchDispatchScheduler,
+  pauseAutoConsolidate,
+  resumeAutoConsolidate,
+  getAutoConsolidateStatus,
   clusterActiveEvents,
   chooseOptimalTeamCategory,
   CLUSTER_RADIUS_KM,

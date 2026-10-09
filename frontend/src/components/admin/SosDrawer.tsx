@@ -19,7 +19,9 @@ import {
   AlertTriangle,
   Bot,
   Zap,
-  ShieldCheck
+  ShieldCheck,
+  Play,
+  Pause
 } from 'lucide-react';
 import { AdminUserUI } from './UserManagementModal';
 import { AgentZeroOrchestratorWidget } from './AgentZeroOrchestratorWidget';
@@ -81,6 +83,8 @@ interface SosDrawerProps {
   onAutoAssignNearest?: () => void;
   onAssignSquad?: (sosId: string, squadId: string | null) => void;
   onManualConsolidate?: () => void;
+  isBatchPaused?: boolean;
+  onTogglePauseBatch?: () => void;
   formatTime: (isoString: string) => string;
 }
 
@@ -100,6 +104,8 @@ export function SosDrawer({
   onAutoAssignNearest,
   onAssignSquad,
   onManualConsolidate,
+  isBatchPaused = false,
+  onTogglePauseBatch,
   formatTime,
 }: SosDrawerProps) {
   const [brief, setBrief] = useState<{
@@ -654,18 +660,48 @@ export function SosDrawer({
                       )}
                     </div>
 
-                    {/* Manual Consolidate Cluster Quick Action */}
-                    {onManualConsolidate && (
-                      <button
-                        type="button"
-                        disabled={actionLoading}
-                        onClick={onManualConsolidate}
-                        className="w-full mt-2 py-2 px-3 bg-gradient-to-r from-cyan-500/15 to-blue-500/15 hover:from-cyan-500/25 hover:to-blue-500/25 border border-cyan-400/40 rounded-xl text-xs font-bold text-cyan-300 flex items-center justify-center gap-1.5 transition-all shadow-sm"
-                        title="Immediately clusters all active alerts in this sector, identifies common hazard cause, and assigns one tactical team"
-                      >
-                        <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-                        <span>Manual Consolidate & Auto-Dispatch Alerts</span>
-                      </button>
+                    {/* Manual Consolidate & Auto-Dispatch Controls */}
+                    {(onManualConsolidate || onTogglePauseBatch) && (
+                      <div className="flex flex-col sm:flex-row items-center gap-2 mt-2">
+                        {onManualConsolidate && (
+                          <button
+                            type="button"
+                            disabled={actionLoading}
+                            onClick={onManualConsolidate}
+                            className="flex-1 w-full py-2 px-3 bg-gradient-to-r from-cyan-500/15 to-blue-500/15 hover:from-cyan-500/25 hover:to-blue-500/25 border border-cyan-400/40 rounded-xl text-xs font-bold text-cyan-300 flex items-center justify-center gap-1.5 transition-all shadow-sm"
+                            title="Immediately clusters all active alerts in this sector, identifies common hazard cause, and assigns one tactical team"
+                          >
+                            <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+                            <span>Consolidate Alerts</span>
+                          </button>
+                        )}
+
+                        {onTogglePauseBatch && (
+                          <button
+                            type="button"
+                            disabled={actionLoading}
+                            onClick={onTogglePauseBatch}
+                            className={`w-full sm:w-auto py-2 px-3 border rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm shrink-0 ${
+                              isBatchPaused
+                                ? 'bg-amber-500/15 text-amber-300 border-amber-400/40 hover:bg-amber-500/25'
+                                : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20'
+                            }`}
+                            title={isBatchPaused ? 'Auto-consolidation is paused. Click to resume.' : 'Auto-consolidation is active. Click to pause.'}
+                          >
+                            {isBatchPaused ? (
+                              <>
+                                <Play className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                                <span>Resume (5m)</span>
+                              </>
+                            ) : (
+                              <>
+                                <Pause className="w-3.5 h-3.5 fill-emerald-400 text-emerald-400" />
+                                <span>Pause (5m)</span>
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 )}

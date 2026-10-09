@@ -1096,6 +1096,47 @@ async function triggerBatchDispatch(req, res) {
   }
 }
 
+/**
+ * GET /api/admin/sos/batch-dispatch/status
+ */
+async function getBatchDispatchStatus(req, res) {
+  try {
+    const { getAutoConsolidateStatus } = require('../utils/batchDispatchAgent');
+    const status = getAutoConsolidateStatus();
+    return res.status(200).json({ success: true, ...status });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+/**
+ * POST /api/admin/sos/batch-dispatch/pause
+ */
+async function pauseBatchDispatch(req, res) {
+  try {
+    const { pauseAutoConsolidate } = require('../utils/batchDispatchAgent');
+    const io = getIo(req);
+    const result = pauseAutoConsolidate(io);
+    return res.status(200).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+/**
+ * POST /api/admin/sos/batch-dispatch/resume
+ */
+async function resumeBatchDispatch(req, res) {
+  try {
+    const { resumeAutoConsolidate } = require('../utils/batchDispatchAgent');
+    const io = getIo(req);
+    const result = resumeAutoConsolidate(io);
+    return res.status(200).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
 module.exports = {
   getActiveSosEvents,
   getSosHistory,
@@ -1107,6 +1148,9 @@ module.exports = {
   optimizeAdminRoute,
   getSystemStats,
   getSosDossier,
-  triggerBatchDispatch
+  triggerBatchDispatch,
+  getBatchDispatchStatus,
+  pauseBatchDispatch,
+  resumeBatchDispatch
 };
 

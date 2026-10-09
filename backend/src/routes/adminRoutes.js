@@ -12,7 +12,10 @@ const {
   optimizeAdminRoute,
   getSystemStats,
   getSosDossier,
-  triggerBatchDispatch
+  triggerBatchDispatch,
+  getBatchDispatchStatus,
+  pauseBatchDispatch,
+  resumeBatchDispatch
 } = require('../controllers/adminController');
 
 const router = express.Router();
@@ -66,6 +69,9 @@ router.post('/sos/auto-assign', autoAssignNearestAdmin);
 
 // POST /api/admin/sos/batch-dispatch — Autonomous 5-minute spatial clustering and squad dispatch
 router.post('/sos/batch-dispatch', triggerBatchDispatch);
+router.get('/sos/batch-dispatch/status', getBatchDispatchStatus);
+router.post('/sos/batch-dispatch/pause', pauseBatchDispatch);
+router.post('/sos/batch-dispatch/resume', resumeBatchDispatch);
 
 // POST /api/admin/sos/optimize-route — Compute multi-factor rescue route sequence for assigned SOS events
 router.post('/sos/optimize-route', optimizeAdminRoute);

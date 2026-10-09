@@ -23,7 +23,9 @@ import {
   Navigation,
   Zap,
   RotateCcw,
-  Sparkles
+  Sparkles,
+  Play,
+  Pause
 } from 'lucide-react';
 import { MapCanvas } from '@/components/admin/MapCanvas';
 import { SosDrawer, SosEventUI, NoteItem } from '@/components/admin/SosDrawer';
@@ -319,9 +321,21 @@ const handleToggleDetourMode = useCallback(() => {
     }
   }, []);
 
+  const fetchBatchStatus = useCallback(async () => {
+    try {
+      const res = await api.get<{ success: boolean; isPaused: boolean }>('/api/admin/sos/batch-dispatch/status');
+      if (res && typeof res.isPaused === 'boolean') {
+        setIsBatchPaused(res.isPaused);
+      }
+    } catch {
+      // Non-blocking fallback
+    }
+  }, []);
+
   useEffect(() => { fetchSosEvents(); }, [fetchSosEvents]);
   useEffect(() => { fetchHqs(); }, [fetchHqs]);
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
+  useEffect(() => { fetchBatchStatus(); }, [fetchBatchStatus]);
   useEffect(() => { if (isUserManagementOpen) fetchUsers(userSearch); }, [isUserManagementOpen, fetchUsers, userSearch]);
 
   useEffect(() => {
@@ -330,6 +344,12 @@ const handleToggleDetourMode = useCallback(() => {
     socketRef.current = socket;
     socket.on('sos:new', fetchSosEvents);
     socket.on('sos:updated', fetchSosEvents);
+    socket.on('sos:batch_consolidated', fetchSosEvents);
+    socket.on('batch:pause_state_changed', (data: { isPaused: boolean }) => {
+      if (typeof data?.isPaused === 'boolean') {
+        setIsBatchPaused(data.isPaused);
+      }
+    });
     return () => { socket.disconnect(); };
   }, [fetchSosEvents]);
 
@@ -487,6 +507,8 @@ const handleToggleDetourMode = useCallback(() => {
   };
 
   const [isBatchRunning, setIsBatchRunning] = useState(false);
+  const [isBatchPaused, setIsBatchPaused] = useState(false);
+  const [isBatchToggling, setIsBatchToggling] = useState(false);
 
   const handleRunBatchDispatch = async () => {
     setIsBatchRunning(true);
@@ -513,6 +535,31 @@ const handleToggleDetourMode = useCallback(() => {
       showToast(err.message || 'Failed to execute batch dispatch', 'error');
     } finally {
       setIsBatchRunning(false);
+    }
+  };
+
+  const handleTogglePauseBatch = async () => {
+    setIsBatchToggling(true);
+    try {
+      if (isBatchPaused) {
+        const res = await api.post<{ success: boolean; isPaused: boolean; message?: string }>(
+          '/api/admin/sos/batch-dispatch/resume',
+          {}
+        );
+        setIsBatchPaused(false);
+        showToast(res?.message || 'Autonomous 5-minute consolidation resumed.');
+      } else {
+        const res = await api.post<{ success: boolean; isPaused: boolean; message?: string }>(
+          '/api/admin/sos/batch-dispatch/pause',
+          {}
+        );
+        setIsBatchPaused(true);
+        showToast(res?.message || 'Autonomous 5-minute consolidation paused.', 'info');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to toggle auto-consolidation state', 'error');
+    } finally {
+      setIsBatchToggling(false);
     }
   };
 
@@ -692,7 +739,46 @@ const handleToggleDetourMode = useCallback(() => {
                 <span className="hidden sm:inline">Manual Consolidate</span>
                 <span className="sm:hidden">Consolidate</span>
                 <span className="text-[9px] bg-cyan-500/30 text-cyan-200 px-1 py-0.5 rounded font-mono font-bold">
-                  AUTO / ON-DEMAND
+                  ON-DEMAND
+                </span>
+              </button>
+
+              {/* ⏯️ Pause / Resume Auto 5-Min Consolidation Engine */}
+              <button
+                onClick={handleTogglePauseBatch}
+                disabled={isBatchToggling || actionLoading}
+                title={
+                  isBatchPaused
+                    ? 'Autonomous 5-minute consolidation is currently PAUSED. Click to Resume right now.'
+                    : 'Autonomous 5-minute consolidation is ACTIVE (runs every 5m). Click to Pause right now.'
+                }
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all shadow-sm disabled:opacity-50 ${
+                  isBatchPaused
+                    ? 'bg-amber-500/15 text-amber-300 border-amber-400/50 hover:bg-amber-500/25 hover:border-amber-300 hover:shadow-glow-amber'
+                    : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20 hover:border-emerald-400 hover:shadow-glow-teal'
+                }`}
+              >
+                {isBatchToggling ? (
+                  <Loader2 className={`w-3.5 h-3.5 animate-spin ${isBatchPaused ? 'text-amber-400' : 'text-emerald-400'}`} />
+                ) : isBatchPaused ? (
+                  <Play className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                ) : (
+                  <Pause className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400" />
+                )}
+                <span className="hidden sm:inline">
+                  {isBatchPaused ? 'Resume Auto (5m)' : 'Pause Auto (5m)'}
+                </span>
+                <span className="sm:hidden">
+                  {isBatchPaused ? 'Resume' : 'Pause'}
+                </span>
+                <span
+                  className={`text-[9px] px-1 py-0.5 rounded font-mono font-bold ${
+                    isBatchPaused
+                      ? 'bg-amber-500/30 text-amber-200 animate-pulse'
+                      : 'bg-emerald-500/20 text-emerald-300'
+                  }`}
+                >
+                  {isBatchPaused ? 'PAUSED' : 'ACTIVE'}
                 </span>
               </button>
 
@@ -968,6 +1054,8 @@ const handleToggleDetourMode = useCallback(() => {
           onAutoAssignNearest={handleAutoAssignNearestAdmin}
           onAssignSquad={handleAssignSquad}
           onManualConsolidate={handleRunBatchDispatch}
+          isBatchPaused={isBatchPaused}
+          onTogglePauseBatch={handleTogglePauseBatch}
           formatTime={formatTime}
         />
       )}

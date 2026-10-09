@@ -38,7 +38,9 @@ import {
   Compass,
   AlertOctagon,
   Calendar,
-  ChevronRight
+  ChevronRight,
+  Play,
+  Pause
 } from 'lucide-react';
 import { AgentZeroOrchestratorWidget } from '@/components/admin/AgentZeroOrchestratorWidget';
 
@@ -201,6 +203,8 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
   const [noteInput, setNoteInput] = useState('');
   const [brief, setBrief] = useState<SituationBriefData | null>(null);
   const [briefLoading, setBriefLoading] = useState(false);
+  const [isBatchPaused, setIsBatchPaused] = useState(false);
+  const [isBatchToggling, setIsBatchToggling] = useState(false);
 
   // Load Dossier with automatic short displayId resolution
   const fetchDossier = async () => {
@@ -240,11 +244,48 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
     }
   };
 
+  const fetchBatchStatus = async () => {
+    try {
+      const res = await api.get<{ success: boolean; isPaused: boolean }>('/api/admin/sos/batch-dispatch/status');
+      if (res && typeof res.isPaused === 'boolean') {
+        setIsBatchPaused(res.isPaused);
+      }
+    } catch {
+      // Non-blocking fallback
+    }
+  };
+
   useEffect(() => {
     fetchDossier();
+    fetchBatchStatus();
   }, [id]);
 
   const activeSosId = dossier?.incident?.id || id;
+
+  const handleTogglePauseBatch = async () => {
+    setIsBatchToggling(true);
+    try {
+      if (isBatchPaused) {
+        const res = await api.post<{ success: boolean; isPaused: boolean; message?: string }>(
+          '/api/admin/sos/batch-dispatch/resume',
+          {}
+        );
+        setIsBatchPaused(false);
+        alert(res?.message || 'Autonomous 5-minute consolidation resumed.');
+      } else {
+        const res = await api.post<{ success: boolean; isPaused: boolean; message?: string }>(
+          '/api/admin/sos/batch-dispatch/pause',
+          {}
+        );
+        setIsBatchPaused(true);
+        alert(res?.message || 'Autonomous 5-minute consolidation paused.');
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Failed to toggle auto-consolidation state');
+    } finally {
+      setIsBatchToggling(false);
+    }
+  };
 
   // Actions
   const handleAcknowledge = async () => {
@@ -682,17 +723,47 @@ export default function AdminSosDossierPage({ params }: { params: Promise<{ id: 
                 </span>
               </div>
 
-              {/* Quick Action: Manual Consolidate & Auto-Dispatch Sector */}
-              <div className="pt-2">
+              {/* Quick Action: Manual Consolidate & Pause/Resume Auto-Dispatch */}
+              <div className="pt-2 flex flex-col sm:flex-row items-center gap-2">
                 <button
                   type="button"
                   disabled={actionLoading}
                   onClick={handleConsolidateSector}
-                  className="w-full py-2 px-3 bg-gradient-to-r from-cyan-500/15 via-sky-500/15 to-teal-500/15 hover:from-cyan-500/25 hover:to-teal-500/25 border border-cyan-400/40 rounded-xl text-xs font-bold text-cyan-300 flex items-center justify-center gap-1.5 transition-all shadow-sm disabled:opacity-50"
+                  className="flex-1 w-full py-2 px-3 bg-gradient-to-r from-cyan-500/15 via-sky-500/15 to-teal-500/15 hover:from-cyan-500/25 hover:to-teal-500/25 border border-cyan-400/40 rounded-xl text-xs font-bold text-cyan-300 flex items-center justify-center gap-1.5 transition-all shadow-sm disabled:opacity-50"
                   title="Immediately clusters all active alerts in this sector, identifies common hazard cause, and assigns one tactical team"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-                  <span>Manual Consolidate Sector Alerts</span>
+                  <span>Consolidate Sector</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isBatchToggling || actionLoading}
+                  onClick={handleTogglePauseBatch}
+                  className={`w-full sm:w-auto py-2 px-3 border rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm shrink-0 disabled:opacity-50 ${
+                    isBatchPaused
+                      ? 'bg-amber-500/15 text-amber-300 border-amber-400/40 hover:bg-amber-500/25'
+                      : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20'
+                  }`}
+                  title={
+                    isBatchPaused
+                      ? 'Auto 5-min consolidation is currently PAUSED. Click to Resume.'
+                      : 'Auto 5-min consolidation is ACTIVE. Click to Pause.'
+                  }
+                >
+                  {isBatchToggling ? (
+                    <Loader2 className={`w-3.5 h-3.5 animate-spin ${isBatchPaused ? 'text-amber-400' : 'text-emerald-400'}`} />
+                  ) : isBatchPaused ? (
+                    <>
+                      <Play className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                      <span>Resume (5m)</span>
+                    </>
+                  ) : (
+                    <>
+                      <Pause className="w-3.5 h-3.5 fill-emerald-400 text-emerald-400" />
+                      <span>Pause (5m)</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>
