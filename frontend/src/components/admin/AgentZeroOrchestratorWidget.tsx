@@ -128,24 +128,24 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
   const graph = orchestration?.graph_telemetry;
 
   return (
-    <div className="rounded-2xl border border-cyan-500/30 bg-[#070d18]/95 p-4 sm:p-5 shadow-2xl backdrop-blur-xl transition-all">
+    <div className="rounded-2xl border border-hairline bg-surfaceCard text-primaryText p-4 sm:p-5 shadow-sm transition-all duration-200">
       {/* 1. Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-white/10">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-hairline">
         <div className="flex items-center gap-3">
-          <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-600/30 border border-cyan-400/40 shadow-inner">
-            <Cpu className="w-5 h-5 text-cyan-400 animate-pulse" />
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+          <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-brandTeal/10 border border-brandTeal/20 text-brandTeal shadow-sm">
+            <Cpu className="w-5 h-5 animate-pulse" />
+            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-brandTeal animate-ping" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h4 className="text-sm sm:text-base font-extrabold tracking-tight text-white font-display">
+              <h4 className="text-sm sm:text-base font-bold tracking-tight text-primaryText font-display">
                 Agent Zero Orchestrator
               </h4>
-              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-500/40">
+              <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-brandTeal/10 text-brandTeal border border-brandTeal/20">
                 LPU MULTI-AGENT
               </span>
             </div>
-            <p className="text-[11px] text-slate-400">
+            <p className="text-[11px] text-secondaryText">
               Deterministic DynamoDB Topology + Concurrent Sub-Agent Inference
             </p>
           </div>
@@ -154,26 +154,16 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
         {/* Live Data Plane Indicator & Run Button */}
         <div className="flex items-center gap-2">
           {graph && (
-            <span
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold border ${
-                graph.data_source === 'DYNAMODB_CLOUD'
-                  ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40'
-                  : 'bg-amber-950/80 text-amber-300 border-amber-500/40'
-              }`}
-            >
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  graph.data_source === 'DYNAMODB_CLOUD' ? 'bg-emerald-400' : 'bg-amber-400'
-                }`}
-              />
-              {graph.data_source === 'DYNAMODB_CLOUD' ? 'DynamoDB Cloud' : 'Simulator Mode'}
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-mono font-medium border bg-surfaceElevated border-hairline text-secondaryText">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span>{graph.data_source === 'DYNAMODB_CLOUD' ? 'DynamoDB Cloud' : 'Simulator Mode'}</span>
             </span>
           )}
 
           <button
             onClick={handleRunOrchestration}
             disabled={loading}
-            className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-xs shadow-lg shadow-cyan-500/20 transition-all disabled:opacity-50"
+            className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-brandTeal hover:bg-brandTealGlow text-slate-900 font-bold text-xs shadow-sm transition-all disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             <span>{loading ? 'Synthesizing...' : orchestration ? 'Re-Synthesize' : 'Synthesize Decisions'}</span>
@@ -183,8 +173,8 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
 
       {/* Error Notice */}
       {error && (
-        <div className="mt-3 p-3 rounded-xl bg-rose-950/50 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4 flex-shrink-0 text-rose-400" />
+        <div className="mt-3 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
           <span>{error}</span>
         </div>
       )}
@@ -192,19 +182,19 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
       {/* Initial Call-to-action state */}
       {!orchestration && !loading && !error && (
         <div className="py-8 text-center space-y-3">
-          <div className="mx-auto w-12 h-12 rounded-2xl bg-cyan-950/50 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+          <div className="mx-auto w-12 h-12 rounded-2xl bg-brandTeal/10 border border-brandTeal/20 flex items-center justify-center text-brandTeal">
             <Radio className="w-6 h-6 animate-pulse" />
           </div>
           <div className="max-w-md mx-auto">
-            <h5 className="text-sm font-bold text-white">No Multi-Agent Synthesis Generated Yet</h5>
-            <p className="text-xs text-slate-400 mt-1">
+            <h5 className="text-sm font-bold text-primaryText">No Multi-Agent Synthesis Generated Yet</h5>
+            <p className="text-xs text-secondaryText mt-1">
               Click &quot;Synthesize Decisions&quot; to traverse the localized electrical grid in DynamoDB and
               concurrently mobilize the Triage, Grid Operations, and Dispatch sub-agents.
             </p>
           </div>
           <button
             onClick={handleRunOrchestration}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs transition-all shadow-md shadow-cyan-500/30"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brandTeal hover:bg-brandTealGlow text-slate-900 font-bold text-xs transition-all shadow-sm"
           >
             <Zap className="w-4 h-4" />
             <span>Activate Agent Zero Core</span>
@@ -215,12 +205,12 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
       {/* Loading Skeleton */}
       {loading && (
         <div className="py-8 text-center space-y-4">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-400/30 text-cyan-400 animate-spin">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-brandTeal/10 border border-brandTeal/20 text-brandTeal animate-spin">
             <RefreshCw className="w-6 h-6" />
           </div>
           <div className="space-y-1">
-            <h5 className="text-sm font-bold text-cyan-300">Agent Zero Multi-Agent Synthesis Active</h5>
-            <p className="text-xs text-slate-400 max-w-sm mx-auto">
+            <h5 className="text-sm font-bold text-brandTeal">Agent Zero Multi-Agent Synthesis Active</h5>
+            <p className="text-xs text-secondaryText max-w-sm mx-auto">
               Querying DynamoDB adjacency lists & running concurrent Groq LPU sub-agents (Triage, Grid, Dispatch)...
             </p>
           </div>
@@ -232,71 +222,71 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
         <div className="mt-4 space-y-4">
           {/* Top Threat & Topology KPI Bar */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            <div className="p-2.5 rounded-xl bg-slate-900/80 border border-white/5">
-              <span className="text-[10px] text-slate-400 block font-mono uppercase">Threat Index</span>
+            <div className="p-3 rounded-xl bg-surfaceElevated border border-hairline">
+              <span className="text-[10px] text-mutedGray block font-mono uppercase font-semibold">Threat Index</span>
               <div className="flex items-baseline gap-1.5 mt-0.5">
                 <span
                   className={`text-lg font-black font-mono ${
                     directive.overall_threat_score >= 80
-                      ? 'text-rose-400'
+                      ? 'text-red-500'
                       : directive.overall_threat_score >= 50
-                      ? 'text-amber-400'
-                      : 'text-emerald-400'
+                      ? 'text-amber-500'
+                      : 'text-emerald-500'
                   }`}
                 >
                   {directive.overall_threat_score}
                 </span>
-                <span className="text-[10px] text-slate-500">/ 100</span>
+                <span className="text-[10px] text-mutedGray font-mono">/ 100</span>
               </div>
             </div>
 
-            <div className="p-2.5 rounded-xl bg-slate-900/80 border border-white/5">
-              <span className="text-[10px] text-slate-400 block font-mono uppercase">Grid Root Asset</span>
-              <span className="text-xs font-bold text-cyan-300 font-mono mt-1 block truncate">
+            <div className="p-3 rounded-xl bg-surfaceElevated border border-hairline">
+              <span className="text-[10px] text-mutedGray block font-mono uppercase font-semibold">Grid Root Asset</span>
+              <span className="text-xs font-bold text-brandTeal font-mono mt-1 block truncate">
                 {graph?.root_node_id || 'SUB_VIRAR_EAST_01'}
               </span>
             </div>
 
-            <div className="p-2.5 rounded-xl bg-slate-900/80 border border-white/5">
-              <span className="text-[10px] text-slate-400 block font-mono uppercase">Nodes Traversed</span>
-              <span className="text-xs font-bold text-white font-mono mt-1 block">
-                {graph?.node_count || 4} Substations & Transformers
+            <div className="p-3 rounded-xl bg-surfaceElevated border border-hairline">
+              <span className="text-[10px] text-mutedGray block font-mono uppercase font-semibold">Nodes Traversed</span>
+              <span className="text-xs font-bold text-primaryText font-mono mt-1 block">
+                {graph?.node_count || 4} Substations
               </span>
             </div>
 
-            <div className="p-2.5 rounded-xl bg-slate-900/80 border border-white/5">
-              <span className="text-[10px] text-slate-400 block font-mono uppercase">Lifeline ICU Protection</span>
-              <span className="text-xs font-bold text-emerald-300 font-mono mt-1 flex items-center gap-1">
-                <HeartPulse className="w-3.5 h-3.5 text-emerald-400" />
-                Guaranteed Active
+            <div className="p-3 rounded-xl bg-surfaceElevated border border-hairline">
+              <span className="text-[10px] text-mutedGray block font-mono uppercase font-semibold">Lifeline ICU</span>
+              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 font-mono mt-1 flex items-center gap-1">
+                <HeartPulse className="w-3.5 h-3.5 text-emerald-500" />
+                Active
               </span>
             </div>
           </div>
 
           {/* Master Executive Briefing Card */}
-          <div className="p-4 rounded-xl bg-gradient-to-br from-cyan-950/40 via-slate-900/90 to-blue-950/30 border border-cyan-500/40 shadow-inner">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-1.5 font-display">
-                <Shield className="w-3.5 h-3.5 text-cyan-400" />
+          <div className="p-4 rounded-xl bg-surfaceElevated border border-hairline shadow-sm space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-brandTeal uppercase tracking-wider flex items-center gap-1.5 font-display">
+                <Shield className="w-3.5 h-3.5 text-brandTeal" />
                 Master Operational Directive
               </span>
-              <span className="text-[9px] font-mono text-slate-400">
+              <span className="text-[10px] font-mono text-mutedGray">
                 {new Date(orchestration.orchestrated_at).toLocaleTimeString()} UTC
               </span>
             </div>
-            <p className="text-xs sm:text-sm font-semibold text-slate-100 leading-relaxed">
+            <p className="text-xs sm:text-sm font-medium text-secondaryText leading-relaxed">
               {directive.executive_summary}
             </p>
 
             {/* Hospital Lifeline Protocol Callout */}
             {directive.hospital_lifeline_protocol && (
-              <div className="mt-3 p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/40 flex items-start gap-2.5">
-                <HeartPulse className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" />
+              <div className="mt-2.5 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 flex items-start gap-2.5">
+                <HeartPulse className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
                 <div>
-                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-300 block font-mono">
+                  <span className="text-[10px] font-bold uppercase tracking-wider block font-mono">
                     Hospital & ICU Power Protection Protocol
                   </span>
-                  <p className="text-xs text-emerald-100 mt-0.5 leading-relaxed font-medium">
+                  <p className="text-xs mt-0.5 leading-relaxed font-medium">
                     {directive.hospital_lifeline_protocol}
                   </p>
                 </div>
@@ -304,14 +294,14 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
             )}
           </div>
 
-          {/* Sub-Agent Segregation Navigation Tabs (Responsive) */}
-          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-900/90 border border-white/5 overflow-x-auto scrollbar-none">
+          {/* Sub-Agent Segregation Navigation Tabs */}
+          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-surfaceElevated border border-hairline overflow-x-auto scrollbar-none">
             <button
               onClick={() => setActiveTab('ALL')}
               className={`whitespace-nowrap flex-shrink-0 py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${
                 activeTab === 'ALL'
-                  ? 'bg-cyan-500 text-slate-950 shadow-sm'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+                  ? 'bg-surfaceCard text-primaryText border border-hairline shadow-sm'
+                  : 'text-secondaryText hover:text-primaryText hover:bg-surfaceCard/50'
               }`}
             >
               All Decisions
@@ -320,8 +310,8 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
               onClick={() => setActiveTab('TRIAGE')}
               className={`whitespace-nowrap flex-shrink-0 py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${
                 activeTab === 'TRIAGE'
-                  ? 'bg-rose-500 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+                  ? 'bg-surfaceCard text-red-500 border border-hairline shadow-sm'
+                  : 'text-secondaryText hover:text-primaryText hover:bg-surfaceCard/50'
               }`}
             >
               <AlertTriangle className="w-3 h-3 flex-shrink-0" />
@@ -331,8 +321,8 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
               onClick={() => setActiveTab('GRID')}
               className={`whitespace-nowrap flex-shrink-0 py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${
                 activeTab === 'GRID'
-                  ? 'bg-amber-500 text-slate-950 shadow-sm'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+                  ? 'bg-surfaceCard text-amber-500 border border-hairline shadow-sm'
+                  : 'text-secondaryText hover:text-primaryText hover:bg-surfaceCard/50'
               }`}
             >
               <Zap className="w-3 h-3 flex-shrink-0" />
@@ -342,8 +332,8 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
               onClick={() => setActiveTab('DISPATCH')}
               className={`whitespace-nowrap flex-shrink-0 py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${
                 activeTab === 'DISPATCH'
-                  ? 'bg-blue-500 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+                  ? 'bg-surfaceCard text-blue-500 border border-hairline shadow-sm'
+                  : 'text-secondaryText hover:text-primaryText hover:bg-surfaceCard/50'
               }`}
             >
               <Truck className="w-3 h-3 flex-shrink-0" />
@@ -355,41 +345,41 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
           <div className="space-y-3">
             {/* STREAM 1: TRIAGE SUB-AGENT DECISION STREAM */}
             {(activeTab === 'ALL' || activeTab === 'TRIAGE') && subAgents?.triage && (
-              <div className="p-3.5 rounded-xl bg-slate-900/70 border border-rose-500/30 hover:border-rose-500/50 transition-all">
-                <div className="flex items-center justify-between mb-2">
+              <div className="p-4 rounded-xl bg-surfaceElevated border border-hairline space-y-3">
+                <div className="flex items-center justify-between border-b border-hairline pb-2">
                   <div className="flex items-center gap-2">
-                    <span className="p-1 rounded-lg bg-rose-500/20 text-rose-400">
+                    <span className="p-1 rounded-lg bg-red-500/10 text-red-500">
                       <AlertTriangle className="w-3.5 h-3.5" />
                     </span>
-                    <span className="text-xs font-bold text-rose-300 uppercase tracking-wide">
+                    <span className="text-xs font-bold text-primaryText uppercase tracking-wide">
                       Triage Decision Stream
                     </span>
                   </div>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-950 text-rose-300 border border-rose-500/40">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-red-500/10 text-red-500 border border-red-500/20">
                     THREAT: {subAgents.triage.threat_level}
                   </span>
                 </div>
 
                 <div className="space-y-2 text-xs">
                   <div>
-                    <span className="text-[10px] font-mono text-slate-400 uppercase">Casualty & Electrocution Risk:</span>
-                    <p className="text-slate-200 mt-0.5 font-medium leading-relaxed">
+                    <span className="text-[10px] font-mono text-mutedGray uppercase font-semibold">Casualty & Electrocution Risk:</span>
+                    <p className="text-secondaryText mt-0.5 font-medium leading-relaxed">
                       {subAgents.triage.casualty_risk_assessment}
                     </p>
                   </div>
 
                   {subAgents.triage.priority_facilities_threatened?.length > 0 && (
                     <div>
-                      <span className="text-[10px] font-mono text-slate-400 uppercase block mb-1">
+                      <span className="text-[10px] font-mono text-mutedGray uppercase block mb-1 font-semibold">
                         Threatened Priority Infrastructure:
                       </span>
                       <div className="flex flex-wrap gap-1.5">
                         {subAgents.triage.priority_facilities_threatened.map((facility, idx) => (
                           <span
                             key={idx}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-950/60 text-rose-300 border border-rose-500/30 text-[11px] font-mono font-bold"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-surfaceCard text-primaryText border border-hairline text-[11px] font-mono font-medium"
                           >
-                            <Building className="w-3 h-3" />
+                            <Building className="w-3 h-3 text-red-500" />
                             {facility}
                           </span>
                         ))}
@@ -397,11 +387,11 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
                     </div>
                   )}
 
-                  <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[11px]">
-                    <span className="text-slate-400">Evacuation Recommendation:</span>
+                  <div className="flex items-center justify-between pt-1 border-t border-hairline text-[11px]">
+                    <span className="text-mutedGray font-medium">Evacuation Recommendation:</span>
                     <span
                       className={`font-bold font-mono ${
-                        subAgents.triage.evacuation_recommended ? 'text-rose-400' : 'text-emerald-400'
+                        subAgents.triage.evacuation_recommended ? 'text-red-500' : 'text-emerald-500'
                       }`}
                     >
                       {subAgents.triage.evacuation_recommended ? '⚠️ EVACUATION REQUIRED' : 'SHELTER IN PLACE'}
@@ -413,40 +403,38 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
 
             {/* STREAM 2: GRID OPERATIONS SUB-AGENT DECISION STREAM */}
             {(activeTab === 'ALL' || activeTab === 'GRID') && subAgents?.grid && (
-              <div className="p-3.5 rounded-xl bg-slate-900/70 border border-amber-500/30 hover:border-amber-500/50 transition-all">
-                <div className="flex items-center justify-between mb-2">
+              <div className="p-4 rounded-xl bg-surfaceElevated border border-hairline space-y-3">
+                <div className="flex items-center justify-between border-b border-hairline pb-2">
                   <div className="flex items-center gap-2">
-                    <span className="p-1 rounded-lg bg-amber-500/20 text-amber-400">
+                    <span className="p-1 rounded-lg bg-amber-500/10 text-amber-500">
                       <Zap className="w-3.5 h-3.5" />
                     </span>
-                    <span className="text-xs font-bold text-amber-300 uppercase tracking-wide">
+                    <span className="text-xs font-bold text-primaryText uppercase tracking-wide">
                       Grid Operations Decision Stream
                     </span>
                   </div>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-950 text-amber-300 border border-amber-500/40">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20">
                     STABILITY: {subAgents.grid.grid_stability_status}
                   </span>
                 </div>
 
                 <div className="space-y-2 text-xs">
-                  {/* Cascading Failure Risk */}
                   <div>
-                    <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 mb-1">
+                    <div className="flex items-center justify-between text-[10px] font-mono text-mutedGray mb-1">
                       <span>Cascading Collapse Risk:</span>
-                      <span className="font-bold text-amber-400">{subAgents.grid.cascading_failure_risk_pct}%</span>
+                      <span className="font-bold text-amber-500">{subAgents.grid.cascading_failure_risk_pct}%</span>
                     </div>
-                    <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                    <div className="w-full h-1.5 rounded-full bg-surfaceCard overflow-hidden border border-hairline">
                       <div
-                        className="h-full bg-gradient-to-r from-amber-500 to-rose-500 transition-all"
+                        className="h-full bg-gradient-to-r from-amber-500 to-red-500 transition-all"
                         style={{ width: `${subAgents.grid.cascading_failure_risk_pct}%` }}
                       />
                     </div>
                   </div>
 
-                  {/* Immediate Breakers to Trip (Interactive) */}
                   {subAgents.grid.immediate_breakers_to_trip?.length > 0 && (
                     <div>
-                      <span className="text-[10px] font-mono text-slate-400 uppercase block mb-1">
+                      <span className="text-[10px] font-mono text-mutedGray uppercase block mb-1 font-semibold">
                         Critical Breaker Isolation Actions:
                       </span>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
@@ -458,17 +446,17 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
                               onClick={() => requestBreakerToggle(breaker)}
                               className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-left text-[11px] font-mono transition-all ${
                                 isTripped
-                                  ? 'bg-rose-950/80 text-rose-300 border-rose-500/60 shadow-sm'
-                                  : 'bg-slate-950/80 text-slate-300 border-white/10 hover:border-amber-400/40'
+                                  ? 'bg-red-500/10 text-red-500 border-red-500/30'
+                                  : 'bg-surfaceCard text-primaryText border-hairline hover:border-brandTeal'
                               }`}
                             >
-                              <span className="font-bold">{breaker}</span>
+                              <span className="font-bold truncate mr-1.5">{breaker}</span>
                               <span
-                                className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${
-                                  isTripped ? 'bg-rose-500 text-white' : 'bg-slate-800 text-slate-400'
+                                className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase ${
+                                  isTripped ? 'bg-red-500 text-white' : 'bg-surfaceElevated text-mutedGray'
                                 }`}
                               >
-                                {isTripped ? 'ISOLATED' : 'TRIP BREAKER'}
+                                {isTripped ? 'TRIPPED' : 'ARM'}
                               </span>
                             </button>
                           );
@@ -476,93 +464,45 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
                       </div>
                     </div>
                   )}
-
-                  {/* Safe Alternate Routing */}
-                  <div className="p-2.5 rounded-lg bg-slate-950/60 border border-white/5">
-                    <span className="text-[10px] font-mono text-amber-400 uppercase block mb-0.5">
-                      Safe Alternative Routing:
-                    </span>
-                    <p className="text-slate-300 text-[11px] font-medium leading-relaxed">
-                      {subAgents.grid.safe_rerouting_path}
-                    </p>
-                  </div>
                 </div>
               </div>
             )}
 
             {/* STREAM 3: TACTICAL DISPATCH SUB-AGENT DECISION STREAM */}
             {(activeTab === 'ALL' || activeTab === 'DISPATCH') && subAgents?.dispatch && (
-              <div className="p-3.5 rounded-xl bg-slate-900/70 border border-blue-500/30 hover:border-blue-500/50 transition-all space-y-3">
-                <div className="flex items-center justify-between mb-1">
+              <div className="p-4 rounded-xl bg-surfaceElevated border border-hairline space-y-3">
+                <div className="flex items-center justify-between border-b border-hairline pb-2">
                   <div className="flex items-center gap-2">
-                    <span className="p-1 rounded-lg bg-blue-500/20 text-blue-400">
+                    <span className="p-1 rounded-lg bg-blue-500/10 text-blue-500">
                       <Truck className="w-3.5 h-3.5" />
                     </span>
-                    <span className="text-xs font-bold text-blue-300 uppercase tracking-wide">
+                    <span className="text-xs font-bold text-primaryText uppercase tracking-wide">
                       Tactical Dispatch Decision Stream
                     </span>
                   </div>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-950 text-blue-300 border border-blue-500/40">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-500/10 text-blue-500 border border-blue-500/20">
                     ROUTE: {subAgents.dispatch.route_accessibility_status}
                   </span>
                 </div>
 
-                {/* Spatial Proximity Advisory from MongoDB */}
-                {(orchestration?.spatial_memory?.tactical_proximity_advisory || subAgents?.dispatch?.spatial_proximity_advisory) && (
-                  <div className="p-2.5 rounded-lg bg-purple-950/40 border border-purple-500/30 flex items-start gap-2 text-[11px]">
-                    <Compass className="w-4 h-4 text-purple-400 flex-shrink-0 mt-0.5" />
-                    <p className="text-purple-200 font-medium">
-                      {orchestration?.spatial_memory?.tactical_proximity_advisory || subAgents?.dispatch?.spatial_proximity_advisory}
-                    </p>
-                  </div>
-                )}
-
-                {/* Candidate Proximity Teams */}
-                {(orchestration?.spatial_memory?.candidate_teams || subAgents?.dispatch?.candidate_proximity_teams || []).length > 0 && (
-                  <div className="space-y-1.5">
-                    <span className="text-[10px] font-mono text-purple-300 uppercase font-bold block">
-                      MongoDB Spatial Proximity Lookahead:
-                    </span>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {(orchestration?.spatial_memory?.candidate_teams || subAgents?.dispatch?.candidate_proximity_teams || []).slice(0, 2).map((cand, idx) => (
-                        <div
-                          key={idx}
-                          className="p-2.5 rounded-lg bg-[#050b14] border border-purple-500/30 flex flex-col justify-between"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-white text-[11px] truncate">{cand.team_name}</span>
-                            <span className="text-[9px] font-mono font-bold text-emerald-400">
-                              ⚡ -{cand.transit_savings_mins}m
-                            </span>
-                          </div>
-                          <p className="text-[10px] text-slate-400 mt-0.5">
-                            {cand.distance_km}km away &bull; Redis: {cand.redis_state}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-2.5 text-xs">
-                  {/* Recommended Squads Breakdown */}
+                <div className="space-y-2 text-xs">
                   {subAgents.dispatch.recommended_squads?.length > 0 && (
                     <div className="space-y-1.5">
-                      <span className="text-[10px] font-mono text-slate-400 uppercase block">
+                      <span className="text-[10px] font-mono text-mutedGray uppercase block font-semibold">
                         Mobilized Field Units:
                       </span>
                       {subAgents.dispatch.recommended_squads.map((squad, idx) => (
                         <div
                           key={idx}
-                          className="p-2 rounded-lg bg-slate-950/60 border border-white/5 flex items-start justify-between gap-2 text-[11px]"
+                          className="p-2 rounded-lg bg-surfaceCard border border-hairline flex items-start justify-between gap-2 text-[11px]"
                         >
                           <div>
-                            <span className="font-bold text-blue-300 font-mono">
+                            <span className="font-bold text-primaryText font-mono">
                               {squad.count}x {squad.unit_type}
                             </span>
-                            <p className="text-slate-400 text-[10px] mt-0.5">{squad.mission}</p>
+                            <p className="text-secondaryText text-[10px] mt-0.5">{squad.mission}</p>
                           </div>
-                          <span className="text-[9px] font-bold font-mono px-1.5 py-0.5 rounded bg-blue-950 text-blue-400 border border-blue-500/30">
+                          <span className="text-[9px] font-bold font-mono px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 border border-blue-500/20">
                             DEPLOY
                           </span>
                         </div>
@@ -570,20 +510,19 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
                     </div>
                   )}
 
-                  {/* Staging Area & Route Info */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-                    <div className="p-2 rounded-lg bg-slate-950/60 border border-white/5">
-                      <span className="text-[10px] font-mono text-slate-400 uppercase block mb-0.5">
-                        Designated Staging Area:
+                    <div className="p-2 rounded-lg bg-surfaceCard border border-hairline">
+                      <span className="text-[10px] font-mono text-mutedGray uppercase block mb-0.5">
+                        Staging Area:
                       </span>
-                      <span className="font-semibold text-slate-200">{subAgents.dispatch.staging_area}</span>
+                      <span className="font-semibold text-primaryText">{subAgents.dispatch.staging_area}</span>
                     </div>
 
-                    <div className="p-2 rounded-lg bg-slate-950/60 border border-white/5">
-                      <span className="text-[10px] font-mono text-slate-400 uppercase block mb-0.5">
+                    <div className="p-2 rounded-lg bg-surfaceCard border border-hairline">
+                      <span className="text-[10px] font-mono text-mutedGray uppercase block mb-0.5">
                         Precautions:
                       </span>
-                      <span className="font-medium text-amber-300">{subAgents.dispatch.special_tactical_precautions}</span>
+                      <span className="font-medium text-amber-500">{subAgents.dispatch.special_tactical_precautions}</span>
                     </div>
                   </div>
                 </div>
@@ -592,7 +531,7 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
           </div>
 
           {/* 4. Operator Actions Toolbar */}
-          <div className="pt-2 border-t border-white/10 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="pt-2 border-t border-hairline flex flex-wrap items-center justify-between gap-2 text-xs">
             <div className="flex items-center gap-2">
               <button
                 onClick={() => {
@@ -600,10 +539,10 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
                     requestBreakerToggle(subAgents.grid.immediate_breakers_to_trip[0]);
                   }
                 }}
-                className="px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/40 font-bold text-[11px] flex items-center gap-1.5 transition-all"
+                className="px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/30 font-bold text-[11px] flex items-center gap-1.5 transition-all"
               >
                 <Zap className="w-3.5 h-3.5" />
-                <span>Isolate Breakers (HITL Protected)</span>
+                <span>Isolate Breakers (HITL)</span>
               </button>
 
               <button
@@ -611,21 +550,21 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
                 disabled={squadsDispatched}
                 className={`px-3 py-1.5 rounded-lg border font-bold text-[11px] flex items-center gap-1.5 transition-all ${
                   squadsDispatched
-                    ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40'
-                    : 'bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border-blue-500/40'
+                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                    : 'bg-brandTeal hover:bg-brandTealGlow text-slate-900 border-transparent'
                 }`}
               >
                 <Truck className="w-3.5 h-3.5" />
-                <span>{squadsDispatched ? 'Squads Dispatched ✓' : 'Dispatch Field Units'}</span>
+                <span>{squadsDispatched ? 'Dispatched ✓' : 'Dispatch Field Units'}</span>
               </button>
             </div>
 
             <button
               onClick={handleCopyDirectiveToNotes}
-              className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 font-bold text-[11px] flex items-center gap-1.5 transition-all ml-auto"
+              className="px-3 py-1.5 rounded-lg bg-surfaceElevated hover:bg-surface text-secondaryText hover:text-primaryText border border-hairline font-bold text-[11px] flex items-center gap-1.5 transition-all ml-auto shadow-sm"
             >
-              {copiedNote ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copiedNote ? 'Pasted to Incident Notes!' : 'Append to Notes'}</span>
+              {copiedNote ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copiedNote ? 'Appended to Notes!' : 'Append to Notes'}</span>
             </button>
           </div>
         </div>
@@ -633,47 +572,47 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
 
       {/* HITL Safety Gate Modal */}
       {pendingBreaker && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="w-full max-w-md rounded-2xl bg-[#091322] border border-rose-500/60 shadow-2xl p-5 space-y-4">
-            <div className="flex items-start justify-between gap-3 border-b border-white/10 pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md rounded-2xl bg-surfaceCard border border-hairline shadow-xl p-5 space-y-4 text-primaryText">
+            <div className="flex items-start justify-between gap-3 border-b border-hairline pb-3">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-rose-500/20 text-rose-400 ring-2 ring-rose-500/30">
+                <div className="p-2 rounded-xl bg-red-500/10 text-red-500 ring-2 ring-red-500/20">
                   <ShieldAlert className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-black text-white uppercase tracking-wide font-display">
+                  <h3 className="text-sm font-bold text-primaryText uppercase tracking-wide font-display">
                     Human-in-the-Loop Safety Gate
                   </h3>
-                  <p className="text-[10px] text-rose-300 font-mono">
+                  <p className="text-[10px] text-red-500 font-mono">
                     MANDATORY OPERATOR AUTHORIZATION REQUIRED
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setPendingBreaker(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/5"
+                className="p-1 rounded-lg text-mutedGray hover:text-primaryText hover:bg-surfaceElevated transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="space-y-2.5 text-xs">
-              <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-500/30 space-y-1">
-                <span className="text-[10px] font-mono text-rose-400 uppercase font-bold block">
+              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 space-y-1">
+                <span className="text-[10px] font-mono text-red-500 uppercase font-bold block">
                   Target Circuit Asset:
                 </span>
-                <p className="text-sm font-extrabold text-white font-mono">{pendingBreaker}</p>
-                <p className="text-rose-200 text-[11px]">
+                <p className="text-sm font-bold text-primaryText font-mono">{pendingBreaker}</p>
+                <p className="text-secondaryText text-[11px]">
                   Tripping this breaker disconnects the 33kV primary feed. Automatic standby tie-line to Vasai West must engage to keep ICU energized.
                 </p>
               </div>
 
-              <label className="flex items-start gap-2 cursor-pointer text-slate-300 select-none p-2.5 rounded-lg bg-slate-950 border border-white/5">
+              <label className="flex items-start gap-2 cursor-pointer text-secondaryText select-none p-2.5 rounded-lg bg-surfaceElevated border border-hairline">
                 <input
                   type="checkbox"
                   checked={hitlConfirmed}
                   onChange={(e) => setHitlConfirmed(e.target.checked)}
-                  className="mt-0.5 rounded border-white/20 text-rose-500 focus:ring-0 accent-rose-500"
+                  className="mt-0.5 rounded border-hairline text-red-500 focus:ring-0 accent-red-500"
                 />
                 <span className="text-[11px] leading-relaxed">
                   I verify air-gap clearance and authorize high-voltage breaker isolation.
@@ -684,14 +623,14 @@ Hospital Lifeline: ${d.hospital_lifeline_protocol}`;
             <div className="flex items-center justify-end gap-2 pt-1">
               <button
                 onClick={() => setPendingBreaker(null)}
-                className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white hover:bg-white/5 transition-all"
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold text-secondaryText hover:text-primaryText bg-surfaceElevated hover:bg-surface border border-hairline transition-all shadow-sm"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmHitlBreakerTrip}
                 disabled={!hitlConfirmed}
-                className="px-4 py-2 rounded-xl text-xs font-extrabold bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-red-500 hover:bg-red-600 text-white shadow-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
               >
                 <Zap className="w-3.5 h-3.5" />
                 <span>Authorize & Trip</span>

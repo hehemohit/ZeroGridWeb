@@ -206,7 +206,7 @@ export default function AgentZeroDashboardPage() {
       setCachedTime(now);
       setIsFromCache(false);
 
-      // Save to cache so page reload never reruns expensive LLM/orchestration
+      // Save to cache so reload doesn't re-trigger synthesis
       saveOrchestrationCache({
         incidentId: incId,
         waterDepth: depth,
@@ -224,7 +224,7 @@ export default function AgentZeroDashboardPage() {
     }
   };
 
-  // On page mount: load squad states and restore from cache if present!
+  // On page mount: load squad states and restore from cache
   useEffect(() => {
     loadTeams();
 
@@ -237,9 +237,7 @@ export default function AgentZeroDashboardPage() {
       setIsFromCache(true);
       if (cached.waterDepth) setCustomWaterDepth(cached.waterDepth);
       if (cached.coordinates) setCustomCoordinates(cached.coordinates);
-      console.log('[Agent Zero Dashboard] Restored tactical orchestration from cache. Reload bypassed.');
     } else {
-      // Only execute initial run if completely empty
       handleExecuteOrchestration();
     }
   }, []);
@@ -270,7 +268,6 @@ export default function AgentZeroDashboardPage() {
     setCustomWaterDepth(depth);
     setCustomCoordinates(coords);
 
-    // Check if new incident already has cached results
     const cached = getOrchestrationCache(newIncidentId);
     if (cached && cached.orchestration) {
       setOrchestration(cached.orchestration);
@@ -283,13 +280,11 @@ export default function AgentZeroDashboardPage() {
     }
   };
 
-  // Clear cache and force fresh synthesis
   const handleClearCacheAndReanalyze = () => {
     clearOrchestrationCache(selectedIncidentId);
     handleExecuteOrchestration();
   };
 
-  // Atomic Redis lock toggle
   const handleToggleLock = async (teamId: string, currentState: 'IDLE' | 'ASSIGNED') => {
     setLockingTeamId(teamId);
     try {
@@ -306,7 +301,6 @@ export default function AgentZeroDashboardPage() {
     }
   };
 
-  // Human-in-the-Loop (HITL) Safety Gate for Breaker Trips
   const requestBreakerToggle = (breaker: string) => {
     if (trippedBreakers.includes(breaker)) {
       const updated = trippedBreakers.filter((b) => b !== breaker);
@@ -381,56 +375,56 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
   const graph = orchestration?.graph_telemetry;
 
   return (
-    <div className="min-h-screen w-full bg-[#030712] text-slate-100 p-3 sm:p-5 lg:p-7 space-y-5 sm:space-y-6 max-w-[1600px] mx-auto">
+    <div className="min-h-full w-full bg-canvas text-primaryText p-3.5 sm:p-5 lg:p-7 space-y-5 sm:space-y-6 max-w-7xl mx-auto transition-colors duration-200">
+      
       {/* ─── 1. TOP COMMAND BAR ─── */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-4 sm:p-5 lg:p-6 rounded-2xl bg-[#080f1d]/90 border border-cyan-500/20 backdrop-blur-xl shadow-2xl">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-4 sm:p-5 lg:p-6 rounded-2xl bg-surfaceCard border border-hairline shadow-sm transition-colors duration-200">
         <div className="flex items-start sm:items-center gap-3.5 sm:gap-4">
-          <div className="relative flex-shrink-0 flex items-center justify-center w-11 h-11 sm:w-13 sm:h-13 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-blue-600/30 border border-cyan-400/40 shadow-inner">
-            <Cpu className="w-5 h-5 sm:w-6 sm:h-6 text-cyan-400 animate-pulse" />
-            <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-emerald-400 animate-ping" />
+          <div className="relative flex-shrink-0 flex items-center justify-center w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-brandTeal/10 border border-brandTeal/20 shadow-sm text-brandTeal">
+            <Cpu className="w-5 h-5 sm:w-6 sm:h-6 animate-pulse" />
+            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-brandTeal animate-ping" />
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-lg sm:text-2xl font-black text-white tracking-tight font-display truncate">
+              <h1 className="text-lg sm:text-2xl font-bold text-primaryText tracking-tight font-display truncate">
                 Agent Zero Command Center
               </h1>
-              <span className="text-[10px] sm:text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-500/40">
-                GROQ LPU MULTI-AGENT CORE
+              <span className="text-[10px] sm:text-xs font-mono font-semibold px-2.5 py-0.5 rounded-full bg-brandTeal/10 text-brandTeal border border-brandTeal/20">
+                GROQ LPU MULTI-AGENT
               </span>
               {cachedTime && (
                 <span
-                  className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                  className={`text-[10px] font-mono font-semibold px-2.5 py-0.5 rounded-full border flex items-center gap-1 ${
                     isFromCache
-                      ? 'bg-amber-950/70 text-amber-300 border-amber-500/40'
-                      : 'bg-emerald-950/70 text-emerald-300 border-emerald-500/40'
+                      ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+                      : 'bg-brandTeal/10 text-brandTeal border-brandTeal/20'
                   }`}
-                  title={isFromCache ? 'Loaded from local persistent cache without network re-run' : 'Freshly calculated'}
                 >
                   <Database className="w-3 h-3" />
                   <span>{isFromCache ? `CACHED (${formatRelativeTime(cachedTime)})` : 'LIVE SYNTHESIS'}</span>
                 </span>
               )}
             </div>
-            <p className="text-xs text-slate-400 mt-1 leading-snug">
+            <p className="text-xs sm:text-sm text-secondaryText mt-0.5 leading-snug">
               Autonomous Grid Recovery, Deterministic DynamoDB Graph & Tri-Store Emergency Concurrency
             </p>
           </div>
         </div>
 
-        {/* Live Data Plane & Cloud Verification Badges + Actions */}
+        {/* Live Cloud Status Badges & Controls */}
         <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
-          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 text-xs font-mono font-bold">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>DynamoDB Cloud (ap-south-1)</span>
+          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surfaceElevated border border-hairline text-secondaryText text-xs font-mono font-medium">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>DynamoDB (ap-south-1)</span>
           </div>
 
-          <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-950/70 border border-blue-500/40 text-blue-300 text-xs font-mono font-bold">
-            <Radio className="w-3.5 h-3.5 text-blue-400" />
-            <span>Groq LPU (gpt-oss-120b)</span>
+          <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surfaceElevated border border-hairline text-secondaryText text-xs font-mono font-medium">
+            <Radio className="w-3.5 h-3.5 text-blue-500" />
+            <span>Groq LPU (120b)</span>
           </div>
 
-          <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-purple-950/70 border border-purple-500/40 text-purple-300 text-xs font-mono font-bold">
-            <Lock className="w-3.5 h-3.5 text-purple-400" />
+          <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-surfaceElevated border border-hairline text-secondaryText text-xs font-mono font-medium">
+            <Lock className="w-3.5 h-3.5 text-purple-500" />
             <span>Redis ({teams.filter((t) => t.state === 'IDLE').length} Idle)</span>
           </div>
 
@@ -438,18 +432,18 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
           <button
             onClick={() => handleExecuteOrchestration()}
             disabled={loading}
-            className="flex items-center justify-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black text-xs shadow-lg shadow-cyan-500/20 transition-all disabled:opacity-50"
+            className="flex items-center justify-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl bg-brandTeal hover:bg-brandTealGlow text-slate-900 font-bold text-xs shadow-sm transition-all disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             <span>{loading ? 'Analyzing...' : 'Re-Run Orchestration'}</span>
           </button>
 
-          {/* Clear Cache & Force Fresh Recomputation */}
+          {/* Clear Cache Trigger */}
           <button
             onClick={handleClearCacheAndReanalyze}
             disabled={loading}
             title="Clear persistent cache and recompute from scratch"
-            className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 text-xs font-bold transition-all disabled:opacity-50"
+            className="p-2 rounded-xl bg-surfaceElevated hover:bg-surface border border-hairline text-secondaryText hover:text-primaryText text-xs font-medium transition-all disabled:opacity-50"
           >
             <RotateCcw className="w-3.5 h-3.5" />
           </button>
@@ -457,16 +451,16 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
       </div>
 
       {/* ─── 2. INCIDENT & TELEMETRY CONTROL STRIP ─── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 p-4 sm:p-5 rounded-2xl bg-[#08101e]/90 border border-white/5 text-xs">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 p-4 sm:p-5 rounded-2xl bg-surfaceCard border border-hairline shadow-sm text-xs">
         {/* Preset Selector */}
         <div className="space-y-1.5 min-w-0">
-          <label className="text-[10px] font-mono uppercase text-slate-400 block font-bold">
+          <label className="text-[11px] font-mono uppercase tracking-wider text-mutedGray block font-semibold">
             Incident Telemetry Target
           </label>
           <select
             value={selectedIncidentId}
             onChange={(e) => handleSelectIncident(e.target.value)}
-            className="w-full bg-[#050b14] border border-cyan-500/30 rounded-xl px-3 py-2 text-slate-200 font-medium focus:outline-none focus:border-cyan-400 text-xs"
+            className="w-full bg-surfaceElevated border border-hairline rounded-xl px-3 py-2 text-primaryText font-medium focus:outline-none focus:border-brandTeal focus:ring-1 focus:ring-brandTeal/30 text-xs transition-colors"
           >
             <option value="PRESET_VIRAR">⚡ Substation Water Ingress (Virar East Main 33kV)</option>
             <option value="PRESET_WARD4">⚠️ Ward 4 Step-Down Transformer Overload</option>
@@ -481,39 +475,41 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
 
         {/* Water Depth Slider */}
         <div className="space-y-1.5 min-w-0">
-          <div className="flex items-center justify-between text-[10px] font-mono">
-            <span className="text-slate-400 uppercase font-bold">Water Logging Depth</span>
-            <span className="text-cyan-300 font-bold">{customWaterDepth} cm</span>
+          <div className="flex items-center justify-between text-[11px] font-mono">
+            <span className="text-mutedGray uppercase tracking-wider font-semibold">Water Logging Depth</span>
+            <span className="text-brandTeal font-bold bg-surfaceElevated px-2 py-0.5 rounded-lg border border-hairline">
+              {customWaterDepth} cm
+            </span>
           </div>
-          <div className="pt-1.5">
+          <div className="pt-2">
             <input
               type="range"
               min="0"
               max="100"
               value={customWaterDepth}
               onChange={(e) => setCustomWaterDepth(Number(e.target.value))}
-              className="w-full accent-cyan-400 cursor-pointer h-2 bg-slate-800 rounded-lg"
+              className="w-full accent-brandTeal cursor-pointer h-2 bg-surfaceElevated rounded-lg"
             />
           </div>
         </div>
 
         {/* Coordinates Display */}
         <div className="space-y-1.5 min-w-0">
-          <label className="text-[10px] font-mono uppercase text-slate-400 block font-bold">
+          <label className="text-[11px] font-mono uppercase tracking-wider text-mutedGray block font-semibold">
             Substation Coordinates
           </label>
-          <div className="flex items-center gap-2 bg-[#050b14] border border-white/10 rounded-xl px-3 py-2 font-mono text-slate-300">
-            <MapPin className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
+          <div className="flex items-center gap-2 bg-surfaceElevated border border-hairline rounded-xl px-3 py-2 font-mono text-secondaryText">
+            <MapPin className="w-3.5 h-3.5 text-brandTeal flex-shrink-0" />
             <span className="truncate">{customCoordinates[0].toFixed(4)}, {customCoordinates[1].toFixed(4)}</span>
           </div>
         </div>
 
-        {/* Apply & Recalculate Trigger */}
+        {/* Apply Trigger */}
         <div className="flex items-end min-w-0">
           <button
             onClick={() => handleExecuteOrchestration(customWaterDepth, customCoordinates)}
             disabled={loading}
-            className="w-full py-2.5 px-3 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold transition-all text-center flex items-center justify-center gap-2 disabled:opacity-50"
+            className="w-full py-2.5 px-3 rounded-xl bg-surfaceElevated hover:bg-surface border border-hairline text-primaryText hover:text-brandTeal font-semibold transition-all text-center flex items-center justify-center gap-2 disabled:opacity-50 shadow-sm"
           >
             <Sliders className="w-3.5 h-3.5" />
             <span>Apply Parameters</span>
@@ -523,8 +519,8 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
 
       {/* Error Notice */}
       {error && (
-        <div className="p-4 rounded-xl bg-rose-950/50 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4 flex-shrink-0 text-rose-400" />
+        <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
           <span>{error}</span>
         </div>
       )}
@@ -532,102 +528,102 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
       {/* ─── 3. TOP KPI TELEMETRY STRIP ─── */}
       {orchestration && directive && (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
-          <div className="p-4 sm:p-5 rounded-2xl bg-[#08101e]/90 border border-white/5 min-w-0">
-            <span className="text-[10px] text-slate-400 uppercase font-mono font-bold block">
+          <div className="p-4 sm:p-5 rounded-2xl bg-surfaceCard border border-hairline shadow-sm min-w-0">
+            <span className="text-[11px] text-mutedGray uppercase font-mono font-semibold block">
               Threat Severity Index
             </span>
             <div className="flex items-baseline gap-2 mt-1">
               <span
                 className={`text-2xl sm:text-3xl font-black font-mono ${
                   directive.overall_threat_score >= 80
-                    ? 'text-rose-400'
+                    ? 'text-red-500'
                     : directive.overall_threat_score >= 50
-                    ? 'text-amber-400'
-                    : 'text-emerald-400'
+                    ? 'text-amber-500'
+                    : 'text-emerald-500'
                 }`}
               >
                 {directive.overall_threat_score}
               </span>
-              <span className="text-xs text-slate-500 font-mono">/ 100</span>
-              <span className="ml-auto text-[10px] font-mono px-2 py-0.5 rounded font-bold uppercase bg-rose-950 text-rose-400 border border-rose-500/30">
+              <span className="text-xs text-mutedGray font-mono">/ 100</span>
+              <span className="ml-auto text-[10px] font-mono px-2 py-0.5 rounded-md font-bold uppercase bg-red-500/10 text-red-500 border border-red-500/20">
                 CRITICAL
               </span>
             </div>
           </div>
 
-          <div className="p-4 sm:p-5 rounded-2xl bg-[#08101e]/90 border border-white/5 min-w-0">
-            <span className="text-[10px] text-slate-400 uppercase font-mono font-bold block">
+          <div className="p-4 sm:p-5 rounded-2xl bg-surfaceCard border border-hairline shadow-sm min-w-0">
+            <span className="text-[11px] text-mutedGray uppercase font-mono font-semibold block">
               Root Substation Node
             </span>
             <div className="flex items-center gap-2 mt-1 truncate">
-              <span className="text-sm sm:text-base font-extrabold text-cyan-300 font-mono truncate">
+              <span className="text-sm sm:text-base font-bold text-brandTeal font-mono truncate">
                 {graph?.root_node_id || 'SUB_VIRAR_EAST_01'}
               </span>
             </div>
-            <span className="text-[10px] text-slate-500 mt-1 block">33kV / 92.5% Nominal Load</span>
+            <span className="text-[11px] text-mutedGray mt-1 block">33kV / 92.5% Nominal Load</span>
           </div>
 
-          <div className="p-4 sm:p-5 rounded-2xl bg-[#08101e]/90 border border-white/5 min-w-0">
-            <span className="text-[10px] text-slate-400 uppercase font-mono font-bold block">
+          <div className="p-4 sm:p-5 rounded-2xl bg-surfaceCard border border-hairline shadow-sm min-w-0">
+            <span className="text-[11px] text-mutedGray uppercase font-mono font-semibold block">
               DynamoDB Adjacency Subgraph
             </span>
             <div className="flex items-center gap-2 mt-1">
-              <span className="text-base sm:text-lg font-black text-white font-mono">
+              <span className="text-base sm:text-lg font-bold text-primaryText font-mono">
                 {graph?.node_count || 4} Nodes
               </span>
-              <span className="text-xs text-slate-400 font-mono">
+              <span className="text-xs text-secondaryText font-mono">
                 &bull; {graph?.edge_count || 6} Lines
               </span>
             </div>
-            <span className="text-[10px] text-emerald-400 font-mono mt-1 block">Cycle Prevention: 100% OK</span>
+            <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-mono mt-1 block font-medium">Cycle Prevention: 100% OK</span>
           </div>
 
-          <div className="p-4 sm:p-5 rounded-2xl bg-[#08101e]/90 border border-white/5 min-w-0">
-            <span className="text-[10px] text-slate-400 uppercase font-mono font-bold block">
+          <div className="p-4 sm:p-5 rounded-2xl bg-surfaceCard border border-hairline shadow-sm min-w-0">
+            <span className="text-[11px] text-mutedGray uppercase font-mono font-semibold block">
               Hospital Lifeline Busbar
             </span>
             <div className="flex items-center gap-2 mt-1">
-              <HeartPulse className="w-5 h-5 text-emerald-400 flex-shrink-0" />
-              <span className="text-sm sm:text-base font-black text-emerald-300 font-mono truncate">
+              <HeartPulse className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+              <span className="text-sm sm:text-base font-bold text-emerald-600 dark:text-emerald-400 font-mono truncate">
                 ICU 100% ENERGIZED
               </span>
             </div>
-            <span className="text-[10px] text-slate-500 mt-1 block">Vasai 33kV Tie Line Engaged</span>
+            <span className="text-[11px] text-mutedGray mt-1 block">Vasai 33kV Tie Line Engaged</span>
           </div>
         </div>
       )}
 
       {/* ─── 4. MASTER OPERATIONAL DIRECTIVE CARD ─── */}
       {orchestration && directive && (
-        <div className="p-4 sm:p-6 rounded-2xl bg-gradient-to-br from-cyan-950/40 via-[#0a1526]/90 to-blue-950/30 border border-cyan-500/30 shadow-xl space-y-4 min-w-0">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
+        <div className="p-5 sm:p-6 rounded-2xl bg-surfaceCard border border-hairline shadow-sm space-y-4 min-w-0">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-hairline pb-3">
             <div className="flex items-center gap-2">
-              <Shield className="w-5 h-5 text-cyan-400 flex-shrink-0" />
-              <h2 className="text-base sm:text-lg font-black text-white tracking-tight font-display">
+              <Shield className="w-5 h-5 text-brandTeal flex-shrink-0" />
+              <h2 className="text-base sm:text-lg font-bold text-primaryText tracking-tight font-display">
                 Agent Zero Master Operational Directive
               </h2>
             </div>
-            <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
-              <Clock className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
+            <div className="flex items-center gap-2 text-xs font-mono text-mutedGray">
+              <Clock className="w-3.5 h-3.5 text-brandTeal flex-shrink-0" />
               <span>
                 Calculated: {new Date(orchestration.orchestrated_at || cachedTime || Date.now()).toLocaleTimeString()} UTC
               </span>
             </div>
           </div>
 
-          <p className="text-xs sm:text-sm md:text-base text-slate-100 font-semibold leading-relaxed">
+          <p className="text-xs sm:text-sm md:text-base text-secondaryText font-medium leading-relaxed">
             {directive.executive_summary}
           </p>
 
           {/* Hospital & ICU Lifeline Callout Box */}
           {directive.hospital_lifeline_protocol && (
-            <div className="p-3.5 sm:p-4 rounded-xl bg-emerald-950/50 border border-emerald-500/40 flex items-start gap-3">
-              <HeartPulse className="w-5 h-5 text-emerald-400 mt-0.5 flex-shrink-0" />
+            <div className="p-3.5 sm:p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 flex items-start gap-3">
+              <HeartPulse className="w-5 h-5 text-emerald-500 mt-0.5 flex-shrink-0" />
               <div className="min-w-0">
-                <span className="text-xs font-black uppercase tracking-wider text-emerald-300 block font-mono">
+                <span className="text-xs font-bold uppercase tracking-wider block font-mono">
                   Hospital & Trauma ICU Power Protection Protocol
                 </span>
-                <p className="text-xs sm:text-sm text-emerald-100 mt-1 leading-relaxed font-medium">
+                <p className="text-xs sm:text-sm mt-1 leading-relaxed font-medium">
                   {directive.hospital_lifeline_protocol}
                 </p>
               </div>
@@ -637,16 +633,16 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
           {/* Immediate Automated Breaker Actions */}
           {directive.immediate_automated_actions?.length > 0 && (
             <div className="space-y-2">
-              <span className="text-[11px] font-mono uppercase tracking-wider text-slate-400 block font-bold">
+              <span className="text-[11px] font-mono uppercase tracking-wider text-mutedGray block font-semibold">
                 Automated Actions Ordered by Agent Zero:
               </span>
               <div className="flex flex-wrap gap-2">
                 {directive.immediate_automated_actions.map((act, idx) => (
                   <span
                     key={idx}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-950/70 border border-cyan-500/40 text-cyan-200 text-xs font-mono font-bold"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surfaceElevated border border-hairline text-primaryText text-xs font-mono font-medium"
                   >
-                    <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
+                    <CheckCircle2 className="w-3.5 h-3.5 text-brandTeal flex-shrink-0" />
                     <span>{act}</span>
                   </span>
                 ))}
@@ -656,24 +652,24 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
         </div>
       )}
 
-      {/* ─── 5. SEGREGATED DECISION STREAM NAVIGATION (RESPONSIVE HORIZONTAL SCROLL) ─── */}
-      <div className="flex items-center gap-2 p-1.5 sm:p-2 rounded-2xl bg-[#08101e]/90 border border-white/5 overflow-x-auto scrollbar-none">
+      {/* ─── 5. SEGREGATED DECISION STREAM NAVIGATION TABS ─── */}
+      <div className="flex items-center gap-1.5 p-1 rounded-xl bg-surfaceElevated border border-hairline overflow-x-auto scrollbar-none">
         <button
           onClick={() => setActiveTab('ALL')}
-          className={`whitespace-nowrap flex-shrink-0 py-2 px-3.5 rounded-xl text-xs font-black transition-all ${
+          className={`whitespace-nowrap flex-shrink-0 py-2 px-3.5 rounded-lg text-xs font-semibold transition-all ${
             activeTab === 'ALL'
-              ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
-              : 'text-slate-400 hover:text-white hover:bg-white/5'
+              ? 'bg-surfaceCard text-primaryText border border-hairline shadow-sm font-bold'
+              : 'text-secondaryText hover:text-primaryText hover:bg-surfaceCard/50'
           }`}
         >
           All Decision Streams
         </button>
         <button
           onClick={() => setActiveTab('TRIAGE')}
-          className={`whitespace-nowrap flex-shrink-0 py-2 px-3.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+          className={`whitespace-nowrap flex-shrink-0 py-2 px-3.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
             activeTab === 'TRIAGE'
-              ? 'bg-rose-500 text-white shadow-md shadow-rose-500/20'
-              : 'text-slate-400 hover:text-white hover:bg-white/5'
+              ? 'bg-surfaceCard text-red-500 border border-hairline shadow-sm font-bold'
+              : 'text-secondaryText hover:text-primaryText hover:bg-surfaceCard/50'
           }`}
         >
           <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
@@ -681,10 +677,10 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
         </button>
         <button
           onClick={() => setActiveTab('GRID')}
-          className={`whitespace-nowrap flex-shrink-0 py-2 px-3.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+          className={`whitespace-nowrap flex-shrink-0 py-2 px-3.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
             activeTab === 'GRID'
-              ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
-              : 'text-slate-400 hover:text-white hover:bg-white/5'
+              ? 'bg-surfaceCard text-amber-500 border border-hairline shadow-sm font-bold'
+              : 'text-secondaryText hover:text-primaryText hover:bg-surfaceCard/50'
           }`}
         >
           <Zap className="w-3.5 h-3.5 flex-shrink-0" />
@@ -692,10 +688,10 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
         </button>
         <button
           onClick={() => setActiveTab('DISPATCH')}
-          className={`whitespace-nowrap flex-shrink-0 py-2 px-3.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+          className={`whitespace-nowrap flex-shrink-0 py-2 px-3.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
             activeTab === 'DISPATCH'
-              ? 'bg-blue-500 text-white shadow-md shadow-blue-500/20'
-              : 'text-slate-400 hover:text-white hover:bg-white/5'
+              ? 'bg-surfaceCard text-blue-500 border border-hairline shadow-sm font-bold'
+              : 'text-secondaryText hover:text-primaryText hover:bg-surfaceCard/50'
           }`}
         >
           <Truck className="w-3.5 h-3.5 flex-shrink-0" />
@@ -703,10 +699,10 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
         </button>
         <button
           onClick={() => setActiveTab('TOPOLOGY')}
-          className={`whitespace-nowrap flex-shrink-0 py-2 px-3.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+          className={`whitespace-nowrap flex-shrink-0 py-2 px-3.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
             activeTab === 'TOPOLOGY'
-              ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
-              : 'text-slate-400 hover:text-white hover:bg-white/5'
+              ? 'bg-surfaceCard text-emerald-500 border border-hairline shadow-sm font-bold'
+              : 'text-secondaryText hover:text-primaryText hover:bg-surfaceCard/50'
           }`}
         >
           <Database className="w-3.5 h-3.5 flex-shrink-0" />
@@ -714,10 +710,10 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
         </button>
         <button
           onClick={() => setActiveTab('SPATIAL')}
-          className={`whitespace-nowrap flex-shrink-0 py-2 px-3.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+          className={`whitespace-nowrap flex-shrink-0 py-2 px-3.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
             activeTab === 'SPATIAL'
-              ? 'bg-purple-500 text-white shadow-md shadow-purple-500/20'
-              : 'text-slate-400 hover:text-white hover:bg-white/5'
+              ? 'bg-surfaceCard text-purple-500 border border-hairline shadow-sm font-bold'
+              : 'text-secondaryText hover:text-primaryText hover:bg-surfaceCard/50'
           }`}
         >
           <Radar className="w-3.5 h-3.5 flex-shrink-0" />
@@ -731,49 +727,49 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
           {/* STREAM A: TRIAGE SUB-AGENT DECISION STREAM */}
           {(activeTab === 'ALL' || activeTab === 'TRIAGE') && subAgents?.triage && (
             <div
-              className={`p-4 sm:p-5 rounded-2xl bg-[#08101e]/90 border border-rose-500/30 hover:border-rose-500/50 transition-all space-y-4 min-w-0 ${
+              className={`p-5 rounded-2xl bg-surfaceCard border border-hairline shadow-sm space-y-4 min-w-0 ${
                 activeTab === 'TRIAGE' ? 'col-span-full' : ''
               }`}
             >
-              <div className="flex items-center justify-between border-b border-white/10 pb-3 gap-2">
+              <div className="flex items-center justify-between border-b border-hairline pb-3 gap-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <div className="p-2 rounded-xl bg-rose-500/20 text-rose-400 flex-shrink-0">
+                  <div className="p-2 rounded-xl bg-red-500/10 text-red-500 flex-shrink-0">
                     <AlertTriangle className="w-4 h-4" />
                   </div>
                   <div className="min-w-0">
-                    <h3 className="text-sm font-bold text-rose-300 uppercase tracking-wide truncate">
+                    <h3 className="text-sm font-bold text-primaryText uppercase tracking-wide truncate">
                       Triage Decision Stream
                     </h3>
-                    <p className="text-[11px] text-slate-400 truncate">Casualty Probability & Ingress</p>
+                    <p className="text-[11px] text-mutedGray truncate">Casualty Probability & Ingress</p>
                   </div>
                 </div>
-                <span className="px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-rose-950 text-rose-300 border border-rose-500/40 flex-shrink-0">
+                <span className="px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-red-500/10 text-red-500 border border-red-500/20 flex-shrink-0">
                   {subAgents.triage.threat_level}
                 </span>
               </div>
 
               <div className="space-y-3 text-xs">
                 <div>
-                  <span className="text-[10px] font-mono text-slate-400 uppercase font-bold block mb-1">
+                  <span className="text-[11px] font-mono text-mutedGray uppercase font-semibold block mb-1">
                     Casualty & Electrocution Risk Assessment:
                   </span>
-                  <p className="text-slate-200 font-medium leading-relaxed bg-[#050b14] p-3 rounded-xl border border-white/5">
+                  <p className="text-secondaryText font-medium leading-relaxed bg-surfaceElevated p-3 rounded-xl border border-hairline">
                     {subAgents.triage.casualty_risk_assessment}
                   </p>
                 </div>
 
                 {subAgents.triage.priority_facilities_threatened?.length > 0 && (
                   <div>
-                    <span className="text-[10px] font-mono text-slate-400 uppercase font-bold block mb-1">
+                    <span className="text-[11px] font-mono text-mutedGray uppercase font-semibold block mb-1">
                       Threatened Facilities at Risk:
                     </span>
                     <div className="flex flex-wrap gap-2">
                       {subAgents.triage.priority_facilities_threatened.map((facility, idx) => (
                         <span
                           key={idx}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-950/60 text-rose-300 border border-rose-500/30 text-xs font-mono font-bold"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surfaceElevated text-primaryText border border-hairline text-xs font-mono font-medium"
                         >
-                          <Building className="w-3.5 h-3.5 flex-shrink-0" />
+                          <Building className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
                           <span>{facility}</span>
                         </span>
                       ))}
@@ -781,13 +777,13 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
                   </div>
                 )}
 
-                <div className="flex items-center justify-between pt-2 border-t border-white/5">
-                  <span className="text-slate-400 font-medium">Civilian Evacuation:</span>
+                <div className="flex items-center justify-between pt-2 border-t border-hairline">
+                  <span className="text-mutedGray font-medium">Civilian Evacuation:</span>
                   <span
-                    className={`font-bold font-mono px-2.5 py-0.5 rounded ${
+                    className={`font-bold font-mono px-2.5 py-0.5 rounded text-xs ${
                       subAgents.triage.evacuation_recommended
-                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
-                        : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                        ? 'bg-red-500/10 text-red-500 border border-red-500/20'
+                        : 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
                     }`}
                   >
                     {subAgents.triage.evacuation_recommended ? 'MANDATORY EVACUATION' : 'SHELTER IN PLACE'}
@@ -795,10 +791,10 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
                 </div>
 
                 <div>
-                  <span className="text-[10px] font-mono text-slate-400 uppercase font-bold block mb-1">
+                  <span className="text-[11px] font-mono text-mutedGray uppercase font-semibold block mb-1">
                     Containment Priority Rationale:
                   </span>
-                  <p className="text-slate-300 text-xs italic">
+                  <p className="text-secondaryText text-xs italic">
                     &quot;{subAgents.triage.containment_priority}&quot;
                   </p>
                 </div>
@@ -809,23 +805,23 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
           {/* STREAM B: GRID OPERATIONS SUB-AGENT DECISION STREAM */}
           {(activeTab === 'ALL' || activeTab === 'GRID') && subAgents?.grid && (
             <div
-              className={`p-4 sm:p-5 rounded-2xl bg-[#08101e]/90 border border-amber-500/30 hover:border-amber-500/50 transition-all space-y-4 min-w-0 ${
+              className={`p-5 rounded-2xl bg-surfaceCard border border-hairline shadow-sm space-y-4 min-w-0 ${
                 activeTab === 'GRID' ? 'col-span-full' : ''
               }`}
             >
-              <div className="flex items-center justify-between border-b border-white/10 pb-3 gap-2">
+              <div className="flex items-center justify-between border-b border-hairline pb-3 gap-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 flex-shrink-0">
+                  <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500 flex-shrink-0">
                     <Zap className="w-4 h-4" />
                   </div>
                   <div className="min-w-0">
-                    <h3 className="text-sm font-bold text-amber-300 uppercase tracking-wide truncate">
+                    <h3 className="text-sm font-bold text-primaryText uppercase tracking-wide truncate">
                       Grid Operations Decision Stream
                     </h3>
-                    <p className="text-[11px] text-slate-400 truncate">Electrical Switching & Rerouting</p>
+                    <p className="text-[11px] text-mutedGray truncate">Electrical Switching & Rerouting</p>
                   </div>
                 </div>
-                <span className="px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-amber-950 text-amber-300 border border-amber-500/40 flex-shrink-0">
+                <span className="px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20 flex-shrink-0">
                   {subAgents.grid.grid_stability_status}
                 </span>
               </div>
@@ -833,13 +829,13 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
               <div className="space-y-3 text-xs">
                 {/* Cascading Failure Progress Bar */}
                 <div>
-                  <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 mb-1">
-                    <span className="font-bold uppercase">Cascading Collapse Probability:</span>
-                    <span className="font-bold text-amber-400 text-xs">{subAgents.grid.cascading_failure_risk_pct}%</span>
+                  <div className="flex items-center justify-between text-[11px] font-mono text-mutedGray mb-1">
+                    <span className="font-semibold uppercase">Cascading Collapse Probability:</span>
+                    <span className="font-bold text-amber-500 text-xs">{subAgents.grid.cascading_failure_risk_pct}%</span>
                   </div>
-                  <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                  <div className="w-full h-2 rounded-full bg-surfaceElevated overflow-hidden border border-hairline">
                     <div
-                      className="h-full bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 transition-all duration-500"
+                      className="h-full bg-gradient-to-r from-amber-500 to-red-500 transition-all duration-500"
                       style={{ width: `${subAgents.grid.cascading_failure_risk_pct}%` }}
                     />
                   </div>
@@ -848,7 +844,7 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
                 {/* Interactive Breakers to Trip Switchboard */}
                 {subAgents.grid.immediate_breakers_to_trip?.length > 0 && (
                   <div>
-                    <span className="text-[10px] font-mono text-slate-400 uppercase font-bold block mb-1.5">
+                    <span className="text-[11px] font-mono text-mutedGray uppercase font-semibold block mb-1.5">
                       Circuit Breakers Flagged for Immediate Isolation:
                     </span>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -860,14 +856,14 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
                             onClick={() => requestBreakerToggle(breaker)}
                             className={`flex items-center justify-between px-3 py-2 rounded-xl border text-left text-xs font-mono transition-all min-w-0 ${
                               isTripped
-                                ? 'bg-rose-950/80 text-rose-300 border-rose-500/60 shadow-md shadow-rose-950/50'
-                                : 'bg-[#050b14] text-slate-300 border-white/10 hover:border-amber-400/50'
+                                ? 'bg-red-500/10 text-red-500 border-red-500/30'
+                                : 'bg-surfaceElevated text-primaryText border-hairline hover:border-brandTeal'
                             }`}
                           >
                             <span className="font-bold truncate mr-2">{breaker}</span>
                             <span
                               className={`text-[9px] px-2 py-0.5 rounded font-extrabold uppercase flex-shrink-0 ${
-                                isTripped ? 'bg-rose-500 text-white' : 'bg-slate-800 text-slate-400'
+                                isTripped ? 'bg-red-500 text-white' : 'bg-surfaceCard text-mutedGray'
                               }`}
                             >
                               {isTripped ? 'TRIPPED (SAFE)' : 'ARM & TRIP'}
@@ -880,11 +876,11 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
                 )}
 
                 {/* Safe Alternate Rerouting Path */}
-                <div className="p-3 rounded-xl bg-[#050b14] border border-white/5 space-y-1">
-                  <span className="text-[10px] font-mono text-amber-400 uppercase font-bold block">
+                <div className="p-3 rounded-xl bg-surfaceElevated border border-hairline space-y-1">
+                  <span className="text-[11px] font-mono text-amber-500 uppercase font-semibold block">
                     Safe Alternative Power Routing:
                   </span>
-                  <p className="text-slate-300 text-xs leading-relaxed font-medium">
+                  <p className="text-secondaryText text-xs leading-relaxed font-medium">
                     {subAgents.grid.safe_rerouting_path}
                   </p>
                 </div>
@@ -895,23 +891,23 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
           {/* STREAM C: TACTICAL DISPATCH SUB-AGENT DECISION STREAM */}
           {(activeTab === 'ALL' || activeTab === 'DISPATCH') && subAgents?.dispatch && (
             <div
-              className={`p-4 sm:p-5 rounded-2xl bg-[#08101e]/90 border border-blue-500/30 hover:border-blue-500/50 transition-all space-y-4 min-w-0 ${
+              className={`p-5 rounded-2xl bg-surfaceCard border border-hairline shadow-sm space-y-4 min-w-0 ${
                 activeTab === 'DISPATCH' ? 'col-span-full' : ''
               }`}
             >
-              <div className="flex items-center justify-between border-b border-white/10 pb-3 gap-2">
+              <div className="flex items-center justify-between border-b border-hairline pb-3 gap-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <div className="p-2 rounded-xl bg-blue-500/20 text-blue-400 flex-shrink-0">
+                  <div className="p-2 rounded-xl bg-blue-500/10 text-blue-500 flex-shrink-0">
                     <Truck className="w-4 h-4" />
                   </div>
                   <div className="min-w-0">
-                    <h3 className="text-sm font-bold text-blue-300 uppercase tracking-wide truncate">
+                    <h3 className="text-sm font-bold text-primaryText uppercase tracking-wide truncate">
                       Tactical Dispatch Decision Stream
                     </h3>
-                    <p className="text-[11px] text-slate-400 truncate">Squad Mobilization & Corridors</p>
+                    <p className="text-[11px] text-mutedGray truncate">Squad Mobilization & Corridors</p>
                   </div>
                 </div>
-                <span className="px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-blue-950 text-blue-300 border border-blue-500/40 flex-shrink-0">
+                <span className="px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-blue-500/10 text-blue-500 border border-blue-500/20 flex-shrink-0">
                   {subAgents.dispatch.route_accessibility_status}
                 </span>
               </div>
@@ -920,21 +916,21 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
                 {/* Mobilized Squads */}
                 {subAgents.dispatch.recommended_squads?.length > 0 && (
                   <div className="space-y-2">
-                    <span className="text-[10px] font-mono text-slate-400 uppercase font-bold block">
+                    <span className="text-[11px] font-mono text-mutedGray uppercase font-semibold block">
                       Mobilized Emergency Tactical Squads:
                     </span>
                     {subAgents.dispatch.recommended_squads.map((squad, idx) => (
                       <div
                         key={idx}
-                        className="p-3 rounded-xl bg-[#050b14] border border-white/5 flex items-start justify-between gap-3 min-w-0"
+                        className="p-3 rounded-xl bg-surfaceElevated border border-hairline flex items-start justify-between gap-3 min-w-0"
                       >
                         <div className="min-w-0">
-                          <span className="font-extrabold text-blue-300 font-mono text-xs block truncate">
+                          <span className="font-bold text-primaryText font-mono text-xs block truncate">
                             {squad.count}x {squad.unit_type}
                           </span>
-                          <p className="text-slate-400 text-xs mt-1 leading-relaxed">{squad.mission}</p>
+                          <p className="text-secondaryText text-xs mt-1 leading-relaxed">{squad.mission}</p>
                         </div>
-                        <span className="text-[9px] font-bold font-mono px-2 py-0.5 rounded bg-blue-950 text-blue-400 border border-blue-500/30 flex-shrink-0">
+                        <span className="text-[9px] font-bold font-mono px-2 py-0.5 rounded bg-blue-500/10 text-blue-500 border border-blue-500/20 flex-shrink-0">
                           DEPLOYED
                         </span>
                       </div>
@@ -944,18 +940,18 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
 
                 {/* Staging Area & Precautions */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  <div className="p-3 rounded-xl bg-[#050b14] border border-white/5 min-w-0">
-                    <span className="text-[10px] font-mono text-slate-400 uppercase font-bold block mb-0.5">
+                  <div className="p-3 rounded-xl bg-surfaceElevated border border-hairline min-w-0">
+                    <span className="text-[11px] font-mono text-mutedGray uppercase font-semibold block mb-0.5">
                       Staging Base:
                     </span>
-                    <span className="font-bold text-slate-200 text-xs block truncate">{subAgents.dispatch.staging_area}</span>
+                    <span className="font-semibold text-primaryText text-xs block truncate">{subAgents.dispatch.staging_area}</span>
                   </div>
 
-                  <div className="p-3 rounded-xl bg-[#050b14] border border-white/5 min-w-0">
-                    <span className="text-[10px] font-mono text-slate-400 uppercase font-bold block mb-0.5">
+                  <div className="p-3 rounded-xl bg-surfaceElevated border border-hairline min-w-0">
+                    <span className="text-[11px] font-mono text-mutedGray uppercase font-semibold block mb-0.5">
                       Ground Hazard:
                     </span>
-                    <span className="font-medium text-amber-300 text-xs block truncate">{subAgents.dispatch.special_tactical_precautions}</span>
+                    <span className="font-medium text-amber-500 text-xs block truncate">{subAgents.dispatch.special_tactical_precautions}</span>
                   </div>
                 </div>
               </div>
@@ -965,43 +961,43 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
           {/* STREAM D: ELECTRICAL TOPOLOGY SUBGRAPH VIEW */}
           {(activeTab === 'ALL' || activeTab === 'TOPOLOGY') && (
             <div
-              className={`p-4 sm:p-5 rounded-2xl bg-[#08101e]/90 border border-emerald-500/30 space-y-4 min-w-0 ${
+              className={`p-5 rounded-2xl bg-surfaceCard border border-hairline shadow-sm space-y-4 min-w-0 ${
                 activeTab === 'TOPOLOGY' ? 'col-span-full' : 'md:col-span-2 xl:col-span-3'
               }`}
             >
-              <div className="flex items-center justify-between border-b border-white/10 pb-3 gap-2">
+              <div className="flex items-center justify-between border-b border-hairline pb-3 gap-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <Database className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                  <h3 className="text-sm font-bold text-emerald-300 uppercase tracking-wide truncate">
+                  <Database className="w-4 h-4 text-brandTeal flex-shrink-0" />
+                  <h3 className="text-sm font-bold text-primaryText uppercase tracking-wide truncate">
                     Live DynamoDB Adjacency Graph Plane (ZeroGrid-State)
                   </h3>
                 </div>
-                <span className="text-xs font-mono text-slate-400 flex-shrink-0">Region: ap-south-1</span>
+                <span className="text-xs font-mono text-mutedGray flex-shrink-0">Region: ap-south-1</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-                <div className="p-3 rounded-xl bg-[#050b14] border border-white/5 space-y-1 min-w-0">
-                  <span className="text-[10px] text-slate-500 font-mono">NODE 1 (SUBSTATION)</span>
-                  <p className="font-bold text-white font-mono truncate">SUB_VIRAR_EAST_01</p>
-                  <p className="text-[11px] text-rose-400 font-bold">STATUS: CRITICAL (46cm)</p>
+                <div className="p-3 rounded-xl bg-surfaceElevated border border-hairline space-y-1 min-w-0">
+                  <span className="text-[10px] text-mutedGray font-mono">NODE 1 (SUBSTATION)</span>
+                  <p className="font-bold text-primaryText font-mono truncate">SUB_VIRAR_EAST_01</p>
+                  <p className="text-[11px] text-red-500 font-bold">STATUS: CRITICAL (46cm)</p>
                 </div>
 
-                <div className="p-3 rounded-xl bg-[#050b14] border border-white/5 space-y-1 min-w-0">
-                  <span className="text-[10px] text-slate-500 font-mono">NODE 2 (STEP-DOWN)</span>
-                  <p className="font-bold text-white font-mono truncate">XFMR_WARD4_02</p>
-                  <p className="text-[11px] text-amber-400 font-bold">STATUS: OVERLOADED</p>
+                <div className="p-3 rounded-xl bg-surfaceElevated border border-hairline space-y-1 min-w-0">
+                  <span className="text-[10px] text-mutedGray font-mono">NODE 2 (STEP-DOWN)</span>
+                  <p className="font-bold text-primaryText font-mono truncate">XFMR_WARD4_02</p>
+                  <p className="text-[11px] text-amber-500 font-bold">STATUS: OVERLOADED</p>
                 </div>
 
-                <div className="p-3 rounded-xl bg-[#050b14] border border-white/5 space-y-1 min-w-0">
-                  <span className="text-[10px] text-slate-500 font-mono">NODE 3 (CRITICAL FACILITY)</span>
-                  <p className="font-bold text-white font-mono truncate">NODE_HOSPITAL_09</p>
-                  <p className="text-[11px] text-emerald-400 font-bold">STATUS: PROTECTED (ICU)</p>
+                <div className="p-3 rounded-xl bg-surfaceElevated border border-hairline space-y-1 min-w-0">
+                  <span className="text-[10px] text-mutedGray font-mono">NODE 3 (CRITICAL FACILITY)</span>
+                  <p className="font-bold text-primaryText font-mono truncate">NODE_HOSPITAL_09</p>
+                  <p className="text-[11px] text-emerald-500 font-bold">STATUS: PROTECTED (ICU)</p>
                 </div>
 
-                <div className="p-3 rounded-xl bg-[#050b14] border border-white/5 space-y-1 min-w-0">
-                  <span className="text-[10px] text-slate-500 font-mono">NODE 4 (BACKUP TIE-LINE)</span>
-                  <p className="font-bold text-white font-mono truncate">SUB_VASAI_WEST_03</p>
-                  <p className="text-[11px] text-blue-400 font-bold">STATUS: STANDBY ENERGIZED</p>
+                <div className="p-3 rounded-xl bg-surfaceElevated border border-hairline space-y-1 min-w-0">
+                  <span className="text-[10px] text-mutedGray font-mono">NODE 4 (BACKUP TIE-LINE)</span>
+                  <p className="font-bold text-primaryText font-mono truncate">SUB_VASAI_WEST_03</p>
+                  <p className="text-[11px] text-blue-500 font-bold">STATUS: STANDBY ENERGIZED</p>
                 </div>
               </div>
             </div>
@@ -1010,20 +1006,20 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
           {/* STREAM E: SPATIAL-TEMPORAL PROXIMITY & REDIS SQUAD CONCURRENCY */}
           {(activeTab === 'ALL' || activeTab === 'SPATIAL') && (
             <div
-              className={`p-4 sm:p-5 rounded-2xl bg-[#08101e]/90 border border-purple-500/30 hover:border-purple-500/50 transition-all space-y-4 min-w-0 ${
+              className={`p-5 rounded-2xl bg-surfaceCard border border-hairline shadow-sm space-y-4 min-w-0 ${
                 activeTab === 'SPATIAL' ? 'col-span-full' : 'md:col-span-2 xl:col-span-3'
               }`}
             >
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-hairline pb-3">
                 <div className="flex items-center gap-2 min-w-0">
-                  <div className="p-2 rounded-xl bg-purple-500/20 text-purple-400 flex-shrink-0">
+                  <div className="p-2 rounded-xl bg-purple-500/10 text-purple-500 flex-shrink-0">
                     <Radar className="w-4 h-4" />
                   </div>
                   <div className="min-w-0">
-                    <h3 className="text-sm font-bold text-purple-300 uppercase tracking-wide truncate">
+                    <h3 className="text-sm font-bold text-primaryText uppercase tracking-wide truncate">
                       Spatial-Temporal Memory & Redis Concurrency Plane
                     </h3>
-                    <p className="text-[11px] text-slate-400 truncate">
+                    <p className="text-[11px] text-mutedGray truncate">
                       MongoDB Geo-Proximity Lookahead + Redis Atomic Unit State Engine
                     </p>
                   </div>
@@ -1032,12 +1028,12 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
                   <button
                     onClick={loadTeams}
                     disabled={loadingTeams}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-950/70 border border-purple-500/30 text-purple-300 text-xs font-mono font-bold hover:bg-purple-900/40 transition-all"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surfaceElevated border border-hairline text-secondaryText hover:text-primaryText text-xs font-mono font-medium transition-all"
                   >
                     <RefreshCw className={`w-3 h-3 ${loadingTeams ? 'animate-spin' : ''}`} />
                     <span>Sync Redis</span>
                   </button>
-                  <span className="px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold bg-purple-950 text-purple-300 border border-purple-500/40">
+                  <span className="px-2.5 py-1.5 rounded-xl text-xs font-mono font-bold bg-purple-500/10 text-purple-500 border border-purple-500/20">
                     {teams.filter((t) => t.state === 'IDLE').length}/{teams.length} IDLE
                   </span>
                 </div>
@@ -1045,13 +1041,13 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
 
               {/* Spatial Proximity Advisory from MongoDB Historical Loop */}
               {(orchestration?.spatial_memory?.tactical_proximity_advisory || subAgents?.dispatch?.spatial_proximity_advisory) && (
-                <div className="p-3.5 rounded-xl bg-purple-950/40 border border-purple-500/40 flex items-start gap-3 min-w-0">
-                  <Compass className="w-5 h-5 text-purple-400 mt-0.5 flex-shrink-0" />
+                <div className="p-3.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-900 dark:text-purple-300 flex items-start gap-3 min-w-0">
+                  <Compass className="w-5 h-5 text-purple-500 mt-0.5 flex-shrink-0" />
                   <div className="min-w-0">
-                    <span className="text-[11px] font-mono uppercase tracking-wider text-purple-300 font-bold block">
+                    <span className="text-[11px] font-mono uppercase tracking-wider font-bold block">
                       MongoDB Spatial Proximity Lookahead:
                     </span>
-                    <p className="text-xs text-purple-100 mt-1 leading-relaxed font-medium">
+                    <p className="text-xs mt-1 leading-relaxed font-medium">
                       {orchestration?.spatial_memory?.tactical_proximity_advisory || subAgents?.dispatch?.spatial_proximity_advisory}
                     </p>
                   </div>
@@ -1060,7 +1056,7 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
 
               {/* Candidate Proximity Squads Grid */}
               <div className="space-y-2">
-                <span className="text-[10px] font-mono text-slate-400 uppercase font-bold block">
+                <span className="text-[11px] font-mono text-mutedGray uppercase font-semibold block">
                   Proximity Ranked Units (Distance vs Central Staging Savings):
                 </span>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -1069,25 +1065,25 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
                       key={idx}
                       className={`p-3.5 rounded-xl border transition-all flex flex-col justify-between space-y-2 min-w-0 ${
                         cand.priority_recommendation
-                          ? 'bg-gradient-to-br from-purple-950/60 to-[#0b162c] border-purple-500/60 shadow-lg shadow-purple-950/30 ring-1 ring-purple-400/30'
-                          : 'bg-[#050b14] border-white/5'
+                          ? 'bg-surfaceElevated border-purple-500/40 shadow-sm ring-1 ring-purple-500/20'
+                          : 'bg-surfaceElevated border-hairline'
                       }`}
                     >
                       <div className="min-w-0">
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5 min-w-0">
-                              <span className="font-bold text-white text-xs truncate">{cand.team_name}</span>
+                              <span className="font-bold text-primaryText text-xs truncate">{cand.team_name}</span>
                             </div>
-                            <span className="text-[10px] text-slate-400 font-mono block mt-0.5 truncate">
+                            <span className="text-[10px] text-mutedGray font-mono block mt-0.5 truncate">
                               {cand.distance_km} km away &bull; ~{cand.estimated_transit_mins}m transit
                             </span>
                           </div>
                           <span
-                            className={`text-[9px] font-mono px-2 py-0.5 rounded font-extrabold uppercase flex-shrink-0 ${
+                            className={`text-[9px] font-mono px-2 py-0.5 rounded font-bold uppercase flex-shrink-0 ${
                               cand.redis_state === 'IDLE'
-                                ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
-                                : 'bg-rose-950 text-rose-300 border border-rose-500/40'
+                                ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                                : 'bg-red-500/10 text-red-500 border border-red-500/20'
                             }`}
                           >
                             {cand.redis_state}
@@ -1095,8 +1091,8 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
                         </div>
                       </div>
 
-                      <div className="pt-2 border-t border-white/5 flex items-center justify-between text-[11px] gap-2">
-                        <span className="text-emerald-400 font-mono font-bold truncate">
+                      <div className="pt-2 border-t border-hairline flex items-center justify-between text-[11px] gap-2">
+                        <span className="text-emerald-600 dark:text-emerald-400 font-mono font-bold truncate">
                           ⚡ -{cand.transit_savings_mins}m saved
                         </span>
                         <button
@@ -1104,8 +1100,8 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
                           disabled={lockingTeamId === cand.team_id}
                           className={`px-2 py-1 rounded text-[10px] font-mono font-bold transition-all flex-shrink-0 ${
                             cand.redis_state === 'IDLE'
-                              ? 'bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-500/40'
-                              : 'bg-rose-600/30 hover:bg-rose-600/50 text-rose-200 border border-rose-500/40'
+                              ? 'bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/30'
+                              : 'bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/30'
                           }`}
                         >
                           {lockingTeamId === cand.team_id
@@ -1122,41 +1118,41 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
 
               {/* Real-time Redis Squad Roster Grid */}
               <div className="space-y-2 pt-2">
-                <span className="text-[10px] font-mono text-slate-400 uppercase font-bold block">
+                <span className="text-[11px] font-mono text-mutedGray uppercase font-semibold block">
                   Complete Tactical Roster Concurrency State:
                 </span>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
                   {teams.map((t) => (
                     <div
                       key={t.team_id}
-                      className="p-3.5 rounded-xl bg-[#050b14] border border-white/5 flex flex-col justify-between space-y-2 min-w-0"
+                      className="p-3.5 rounded-xl bg-surfaceElevated border border-hairline flex flex-col justify-between space-y-2 min-w-0"
                     >
                       <div className="min-w-0">
                         <div className="flex items-center justify-between gap-1.5">
-                          <span className="font-mono text-[11px] font-bold text-slate-200 truncate">
+                          <span className="font-mono text-[11px] font-bold text-primaryText truncate">
                             {t.name}
                           </span>
                           <span
                             className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                              t.state === 'IDLE' ? 'bg-emerald-400' : 'bg-rose-400 animate-pulse'
+                              t.state === 'IDLE' ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'
                             }`}
                           />
                         </div>
-                        <span className="text-[9px] text-slate-500 block truncate mt-0.5">{t.base_location}</span>
+                        <span className="text-[9px] text-mutedGray block truncate mt-0.5">{t.base_location}</span>
                         <div className="mt-1.5 flex flex-wrap gap-1">
-                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-slate-400">
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-surfaceCard text-mutedGray border border-hairline">
                             {t.capacity} Pers
                           </span>
-                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-slate-400">
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-surfaceCard text-mutedGray border border-hairline">
                             {t.category}
                           </span>
                         </div>
                       </div>
 
-                      <div className="pt-2 border-t border-white/5 flex items-center justify-between text-[10px]">
+                      <div className="pt-2 border-t border-hairline flex items-center justify-between text-[10px]">
                         <span
                           className={`font-mono font-bold ${
-                            t.state === 'IDLE' ? 'text-emerald-400' : 'text-rose-400'
+                            t.state === 'IDLE' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'
                           }`}
                         >
                           {t.state}
@@ -1164,7 +1160,7 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
                         <button
                           onClick={() => handleToggleLock(t.team_id, t.state)}
                           disabled={lockingTeamId === t.team_id}
-                          className="px-2 py-1 rounded text-[9px] font-mono font-bold bg-white/5 hover:bg-white/10 text-slate-300 transition-all"
+                          className="px-2 py-1 rounded text-[9px] font-mono font-bold bg-surfaceCard hover:bg-surface border border-hairline text-secondaryText hover:text-primaryText transition-all"
                         >
                           {t.state === 'IDLE' ? 'Lock' : 'Release'}
                         </button>
@@ -1180,7 +1176,7 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
 
       {/* ─── 7. OPERATOR ACTION TOOLBAR ─── */}
       {orchestration && (
-        <div className="p-4 sm:p-5 rounded-2xl bg-[#08101e]/90 border border-white/10 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 text-xs">
+        <div className="p-4 sm:p-5 rounded-2xl bg-surfaceCard border border-hairline shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 text-xs">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
             <button
               onClick={() => {
@@ -1188,31 +1184,31 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
                   requestBreakerToggle(subAgents.grid.immediate_breakers_to_trip[0]);
                 }
               }}
-              className="px-4 py-2.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md"
+              className="px-4 py-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/30 font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-sm"
             >
-              <Zap className="w-4 h-4 text-rose-400 flex-shrink-0" />
+              <Zap className="w-4 h-4 text-red-500 flex-shrink-0" />
               <span>Isolate Flagged Breakers (HITL Protected)</span>
             </button>
 
             <button
               onClick={handleDispatchAllSquads}
               disabled={squadsDispatched}
-              className={`px-4 py-2.5 rounded-xl border font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md ${
+              className={`px-4 py-2.5 rounded-xl border font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-sm ${
                 squadsDispatched
-                  ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40'
-                  : 'bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border-blue-500/40'
+                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+                  : 'bg-brandTeal hover:bg-brandTealGlow text-slate-900 border-transparent'
               }`}
             >
-              <Truck className="w-4 h-4 text-blue-400 flex-shrink-0" />
+              <Truck className="w-4 h-4 flex-shrink-0" />
               <span>{squadsDispatched ? 'All Squads Dispatched ✓' : 'Dispatch All Tactical Squads'}</span>
             </button>
           </div>
 
           <button
             onClick={handleCopyDirective}
-            className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-200 hover:text-white border border-white/10 font-bold text-xs flex items-center justify-center gap-2 transition-all"
+            className="px-4 py-2.5 rounded-xl bg-surfaceElevated hover:bg-surface text-secondaryText hover:text-primaryText border border-hairline font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-sm"
           >
-            {copiedNote ? <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" /> : <Copy className="w-4 h-4 flex-shrink-0" />}
+            {copiedNote ? <Check className="w-4 h-4 text-emerald-500 flex-shrink-0" /> : <Copy className="w-4 h-4 flex-shrink-0" />}
             <span>{copiedNote ? 'Tactical Directive Copied!' : 'Copy Tactical Directive'}</span>
           </button>
         </div>
@@ -1220,51 +1216,51 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
 
       {/* ─── 8. HUMAN-IN-THE-LOOP (HITL) SAFETY GATE MODAL ─── */}
       {pendingBreaker && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="w-full max-w-lg rounded-2xl bg-[#091322] border border-rose-500/60 shadow-2xl p-5 sm:p-6 space-y-5">
-            <div className="flex items-start justify-between gap-3 border-b border-white/10 pb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-lg rounded-2xl bg-surfaceCard border border-hairline shadow-xl p-5 sm:p-6 space-y-5 text-primaryText">
+            <div className="flex items-start justify-between gap-3 border-b border-hairline pb-4">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-rose-500/20 text-rose-400 ring-2 ring-rose-500/30 flex-shrink-0">
+                <div className="p-2.5 rounded-xl bg-red-500/10 text-red-500 ring-2 ring-red-500/20 flex-shrink-0">
                   <ShieldAlert className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-white uppercase tracking-wide font-display">
+                  <h3 className="text-base font-bold text-primaryText uppercase tracking-wide font-display">
                     Human-in-the-Loop Safety Gate
                   </h3>
-                  <p className="text-xs text-rose-300 font-mono">
+                  <p className="text-xs text-red-500 font-mono">
                     CRITICAL HIGH-VOLTAGE BREAKER TRIP CONFIRMATION
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setPendingBreaker(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/5"
+                className="p-1 rounded-lg text-mutedGray hover:text-primaryText hover:bg-surfaceElevated transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-3 text-xs">
-              <div className="p-3.5 rounded-xl bg-rose-950/40 border border-rose-500/30 space-y-1">
-                <span className="text-[10px] font-mono text-rose-400 uppercase font-bold block">
+              <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/20 space-y-1">
+                <span className="text-[10px] font-mono text-red-500 uppercase font-bold block">
                   Target Circuit Asset:
                 </span>
-                <p className="text-sm font-extrabold text-white font-mono">{pendingBreaker}</p>
-                <p className="text-rose-200 text-xs leading-relaxed">
+                <p className="text-sm font-bold text-primaryText font-mono">{pendingBreaker}</p>
+                <p className="text-secondaryText text-xs leading-relaxed">
                   Tripping this breaker will physically de-energize the 33kV switchyard feeder. Standby tie line from Vasai West will maintain Sanjeevani Hospital ICU busbar.
                 </p>
               </div>
 
-              <div className="p-3 rounded-xl bg-[#050b14] border border-white/10 space-y-2">
-                <span className="text-[10px] font-mono text-slate-400 uppercase font-bold block">
+              <div className="p-3 rounded-xl bg-surfaceElevated border border-hairline space-y-2">
+                <span className="text-[10px] font-mono text-mutedGray uppercase font-bold block">
                   Operator Sign-Off Checklist:
                 </span>
-                <label className="flex items-start gap-2.5 cursor-pointer text-slate-300 select-none">
+                <label className="flex items-start gap-2.5 cursor-pointer text-secondaryText select-none">
                   <input
                     type="checkbox"
                     checked={hitlConfirmed}
                     onChange={(e) => setHitlConfirmed(e.target.checked)}
-                    className="mt-0.5 rounded border-white/20 text-rose-500 focus:ring-0 accent-rose-500"
+                    className="mt-0.5 rounded border-hairline text-red-500 focus:ring-0 accent-red-500"
                   />
                   <span className="text-xs font-medium leading-relaxed">
                     I acknowledge that I am manually authorizing this electrical trip under Incident Commander authority, and confirm that zero personnel are currently operating within the feeder flash-over radius.
@@ -1276,14 +1272,14 @@ Secondary Hazards: ${d.secondary_hazard_advisories?.join(' | ') || 'None'}`;
             <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2.5 sm:gap-3 pt-2">
               <button
                 onClick={() => setPendingBreaker(null)}
-                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-300 hover:text-white hover:bg-white/5 transition-all text-center"
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-secondaryText hover:text-primaryText bg-surfaceElevated hover:bg-surface border border-hairline transition-all text-center shadow-sm"
               >
                 Abort & Return
               </button>
               <button
                 onClick={confirmHitlBreakerTrip}
                 disabled={!hitlConfirmed}
-                className="px-5 py-2.5 rounded-xl text-xs font-extrabold bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-red-500 hover:bg-red-600 text-white shadow-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 <Zap className="w-4 h-4 flex-shrink-0" />
                 <span>Authorize & Trip Breaker</span>
