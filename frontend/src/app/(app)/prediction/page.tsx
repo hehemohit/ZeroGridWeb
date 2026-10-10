@@ -18,7 +18,13 @@ import {
   ChevronRight,
   Send,
   Building,
-  Info
+  Thermometer,
+  Package,
+  Database,
+  Flame,
+  LifeBuoy,
+  HeartPulse,
+  Truck
 } from 'lucide-react';
 
 interface HourlyData {
@@ -28,8 +34,10 @@ interface HourlyData {
   hydroThreat: number;
   electricalThreat: number;
   topoThreat: number;
+  heatThreat?: number;
   rainfallMmHr: number;
   windGustsKmh: number;
+  temperatureC?: number;
   tideMeters: number;
   isSluiceClosed: boolean;
   estimatedWaterDepthCm: number;
@@ -69,6 +77,15 @@ interface ManpowerStaging {
   urgency: 'IMMEDIATE' | 'SCHEDULED';
 }
 
+interface RequiredResource {
+  resourceName: string;
+  category: string;
+  quantityNeeded: number;
+  unit: string;
+  designatedLocation: string;
+  justification: string;
+}
+
 interface PredictionResponse {
   success: boolean;
   evaluatedAt: string;
@@ -80,10 +97,38 @@ interface PredictionResponse {
     peakRiskWindow: string;
     estimatedMaxWaterDepthCm: number;
     maxWindGustKmh: number;
+    maxTemperatureC?: number;
+    totalAccumulatedRain24hMm?: number;
     totalPreemptiveAdminsOnHold: number;
     activeIncidentsCount: number;
     monitoredHotspotsCount: number;
   };
+  predictedScenario?: {
+    id: string;
+    title: string;
+    description: string;
+    probabilities: {
+      floodInundationPercent: number;
+      powerGridFailurePercent: number;
+      heatwaveThermalStressPercent: number;
+      structuralEntrapmentPercent: number;
+    };
+  };
+  mongoActiveCasesInsight?: {
+    totalActiveCases: number;
+    avgRecordedWaterDepthCm: number;
+    maxRecordedWaterDepthCm: number;
+    maxRecordedTemperatureC: number;
+    byCategory: {
+      waterlogging: number;
+      fallenGrid: number;
+      heatwave: number;
+      trapped: number;
+      medical: number;
+      other: number;
+    };
+  };
+  whatWillBeRequiredMost?: RequiredResource[];
   hourlyChaosCurve: HourlyData[];
   wirePlacementAnalysis: WireAnalysis[];
   substationAnalysis: SubstationAnalysis[];
@@ -163,9 +208,9 @@ export default function PredictionPage() {
       <div className="flex flex-col items-center justify-center min-h-[70vh] gap-4 p-6">
         <RefreshCw className="w-8 h-8 text-brandTeal animate-spin" />
         <div className="text-center space-y-1">
-          <p className="font-semibold text-primaryText">Synthesizing 24-Hour Chaos Vectors...</p>
+          <p className="font-semibold text-primaryText">Synthesizing 24-Hour Multi-Domain Chaos...</p>
           <p className="text-xs text-mutedGray max-w-sm">
-            Ingesting historical MongoDB events, Open-Meteo precipitation, Arabian Sea tidal backflow, and wire placements.
+            Cross-referencing live MongoDB active cases, rainfall, coastal tides, heatwave temperatures, and 33kV/11kV power wire placements.
           </p>
         </div>
       </div>
@@ -190,6 +235,9 @@ export default function PredictionPage() {
   }
 
   const summary = data?.summary;
+  const scenario = data?.predictedScenario;
+  const mongoInsight = data?.mongoActiveCasesInsight;
+  const resources = data?.whatWillBeRequiredMost || [];
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
@@ -201,14 +249,14 @@ export default function PredictionPage() {
               <TrendingUp className="w-5 h-5" />
             </div>
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-primaryText font-display">
-              Autonomous 24-Hour Chaos Prediction Engine
+              Autonomous 24-Hour Multi-Domain Chaos Prediction
             </h1>
             <span className={`text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-full border ${getTierColor(summary?.overallRiskTier || 'NOMINAL')}`}>
               {summary?.overallRiskTier} CHAOS
             </span>
           </div>
           <p className="text-xs sm:text-sm text-secondaryText">
-            Cross-references database history, hourly meteorology, Arabian Sea tides, and 33kV/11kV wire placements to preemptively stage emergency personnel.
+            Integrates live MongoDB active SOS tickets, rainfall, Arabian Sea tides, urban heatwave indexes, and 33kV/11kV electrical wire placements to anticipate disaster scenarios and preemptively stage workforce.
           </p>
         </div>
 
@@ -231,9 +279,168 @@ export default function PredictionPage() {
         </div>
       </div>
 
-      {/* 2. Executive 4-KPI Grid */}
+      {/* 2. Primary Disaster Scenario Prediction Card */}
+      {scenario && (
+        <div className="p-5 sm:p-6 rounded-2xl bg-gradient-to-r from-surface via-surfaceElevated to-surface border border-brandTeal/40 shadow-lg relative overflow-hidden">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+            <div className="space-y-2 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-brandTeal/20 text-brandTeal border border-brandTeal/30 font-bold">
+                  24-Hour Primary Crisis Forecast
+                </span>
+                <span className="text-xs font-mono text-mutedGray">
+                  Peak Danger Window: <strong className="text-amber-400">{summary?.peakRiskWindow}</strong>
+                </span>
+              </div>
+              <h2 className="text-lg sm:text-xl font-bold text-primaryText font-display">
+                {scenario.title}
+              </h2>
+              <p className="text-xs sm:text-sm text-secondaryText leading-relaxed max-w-3xl">
+                {scenario.description}
+              </p>
+            </div>
+
+            {/* 4 Multi-Disaster Probability Meters */}
+            <div className="grid grid-cols-2 gap-3 min-w-[280px] sm:min-w-[340px]">
+              <div className="p-3 rounded-xl bg-surface border border-hairline space-y-1">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="flex items-center gap-1.5 text-blue-400">
+                    <Waves className="w-3.5 h-3.5" /> Flood Inundation
+                  </span>
+                  <span className="font-mono font-bold text-primaryText">{scenario.probabilities.floodInundationPercent}%</span>
+                </div>
+                <div className="w-full bg-surfaceElevated h-1.5 rounded-full overflow-hidden">
+                  <div className="h-full bg-blue-500" style={{ width: `${scenario.probabilities.floodInundationPercent}%` }} />
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-surface border border-hairline space-y-1">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="flex items-center gap-1.5 text-amber-400">
+                    <Zap className="w-3.5 h-3.5" /> Grid Cascade
+                  </span>
+                  <span className="font-mono font-bold text-primaryText">{scenario.probabilities.powerGridFailurePercent}%</span>
+                </div>
+                <div className="w-full bg-surfaceElevated h-1.5 rounded-full overflow-hidden">
+                  <div className="h-full bg-amber-500" style={{ width: `${scenario.probabilities.powerGridFailurePercent}%` }} />
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-surface border border-hairline space-y-1">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="flex items-center gap-1.5 text-orange-400">
+                    <Flame className="w-3.5 h-3.5" /> Heatwave Stress
+                  </span>
+                  <span className="font-mono font-bold text-primaryText">{scenario.probabilities.heatwaveThermalStressPercent}%</span>
+                </div>
+                <div className="w-full bg-surfaceElevated h-1.5 rounded-full overflow-hidden">
+                  <div className="h-full bg-orange-500" style={{ width: `${scenario.probabilities.heatwaveThermalStressPercent}%` }} />
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-surface border border-hairline space-y-1">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="flex items-center gap-1.5 text-red-400">
+                    <LifeBuoy className="w-3.5 h-3.5" /> Entrapment Risk
+                  </span>
+                  <span className="font-mono font-bold text-primaryText">{scenario.probabilities.structuralEntrapmentPercent}%</span>
+                </div>
+                <div className="w-full bg-surfaceElevated h-1.5 rounded-full overflow-hidden">
+                  <div className="h-full bg-red-500" style={{ width: `${scenario.probabilities.structuralEntrapmentPercent}%` }} />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Live MongoDB Active Incident Telemetry Bar */}
+      {mongoInsight && (
+        <div className="p-4 rounded-2xl bg-surface border border-hairline flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-surfaceElevated border border-hairline text-brandTeal">
+              <Database className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="text-[10px] uppercase font-mono text-mutedGray block">
+                MongoDB Active SOS Empirical Baseline
+              </span>
+              <span className="text-sm font-bold text-primaryText">
+                {mongoInsight.totalActiveCases} Active Alerts in Ground Network
+              </span>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
+            <span className="px-2.5 py-1 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center gap-1.5">
+              <Waves className="w-3 h-3" /> Flood: {mongoInsight.byCategory.waterlogging}
+              {mongoInsight.avgRecordedWaterDepthCm > 0 && ` (~${mongoInsight.avgRecordedWaterDepthCm}cm)`}
+            </span>
+            <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center gap-1.5">
+              <Zap className="w-3 h-3" /> Grid: {mongoInsight.byCategory.fallenGrid}
+            </span>
+            <span className="px-2.5 py-1 rounded-lg bg-orange-500/10 border border-orange-500/20 text-orange-400 flex items-center gap-1.5">
+              <Flame className="w-3 h-3" /> Heat: {mongoInsight.byCategory.heatwave}
+              {mongoInsight.maxRecordedTemperatureC > 0 && ` (${mongoInsight.maxRecordedTemperatureC}°C)`}
+            </span>
+            <span className="px-2.5 py-1 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 flex items-center gap-1.5">
+              <LifeBuoy className="w-3 h-3" /> Trapped: {mongoInsight.byCategory.trapped}
+            </span>
+            <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center gap-1.5">
+              <HeartPulse className="w-3 h-3" /> Medical: {mongoInsight.byCategory.medical}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* 4. "What Will Be Required Most" Asset & Resource Logistics Quota */}
+      {resources.length > 0 && (
+        <div className="p-5 sm:p-6 rounded-2xl bg-surface border border-hairline space-y-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-primaryText font-display flex items-center gap-2">
+                <Package className="w-4 h-4 text-brandTeal" />
+                What Will Be Required Most (Next 24h Logistics Quota)
+              </h2>
+              <p className="text-xs text-secondaryText">
+                Anticipated emergency assets and critical equipment to stage before crisis escalation.
+              </p>
+            </div>
+            <span className="text-xs font-mono text-brandTeal font-bold">
+              {resources.length} Equipment Categories
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {resources.map((item, idx) => (
+              <div
+                key={idx}
+                className="p-4 rounded-xl bg-surfaceElevated border border-hairline space-y-2 text-xs flex flex-col justify-between"
+              >
+                <div className="space-y-1.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="font-bold text-primaryText leading-snug">{item.resourceName}</h3>
+                    <span className="text-base font-extrabold font-mono text-brandTeal whitespace-nowrap">
+                      {item.quantityNeeded} {item.unit}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-secondaryText leading-relaxed">
+                    {item.justification}
+                  </p>
+                </div>
+
+                <div className="pt-2 border-t border-hairline text-[10px] text-mutedGray flex items-center gap-1.5 font-mono">
+                  <Truck className="w-3 h-3 text-mutedGray flex-shrink-0" />
+                  <span className="truncate">Stage At: <strong className="text-primaryText">{item.designatedLocation}</strong></span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 5. Executive 4-KPI Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {/* KPI 1 */}
         <div className="p-4 rounded-2xl bg-surface border border-hairline space-y-2 shadow-sm">
           <div className="flex items-center justify-between text-xs text-mutedGray">
             <span>24h Peak Chaos Index</span>
@@ -253,7 +460,6 @@ export default function PredictionPage() {
           </div>
         </div>
 
-        {/* KPI 2 */}
         <div className="p-4 rounded-2xl bg-surface border border-hairline space-y-2 shadow-sm">
           <div className="flex items-center justify-between text-xs text-mutedGray">
             <span>Peak Danger Window</span>
@@ -267,7 +473,6 @@ export default function PredictionPage() {
           </div>
         </div>
 
-        {/* KPI 3 */}
         <div className="p-4 rounded-2xl bg-surface border border-hairline space-y-2 shadow-sm">
           <div className="flex items-center justify-between text-xs text-mutedGray">
             <span>Max Projected Water Depth</span>
@@ -280,14 +485,13 @@ export default function PredictionPage() {
             <span className="text-xs text-mutedGray">cm street bowl</span>
           </div>
           <div className="text-[11px] text-secondaryText truncate">
-            Transformer plinth margin: {Math.max(0, 45 - (summary?.estimatedMaxWaterDepthCm || 0))}cm
+            Plinth margin: {Math.max(0, 45 - (summary?.estimatedMaxWaterDepthCm || 0))}cm
           </div>
         </div>
 
-        {/* KPI 4 */}
         <div className="p-4 rounded-2xl bg-surface border border-hairline space-y-2 shadow-sm">
           <div className="flex items-center justify-between text-xs text-mutedGray">
-            <span>Preemptive Manpower On Hold</span>
+            <span>Preemptive Workforce On Hold</span>
             <Users className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="flex items-baseline gap-2">
@@ -302,7 +506,7 @@ export default function PredictionPage() {
         </div>
       </div>
 
-      {/* 3. Executive AI Directive Alert */}
+      {/* 6. Executive AI Directive Alert */}
       {data?.executiveDirective && (
         <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-brandTeal/30 shadow-md relative overflow-hidden">
           <div className="absolute top-0 left-0 w-1.5 h-full bg-brandTeal" />
@@ -327,7 +531,7 @@ export default function PredictionPage() {
         </div>
       )}
 
-      {/* 4. Interactive 24-Hour Chaos Timeline Graph */}
+      {/* 7. Interactive 24-Hour Chaos Timeline Graph */}
       <div className="p-5 sm:p-6 rounded-2xl bg-surface border border-hairline space-y-4 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
@@ -336,7 +540,7 @@ export default function PredictionPage() {
               24-Hour Hour-by-Hour Chaos Curve
             </h2>
             <p className="text-xs text-secondaryText">
-              Hover or click bars to inspect hourly hydrodynamic and electrical exposure components.
+              Hover or click bars to inspect hourly hydrodynamic, electrical, and thermal exposure components.
             </p>
           </div>
 
@@ -370,19 +574,16 @@ export default function PredictionPage() {
                   onClick={() => setSelectedHour(hour)}
                   className="flex-1 flex flex-col items-center gap-1 cursor-pointer group relative"
                 >
-                  {/* Tooltip on Hover */}
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute -top-12 z-20 pointer-events-none bg-surfaceElevated border border-hairline text-primaryText text-[10px] font-mono px-2 py-1 rounded shadow-lg whitespace-nowrap">
-                    Chaos: {hour.compoundChaosScore}/100 | Rain: {hour.rainfallMmHr}mm/h
+                    Chaos: {hour.compoundChaosScore}/100 | Rain: {hour.rainfallMmHr}mm/h | Temp: {hour.temperatureC || 28}°C
                   </div>
 
-                  {/* Peak Marker Badge */}
                   {isPeak && (
                     <span className="text-[9px] font-mono uppercase bg-red-500 text-white font-bold px-1 rounded-sm mb-0.5">
                       PEAK
                     </span>
                   )}
 
-                  {/* The Vertical Bar */}
                   <div
                     className={`w-full rounded-t-lg transition-all duration-300 ${getBarColor(hour.compoundChaosScore)} ${
                       isSelected ? 'ring-2 ring-brandTeal brightness-110' : 'opacity-85 hover:opacity-100'
@@ -390,12 +591,10 @@ export default function PredictionPage() {
                     style={{ height: `${heightPercent}%` }}
                   />
 
-                  {/* Sluice Gate Indicator Dot */}
                   {hour.isSluiceClosed && (
                     <span className="w-1.5 h-1.5 rounded-full bg-red-500 ring-2 ring-surface" title="Sluice gates locked shut" />
                   )}
 
-                  {/* Time label */}
                   <span className={`text-[10px] font-mono pt-1 ${isSelected ? 'text-brandTeal font-bold' : 'text-mutedGray'}`}>
                     +{hour.hourOffset}h
                   </span>
@@ -429,6 +628,10 @@ export default function PredictionPage() {
                 <span className="font-bold text-primaryText">{selectedHour.rainfallMmHr} mm/hr</span>
               </div>
               <div>
+                <span className="text-mutedGray block">Temperature</span>
+                <span className="font-bold text-orange-400">{selectedHour.temperatureC || 28}°C</span>
+              </div>
+              <div>
                 <span className="text-mutedGray block">Wind Gusts</span>
                 <span className="font-bold text-primaryText">{selectedHour.windGustsKmh} km/h</span>
               </div>
@@ -451,7 +654,7 @@ export default function PredictionPage() {
         )}
       </div>
 
-      {/* 5. Preemptive Manpower Staging Hub (160-Admin Workforce) */}
+      {/* 8. Preemptive Manpower Staging Hub (160-Admin Workforce) */}
       <div className="p-5 sm:p-6 rounded-2xl bg-surface border border-hairline space-y-5 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
@@ -525,9 +728,8 @@ export default function PredictionPage() {
         </div>
       </div>
 
-      {/* 6. Electrical Wire Placement & Substation Vulnerability Matrix */}
+      {/* 9. Electrical Wire Placement & Substation Vulnerability Matrix */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Transmission Lines */}
         <div className="p-5 rounded-2xl bg-surface border border-hairline space-y-4 shadow-sm">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-bold text-primaryText font-display flex items-center gap-2">
@@ -578,7 +780,6 @@ export default function PredictionPage() {
           </div>
         </div>
 
-        {/* Substations & Grid Nodes */}
         <div className="p-5 rounded-2xl bg-surface border border-hairline space-y-4 shadow-sm">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-bold text-primaryText font-display flex items-center gap-2">
