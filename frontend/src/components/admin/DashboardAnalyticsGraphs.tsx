@@ -96,38 +96,46 @@ export default function DashboardAnalyticsGraphs({
     setLoadingCurve(true);
     try {
       const res = await api.get<any>('/api/admin/predictive/24h-chaos');
-      if (res?.hourlyChaosCurve && Array.isArray(res.hourlyChaosCurve)) {
+      if (res?.hourlyChaosCurve && Array.isArray(res.hourlyChaosCurve) && res.hourlyChaosCurve.length > 0) {
         setHourlyCurve(res.hourlyChaosCurve);
+        setLoadingCurve(false);
         return;
       }
     } catch (_) {
-      // Fallback baseline if network/backend is loading
+      // Fallback baseline if network/backend is loading or unauthorized
     }
 
-    // Realistic baseline 24h curve (Post-monsoon daylight thermal peak)
+    // Realistic smooth continuous diurnal curve (Post-monsoon daylight thermal peak)
     const now = new Date();
+    const currentHour = now.getHours();
     const fallback: HourlyChaosPoint[] = Array.from({ length: 24 }).map((_, idx) => {
       const t = new Date(now.getTime() + idx * 3600000);
-      const isPeakAfternoon = idx >= 11 && idx <= 16;
-      const heat = isPeakAfternoon ? Math.round(38 + (idx === 13 ? 12 : 5)) : 18;
-      const grid = isPeakAfternoon ? 24 : 12;
+      const hourOfDay = (currentHour + idx) % 24;
+      // Smooth bell curve peaking around 14:00 (afternoon solar zenith)
+      const distFromPeak = Math.abs(hourOfDay - 14);
+      const solarFactor = Math.max(0, Math.cos(Math.min(Math.PI / 2, (distFromPeak / 7) * (Math.PI / 2))));
+      const tempC = Number((27.5 + solarFactor * 8.6).toFixed(1)); // 27.5°C to 36.1°C
+      const heat = Math.round(14 + solarFactor * 30); // smooth curve from 14 to 44
+      const grid = Math.round(10 + solarFactor * 14); // peak afternoon A/C transformer loading
       const flood = 1;
-      const chaos = Math.round(0.35 * flood + 0.25 * grid + 0.20 * heat + 0.20 * 5);
+      const topo = 5;
+      const chaos = Math.min(100, Math.round(0.35 * flood + 0.25 * grid + 0.20 * heat + 0.20 * topo));
 
       return {
         hourOffset: idx,
         time: t.toISOString(),
-        compoundChaosScore: Math.min(100, chaos),
+        compoundChaosScore: chaos,
         hydroThreat: flood,
         electricalThreat: grid,
-        topoThreat: 5,
+        topoThreat: topo,
         heatThreat: heat,
         rainfallMmHr: 0.0,
-        temperatureC: isPeakAfternoon ? 35.8 : 28.2,
-        windGustsKmh: 24,
+        temperatureC: tempC,
+        windGustsKmh: Number((18 + solarFactor * 7).toFixed(1)),
         threatLevel: chaos >= 50 ? 'HIGH' : chaos >= 30 ? 'ELEVATED' : 'NOMINAL'
       };
     });
+
     setHourlyCurve(fallback);
     setLoadingCurve(false);
   };

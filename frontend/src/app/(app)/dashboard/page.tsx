@@ -654,27 +654,26 @@ Immediate Automated Actions: ${d.immediate_automated_actions.join(', ')}`;
           </div>
 
           {/* Micro Sparkline: Activity Inflow */}
-          <div className="my-2 h-7 w-full">
-            <svg viewBox="0 0 120 28" className="w-full h-full overflow-visible">
+          <div className="my-2 h-7 w-full overflow-hidden">
+            <svg viewBox="0 0 120 28" className="w-full h-full">
               <defs>
                 <linearGradient id="kpiSpark1" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.4" />
+                  <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.35" />
                   <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.0" />
                 </linearGradient>
               </defs>
               <path
-                d="M 0 22 Q 15 25 30 18 T 60 14 T 90 20 T 120 8 L 120 28 L 0 28 Z"
+                d="M 2 22 Q 15 24 30 18 T 60 14 T 90 19 T 114 9 L 114 26 L 2 26 Z"
                 fill="url(#kpiSpark1)"
               />
               <path
-                d="M 0 22 Q 15 25 30 18 T 60 14 T 90 20 T 120 8"
+                d="M 2 22 Q 15 24 30 18 T 60 14 T 90 19 T 114 9"
                 fill="none"
                 stroke="#f59e0b"
                 strokeWidth="2"
                 strokeLinecap="round"
               />
-              <circle cx="120" cy="8" r="3" fill="#f59e0b" className="animate-ping" />
-              <circle cx="120" cy="8" r="2.5" fill="#f59e0b" />
+              <circle cx="114" cy="9" r="2.5" fill="#f59e0b" />
             </svg>
           </div>
 
@@ -710,8 +709,8 @@ Immediate Automated Actions: ${d.immediate_automated_actions.join(', ')}`;
           </div>
 
           {/* Micro Sparkline: Veracity Confidence Stability */}
-          <div className="my-2 h-7 w-full">
-            <svg viewBox="0 0 120 28" className="w-full h-full overflow-visible">
+          <div className="my-2 h-7 w-full overflow-hidden">
+            <svg viewBox="0 0 120 28" className="w-full h-full">
               <defs>
                 <linearGradient id="kpiSpark2" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#10b981" stopOpacity="0.35" />
@@ -719,17 +718,17 @@ Immediate Automated Actions: ${d.immediate_automated_actions.join(', ')}`;
                 </linearGradient>
               </defs>
               <path
-                d="M 0 16 Q 20 12 40 14 T 80 8 T 120 6 L 120 28 L 0 28 Z"
+                d="M 2 16 Q 20 12 40 14 T 80 8 T 114 7 L 114 26 L 2 26 Z"
                 fill="url(#kpiSpark2)"
               />
               <path
-                d="M 0 16 Q 20 12 40 14 T 80 8 T 120 6"
+                d="M 2 16 Q 20 12 40 14 T 80 8 T 114 7"
                 fill="none"
                 stroke="#10b981"
                 strokeWidth="2"
                 strokeLinecap="round"
               />
-              <circle cx="120" cy="6" r="2.5" fill="#10b981" />
+              <circle cx="114" cy="7" r="2.5" fill="#10b981" />
             </svg>
           </div>
 
@@ -756,8 +755,8 @@ Immediate Automated Actions: ${d.immediate_automated_actions.join(', ')}`;
           </div>
 
           {/* Micro Sparkline: Workforce Stepped Allocation */}
-          <div className="my-2 h-7 w-full">
-            <svg viewBox="0 0 120 28" className="w-full h-full overflow-visible">
+          <div className="my-2 h-7 w-full overflow-hidden">
+            <svg viewBox="0 0 120 28" className="w-full h-full">
               <defs>
                 <linearGradient id="kpiSpark3" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#a855f7" stopOpacity="0.35" />
@@ -765,17 +764,17 @@ Immediate Automated Actions: ${d.immediate_automated_actions.join(', ')}`;
                 </linearGradient>
               </defs>
               <path
-                d="M 0 24 L 35 24 L 35 18 L 75 18 L 75 12 L 120 12 L 120 28 L 0 28 Z"
+                d="M 2 22 L 35 22 L 35 16 L 75 16 L 75 10 L 114 10 L 114 26 L 2 26 Z"
                 fill="url(#kpiSpark3)"
               />
               <path
-                d="M 0 24 L 35 24 L 35 18 L 75 18 L 75 12 L 120 12"
+                d="M 2 22 L 35 22 L 35 16 L 75 16 L 75 10 L 114 10"
                 fill="none"
                 stroke="#a855f7"
                 strokeWidth="2"
                 strokeLinecap="round"
               />
-              <circle cx="120" cy="12" r="2.5" fill="#a855f7" />
+              <circle cx="114" cy="10" r="2.5" fill="#a855f7" />
             </svg>
           </div>
 
@@ -802,16 +801,16 @@ Immediate Automated Actions: ${d.immediate_automated_actions.join(', ')}`;
           </div>
 
           {/* Micro Sparkline: 50Hz Sine Grid Continuity */}
-          <div className="my-2 h-7 w-full">
-            <svg viewBox="0 0 120 28" className="w-full h-full overflow-visible">
+          <div className="my-2 h-7 w-full overflow-hidden">
+            <svg viewBox="0 0 120 28" className="w-full h-full">
               <path
-                d="M 0 14 Q 10 4 20 14 T 40 14 T 60 14 T 80 14 T 100 14 T 120 14"
+                d="M 4 14 Q 14 5 24 14 T 44 14 T 64 14 T 84 14 T 104 14 T 114 14"
                 fill="none"
                 stroke="#14b8a6"
                 strokeWidth="2"
                 strokeLinecap="round"
               />
-              <circle cx="120" cy="14" r="3" fill="#14b8a6" className="animate-pulse" />
+              <circle cx="114" cy="14" r="2.5" fill="#14b8a6" />
             </svg>
           </div>
 
