@@ -90,40 +90,50 @@ async function predict24HourChaos(options = {}) {
   let peakHourOffset = 0;
 
   for (let h = 0; h < 24; h++) {
-    const weather = forecast24h[h] || { precipitationMmHr: 4.0, windGustsKmh: 20, temperatureC: 28 };
+    const weather = forecast24h[h] || { precipitationMmHr: 0.0, windGustsKmh: 15, temperatureC: 30 };
     const tide = tideProfile24h[h] || { tideMeters: 2.2, isSluiceClosed: false };
 
-    const rainMm = weather.precipitationMmHr;
-    const windGusts = weather.windGustsKmh;
-    const tempC = weather.temperatureC;
-    const tideMeters = tide.tideMeters;
-    const isSluiceClosed = tide.isSluiceClosed;
+    const rainMm = weather.precipitationMmHr || 0;
+    const windGusts = weather.windGustsKmh || 15;
+    const tempC = weather.temperatureC || 30;
+    const tideMeters = tide.tideMeters || 2.2;
+    const isSluiceClosed = tide.isSluiceClosed || false;
 
     // Vector 1: Rain & Hydrodynamic Inundation (35%)
-    // High tide sluice lock + heavy rainfall accumulation + current live MongoDB water depth
-    const sluicePenalty = isSluiceClosed ? 35 : tideMeters > 3.0 ? 15 : 0;
-    const rainScore = Math.min(50, (rainMm / 45.0) * 50);
-    const liveFloodAmplifier = Math.min(15, casesByCategory.WATERLOGGING.length * 5 + (avgActiveWaterDepth > 30 ? 10 : 0));
-    const hydroThreat = Math.min(100, Math.round(rainScore + sluicePenalty + liveFloodAmplifier));
+    // REAL PHYSICS: High tide ONLY creates flood risk if it actually rains! If rain is 0, tide stays in the sea/creek.
+    let hydroThreat = 0;
+    let streetBowlDepth = 0;
+
+    if (rainMm >= 2.0 || totalRain24h >= 8.0) {
+      const rainScore = Math.min(60, (rainMm / 40.0) * 60);
+      const sluicePenalty = isSluiceClosed ? 25 : tideMeters > 3.0 ? 10 : 0;
+      const groundClusterAmp = Math.min(15, casesByCategory.WATERLOGGING.length * 4);
+      hydroThreat = Math.min(100, Math.round(rainScore + sluicePenalty + groundClusterAmp));
+      streetBowlDepth = Math.round((hydroThreat / 100) * 45);
+    } else {
+      // Dry weather: negligible hydro threat (<8%)
+      hydroThreat = Math.min(8, Math.round(rainMm * 2));
+      streetBowlDepth = 0;
+    }
 
     // Vector 2: Electrical Grid & Wire Sway (25%)
-    // Overhead line sway with wind gusts + transformer plinth immersion + active grid failures
-    const windExposure = Math.min(45, Math.max(0, (windGusts - 25) / 35 * 45));
-    const plinthWaterIngress = Math.min(40, (hydroThreat / 100) * 40);
-    const liveGridAmplifier = Math.min(15, casesByCategory.FALLEN_GRID.length * 8);
+    // Overhead line sway with wind gusts (threshold 45 km/h) + transformer water ingress
+    const windExposure = Math.min(50, Math.max(0, (windGusts - 28) / 30 * 50));
+    const plinthWaterIngress = (streetBowlDepth >= 35) ? 35 : (streetBowlDepth >= 20) ? 15 : 0;
+    const liveGridAmplifier = Math.min(15, casesByCategory.FALLEN_GRID.length * 5);
     const electricalThreat = Math.min(100, Math.round(windExposure + plinthWaterIngress + liveGridAmplifier));
 
     // Vector 3: Heatwave & Wet-Bulb Thermal Stress (20%)
-    // Temperatures > 36°C elevate heatstroke risk; > 42°C represents severe urban crisis
-    const thermalBase = Math.min(85, Math.max(0, (tempC - 32) / 12 * 85));
-    const liveHeatAmplifier = Math.min(15, casesByCategory.HEATWAVE.length * 8 + (maxActiveTemperature > 40 ? 10 : 0));
+    // Real temperatures: >34°C is elevated, >38°C is severe heatwave
+    const thermalBase = Math.min(75, Math.max(0, (tempC - 31) / 10 * 75));
+    const liveHeatAmplifier = Math.min(15, casesByCategory.HEATWAVE.length * 6);
     const heatThreat = Math.min(100, Math.round(thermalBase + liveHeatAmplifier));
 
     // Vector 4: Topographic Entrapment & Rescue (20%)
-    // Submerged basements, railway underpasses, and trapped civilians
-    const streetBowlDepth = Math.round((hydroThreat / 100) * 65 + (avgActiveWaterDepth > 0 ? avgActiveWaterDepth * 0.3 : 0));
+    // Only elevated if water depth > 30cm or active trapped civilian alerts exist
+    const entrapmentBase = (streetBowlDepth >= 40) ? 50 : (streetBowlDepth >= 20) ? 20 : 0;
     const trappedLiveAmplifier = Math.min(30, casesByCategory.TRAPPED.length * 10);
-    const topoThreat = Math.min(100, Math.round((streetBowlDepth / 50) * 70 + trappedLiveAmplifier));
+    const topoThreat = Math.min(100, Math.round(entrapmentBase + trappedLiveAmplifier));
 
     // Compound Multi-Domain Chaos Score
     const compoundScore = Math.min(100, Math.round(
@@ -157,98 +167,123 @@ async function predict24HourChaos(options = {}) {
   }
 
   // 5. Predict Disaster Probabilities for Next 24 Hours
-  const floodRisk = Math.min(98, Math.round(
-    (maxRainMmHr / 50) * 45 + 
-    (sluiceClosedHours / 8) * 30 + 
-    (casesByCategory.WATERLOGGING.length > 0 ? 25 : 5)
-  ));
+  let floodRisk = 0;
+  if (totalRain24h < 3.0 && maxRainMmHr < 2.0) {
+    // Dry weather: Real flood probability is under 10%
+    floodRisk = Math.min(8, Math.round(totalRain24h * 2 + (casesByCategory.WATERLOGGING.length > 2 ? 5 : 1)));
+  } else {
+    const rainFactor = Math.min(60, (maxRainMmHr / 45) * 45 + (totalRain24h / 80) * 15);
+    const tideFactor = (sluiceClosedHours / 8) * 25;
+    const groundFactor = Math.min(15, casesByCategory.WATERLOGGING.length * 4);
+    floodRisk = Math.min(98, Math.round(rainFactor + tideFactor + groundFactor));
+  }
 
   const gridFailureRisk = Math.min(95, Math.round(
-    (maxWindGustKmh / 60) * 40 + 
-    (peakChaosScore / 100) * 35 + 
-    (casesByCategory.FALLEN_GRID.length > 0 ? 25 : 5)
+    Math.max(0, (maxWindGustKmh - 25) / 35 * 40) + 
+    (peakChaosScore / 100) * 25 + 
+    (casesByCategory.FALLEN_GRID.length > 0 ? 15 : 5)
   ));
 
   const heatwaveRisk = Math.min(95, Math.round(
-    Math.max(0, (maxTempC - 32) / 13) * 65 + 
-    (casesByCategory.HEATWAVE.length > 0 ? 30 : 5)
+    Math.max(0, (maxTempC - 31) / 10 * 65) + 
+    (casesByCategory.HEATWAVE.length > 0 ? 20 : 5)
   ));
 
   const entrapmentRisk = Math.min(95, Math.round(
-    (floodRisk / 100) * 55 + 
-    (casesByCategory.TRAPPED.length > 0 ? 35 : 10)
+    (floodRisk / 100) * 45 + 
+    (casesByCategory.TRAPPED.length > 0 ? 30 : 5)
   ));
 
-  // Determine Most Likely Primary Disaster Scenario
-  let primaryScenario = 'COMPOUND_MONSOON_INUNDATION';
-  let scenarioTitle = 'Severe Monsoon Flash Flood & Sluice Gate Backflow';
-  let scenarioDescription = 'Arabian Sea high tide lock combined with intense rainfall accumulation will swamp low-lying bowls, underpasses, and road intersections.';
+  // Determine Most Likely Primary Disaster Scenario based on ACTUAL highest physical risk
+  let primaryScenario = 'STABLE_FAVORABLE_METEOROLOGY';
+  let scenarioTitle = 'Stable Meteorological Baseline & Nominal Operations';
+  let scenarioDescription = 'Dry atmospheric conditions and low rainfall (<1mm) forecast over the next 24 hours. No regional flood or electrical grid disruption anticipated. Tactical units maintain standard patrol readiness.';
 
-  if (heatwaveRisk > floodRisk && heatwaveRisk > 60) {
-    primaryScenario = 'CRITICAL_URBAN_HEATWAVE';
-    scenarioTitle = 'Urban Heatwave Surge & Thermal Mass Dehydration';
-    scenarioDescription = 'Extreme wet-bulb temperature will cause civilian thermal exhaustion, heat syncope, and transit terminal overcrowding.';
-  } else if (gridFailureRisk > 70 && maxWindGustKmh >= 45) {
-    primaryScenario = 'HIGH_VOLTAGE_GRID_CASCADE';
-    scenarioTitle = 'High-Voltage Grid Arc-Flash & Feeder Line Trip';
-    scenarioDescription = 'High wind gusts and plinth water ingress threaten overhead 33kV lines and transformer step-downs near Sanjeevani Hospital.';
-  } else if (entrapmentRisk > 70) {
+  if (floodRisk >= 50 && totalRain24h >= 25.0) {
+    primaryScenario = 'COMPOUND_MONSOON_INUNDATION';
+    scenarioTitle = 'Monsoon Flash Inundation & Sluice Gate Backflow';
+    scenarioDescription = 'Heavy rainfall accumulation coincides with high tide sluice gate closure, leading to stormwater ponding in low-lying railway underpasses.';
+  } else if (maxTempC >= 34.0 || heatwaveRisk >= 35) {
+    primaryScenario = 'POST_MONSOON_THERMAL_SURGE';
+    scenarioTitle = 'Urban Heat Index & Post-Monsoon Thermal Stress';
+    scenarioDescription = `High daytime ambient temperatures (peak ${maxTempC}°C) and strong solar radiation will elevate thermal strain in exposed transit hubs, markets, and road junctions.`;
+  } else if (gridFailureRisk >= 45 && maxWindGustKmh >= 40) {
+    primaryScenario = 'HIGH_WIND_GRID_EXPOSURE';
+    scenarioTitle = 'High-Wind Overhead Wire Sag & Tree Clearance Risk';
+    scenarioDescription = `Elevated wind gusts (up to ${maxWindGustKmh} km/h) threaten overhead 33kV lines and require lineman monitoring at substation tie-ins.`;
+  } else if (entrapmentRisk >= 50) {
     primaryScenario = 'STRUCTURAL_WATER_ENTRAPMENT';
-    scenarioTitle = 'Submerged Basement & Underpass Civilian Entrapment';
-    scenarioDescription = 'Rapid flood water rise in subterranean structures and low-lying transit corridors creates imminent life-safety trapping.';
+    scenarioTitle = 'Low-Elevation Structural Water Ingress Risk';
+    scenarioDescription = 'Subterranean basement access and drainage culverts require preventive clearing.';
   }
 
   // Peak Risk Window
-  const criticalHours = hourlyChaosCurve.filter(h => h.compoundChaosScore >= 55);
+  const criticalHours = hourlyChaosCurve.filter(h => h.compoundChaosScore >= 35);
   const startPeakHour = criticalHours.length > 0 ? criticalHours[0].hourOffset : peakHourOffset;
   const endPeakHour = criticalHours.length > 0 ? criticalHours[criticalHours.length - 1].hourOffset : Math.min(23, peakHourOffset + 4);
   const overallRiskTier = peakChaosScore >= 75 ? 'CRITICAL' : peakChaosScore >= 55 ? 'HIGH' : peakChaosScore >= 35 ? 'ELEVATED' : 'NOMINAL';
 
   // 6. "What Will Be Required Most" (Logistics, Assets & Supplies Demand Quota)
-  const maxProjectedWaterDepth = Math.max(...hourlyChaosCurve.map(c => c.estimatedWaterDepthCm), 15);
+  const maxProjectedWaterDepth = Math.max(...hourlyChaosCurve.map(c => c.estimatedWaterDepthCm), 0);
 
-  const topRequiredResources = [
+  const allCandidateResources = [
+    {
+      resourceName: 'Misting Hydration Shelters & Electrolyte Kits',
+      category: 'THERMAL_RELIEF',
+      priorityScore: heatwaveRisk,
+      quantityNeeded: heatwaveRisk >= 60 ? 6 : heatwaveRisk >= 35 ? 4 : 2,
+      unit: 'canopies & kits',
+      designatedLocation: 'Virar Transit Terminal Heat Relief Depot',
+      justification: `Counteract daytime heat index (peak temp: ${maxTempC}°C) and treat commuter dehydration.`
+    },
+    {
+      resourceName: 'Dielectric Hot Sticks & Insulation Meggers',
+      category: 'ELECTRICAL_SAFETY',
+      priorityScore: gridFailureRisk,
+      quantityNeeded: gridFailureRisk >= 65 ? 8 : gridFailureRisk >= 40 ? 4 : 2,
+      unit: 'lineman toolkits',
+      designatedLocation: 'Virar East 33kV Main Substation Yard',
+      justification: 'Inspect line ground clearances, verify transformer thermal load, and monitor Sanjeevani Hospital 33kV tie line.'
+    },
     {
       resourceName: 'High-Volume Dewatering Submersible Pumps (500-HP)',
       category: 'FLOOD_CONTROL',
-      quantityNeeded: floodRisk >= 75 ? 12 : floodRisk >= 50 ? 8 : 4,
+      priorityScore: floodRisk,
+      quantityNeeded: floodRisk >= 75 ? 12 : floodRisk >= 50 ? 6 : floodRisk >= 20 ? 2 : 0,
       unit: 'pumps',
       designatedLocation: 'Ward 4 Municipal Dewatering Depot (Virar East)',
-      justification: `Drain low-lying natural bowl (projected depth: ${maxProjectedWaterDepth}cm) before Arabian Sea sluice gates shut.`
+      justification: floodRisk >= 50 
+        ? `Pre-position pumps for projected waterlogging (${maxProjectedWaterDepth}cm).`
+        : floodRisk >= 20
+        ? 'Standby municipal reserve for localized drain maintenance.'
+        : 'Zero regional flood risk detected. High-volume pumps remain secured in municipal warehouse reserve.'
     },
     {
       resourceName: 'Zodiac Inflatable Rescue Boats & Lifejackets',
       category: 'SWIFT_WATER_RESCUE',
-      quantityNeeded: floodRisk >= 70 || entrapmentRisk >= 60 ? 8 : 4,
+      priorityScore: Math.max(floodRisk, entrapmentRisk),
+      quantityNeeded: (floodRisk >= 70 || entrapmentRisk >= 60) ? 8 : (floodRisk >= 40 || entrapmentRisk >= 35) ? 3 : 0,
       unit: 'inflatables',
       designatedLocation: 'Vasai West Staging Hub & Railway Underpass Outpost',
-      justification: 'Evacuate stranded vehicles and submerged residential ground floors.'
+      justification: floodRisk >= 50 
+        ? 'Evacuate stranded vehicles and submerged ground floors.' 
+        : floodRisk >= 30
+        ? 'Pre-position near railway underpasses as flood precaution.'
+        : 'Zero waterlogging predicted. Watercraft held at central depot in passive readiness.'
     },
     {
-      resourceName: 'Dielectric Hot Sticks, Meggers & Grounding Clamps',
-      category: 'ELECTRICAL_SAFETY',
-      quantityNeeded: gridFailureRisk >= 65 ? 8 : 4,
-      unit: 'lineman toolkits',
-      designatedLocation: 'Virar East 33kV Main Substation Yard',
-      justification: 'Safely air-gap tripped feeders and monitor Sanjeevani Hospital 33kV standby tie-line transfer.'
-    },
-    {
-      resourceName: 'Misting Hydration Shelters & IV Saline Kits',
-      category: 'THERMAL_RELIEF',
-      quantityNeeded: heatwaveRisk >= 60 ? 6 : 2,
-      unit: 'canopies & kits',
-      designatedLocation: 'Virar Transit Terminal Heat Relief Depot',
-      justification: `Counteract urban heatwave index (peak temp: ${maxTempC}°C) and treat civilian heat exhaustion.`
-    },
-    {
-      resourceName: 'Paramedic Trauma Packs & Rapid Extraction Jacks',
+      resourceName: 'Paramedic Trauma Packs & Rapid Extraction Kits',
       category: 'TRAUMA_RESCUE',
-      quantityNeeded: entrapmentRisk >= 65 ? 10 : 5,
+      priorityScore: entrapmentRisk,
+      quantityNeeded: entrapmentRisk >= 65 ? 8 : entrapmentRisk >= 40 ? 4 : 2,
       unit: 'trauma kits',
       designatedLocation: 'Sanjeevani Trauma Center Mobile Ambulance Unit',
-      justification: 'Treat structural entrapment casualties and hypothermia from submerged basements.'
+      justification: 'Field response for accident triage, acute trauma, and heat syncope treatment.'
     }
   ];
+
+  // Sort resources by priority score descending so the most needed resources are at the top!
+  const topRequiredResources = allCandidateResources.sort((a, b) => b.priorityScore - a.priorityScore);
 
   // 7. Electrical Wire Placement & Substation Vulnerability Matrix
   const wirePlacementAnalysis = KNOWN_POWER_LINES.map(line => {
@@ -330,10 +365,10 @@ async function predict24HourChaos(options = {}) {
   };
 
   const calculateHoldCount = (multiplier) => {
-    if (peakChaosScore >= 75) return Math.min(22, Math.max(8, Math.round(18 * multiplier)));
-    if (peakChaosScore >= 55) return Math.min(15, Math.max(5, Math.round(12 * multiplier)));
-    if (peakChaosScore >= 35) return Math.min(9, Math.max(2, Math.round(6 * multiplier)));
-    return 3;
+    if (peakChaosScore >= 75) return Math.min(20, Math.max(8, Math.round(18 * multiplier)));
+    if (peakChaosScore >= 55) return Math.min(14, Math.max(5, Math.round(12 * multiplier)));
+    if (peakChaosScore >= 35) return Math.min(8, Math.max(2, Math.round(6 * multiplier)));
+    return Math.max(1, Math.min(3, Math.round(3 * multiplier)));
   };
 
   const manpowerStaging = [
@@ -344,7 +379,9 @@ async function predict24HourChaos(options = {}) {
       currentAvailable: departmentStaff.FLOOD_MANAGEMENT.length || 40,
       priorityTacticalTags: ['DEWATERING', 'ZODIAC_BOAT', 'SUBMERSIBLE_PUMP'],
       designatedStagingArea: 'Ward 4 Municipal Dewatering Hub (Virar East)',
-      standbyObjective: 'Pre-position 500-HP high-volume pumps at low-lying bowls before sluice gates shut',
+      standbyObjective: floodRisk >= 50
+        ? 'Pre-position 500-HP high-volume pumps at low-lying bowls before sluice gates shut'
+        : 'Maintain standard municipal dewatering readiness and stormwater outfall inspection',
       urgency: floodRisk >= 70 ? 'IMMEDIATE' : 'SCHEDULED'
     },
     {
@@ -354,7 +391,9 @@ async function predict24HourChaos(options = {}) {
       currentAvailable: departmentStaff.POWER_GRID_MANAGEMENT.length || 40,
       priorityTacticalTags: ['HV_LINEMAN', 'AIR_GAP_ISOLATION', 'SUBSTATION_CREW'],
       designatedStagingArea: 'Virar East 33kV Switchyard Staging Yard',
-      standbyObjective: 'Standby for air-gap breaker trips and Sanjeevani hospital 33kV backup tie line transfer',
+      standbyObjective: gridFailureRisk >= 50
+        ? 'Standby for air-gap breaker trips and Sanjeevani hospital 33kV backup tie line transfer'
+        : 'Routine SCADA grid telemetry monitoring and line clearance verification',
       urgency: gridFailureRisk >= 65 ? 'IMMEDIATE' : 'SCHEDULED'
     },
     {
@@ -364,7 +403,9 @@ async function predict24HourChaos(options = {}) {
       currentAvailable: departmentStaff.RESCUE_MANAGEMENT.length || 40,
       priorityTacticalTags: ['HEAVY_RESCUE', 'TRAUMA_PARAMEDIC', 'COLLAPSE_SEARCH'],
       designatedStagingArea: 'Vasai West Central Staging Depot',
-      standbyObjective: 'Pre-deploy shallow-draft inflatables and structural extraction gear for basement ingress',
+      standbyObjective: entrapmentRisk >= 50
+        ? 'Pre-deploy shallow-draft inflatables and structural extraction gear for basement ingress'
+        : 'Standard SAR vehicle and medical rescue kit readiness at staging depot',
       urgency: entrapmentRisk >= 70 ? 'IMMEDIATE' : 'SCHEDULED'
     },
     {
@@ -374,7 +415,9 @@ async function predict24HourChaos(options = {}) {
       currentAvailable: departmentStaff.HEATWAVE_MANAGEMENT.length || 40,
       priorityTacticalTags: ['MEDICAL_TRIAGE', 'COOLING_STATION'],
       designatedStagingArea: 'Virar Transit Terminal Heat Relief Depot',
-      standbyObjective: 'Maintain mobile triage stations and standby IV rehydration kits',
+      standbyObjective: heatwaveRisk >= 40
+        ? `Pre-stage misting hydration outposts during peak daytime temperatures (up to ${maxTempC}°C)`
+        : 'Maintain mobile triage stations and standby IV rehydration kits',
       urgency: heatwaveRisk >= 65 ? 'IMMEDIATE' : 'SCHEDULED'
     }
   ];
@@ -509,8 +552,19 @@ Provide a sharp 3-sentence NDMA-grade operational briefing detailing:
   }
 
   // Tier 3: Deterministic Operational Directive
+  let infraRiskNote = '';
+  if (ctx.primaryScenario === 'COMPOUND_MONSOON_INUNDATION') {
+    infraRiskNote = 'Low-lying 11kV transformer plinths and Sanjeevani Hospital ICU tie lines face imminent stormwater inundation risk.';
+  } else if (ctx.primaryScenario === 'POST_MONSOON_THERMAL_SURGE') {
+    infraRiskNote = `Elevated daytime ambient temperatures (${ctx.maxTempC}°C) increase peak air-conditioning transformer loading; municipal cooling shelters require priority activation.`;
+  } else if (ctx.primaryScenario === 'HIGH_WIND_GRID_EXPOSURE') {
+    infraRiskNote = `Wind gusts up to ${ctx.maxWindGustKmh} km/h require lineman clearance patrols along overhead 33kV corridors.`;
+  } else {
+    infraRiskNote = 'Atmospheric conditions remain stable with zero flood risk; tactical units maintain standard operational readiness.';
+  }
+
   return {
-    directive: `PREEMPTIVE 24-HOUR CRISIS DIRECTIVE: Forecast indicates ${ctx.scenarioTitle} will be the primary disaster vector over the +${ctx.startPeakHour}h to +${ctx.endPeakHour}h window, compounded by ${ctx.activeIncidentsCount} active incidents in MongoDB. Low-lying 11kV transformer plinths and Sanjeevani Hospital ICU tie lines face imminent water/wind exposure. Total ${ctx.totalPreemptiveAdmins} administrative personnel are placed on standby with immediate dispatch of ${ctx.topRequiredResources.slice(0, 2).map(r => `${r.quantityNeeded} ${r.resourceName}`).join(' and ')}.`,
+    directive: `PREEMPTIVE 24-HOUR CRISIS DIRECTIVE: Meteorological analysis forecasts ${ctx.scenarioTitle} over the +${ctx.startPeakHour}h to +${ctx.endPeakHour}h window, cross-referenced with ${ctx.activeIncidentsCount} active ground alerts in MongoDB. ${infraRiskNote} A total of ${ctx.totalPreemptiveAdmins} administrative personnel are staged on standby with priority staging of ${ctx.topRequiredResources.filter(r => r.quantityNeeded > 0).slice(0, 2).map(r => `${r.quantityNeeded} ${r.resourceName}`).join(' and ')}.`,
     engine: 'Deterministic Safety Matrix',
     tier: 3
   };

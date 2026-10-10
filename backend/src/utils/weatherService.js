@@ -242,20 +242,20 @@ async function get24HourForecast(lat, lng) {
     if (cached && cached.data) {
       return cached.data;
     }
-    // Synthetic fallback for 24h simulation
+    // Realistic dry baseline fallback (zero rain, post-monsoon sunny conditions)
     const now = new Date();
     const fallback24h = Array.from({ length: 24 }).map((_, idx) => {
       const t = new Date(now.getTime() + idx * 3600000);
       return {
         hourOffset: idx,
         time: t.toISOString(),
-        precipitationMmHr: idx >= 3 && idx <= 8 ? 28.5 : 4.0,
-        intensityLevel: idx >= 3 && idx <= 8 ? 'MODERATE' : 'LIGHT',
-        windSpeedKmh: 18.0,
-        windGustsKmh: 34.0,
-        temperatureC: 28.5,
-        weatherCode: 61,
-        summary: 'Monsoon showers'
+        precipitationMmHr: 0.0,
+        intensityLevel: 'NONE',
+        windSpeedKmh: 12.0,
+        windGustsKmh: 22.0,
+        temperatureC: idx >= 11 && idx <= 16 ? 35.5 : 28.0,
+        weatherCode: 1,
+        summary: 'Mainly clear / dry post-monsoon conditions'
       };
     });
 
@@ -264,8 +264,8 @@ async function get24HourForecast(lat, lng) {
       isEstimated: true,
       coordinates: { lat: latitude, lng: longitude },
       forecast24h: fallback24h,
-      totalAccumulatedRainMm: 120.0,
-      maxWindGustKmh: 34.0,
+      totalAccumulatedRainMm: 0.0,
+      maxWindGustKmh: 22.0,
       timestamp: new Date().toISOString()
     };
     weatherCache.set(cacheKey, { data: fallbackResult, timestamp: Date.now() - (CACHE_TTL_MS - 2 * 60 * 1000) });
