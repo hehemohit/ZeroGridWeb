@@ -1,99 +1,172 @@
 # ZeroGrid — Autonomous Emergency Response & Off-Grid Mesh Platform
 
-> **Zero-Infrastructure Disaster Coordination & Circular Multi-Agent Crisis Engine**  
-> Bridges peer-to-peer off-grid alerting across Android devices (BLE / Wi-Fi Direct) with an autonomous 4-phase multi-agent crisis command center (Agent 0 + 160 Admin Workforce) and real-time Web/Mobile operations powered by Amazon Location Service.
+> **Zero-Infrastructure Disaster Coordination & Circular Multi-Agent Crisis Engine Native to AWS**  
+> Bridges peer-to-peer off-grid alerting across Android devices (BLE / LoRa / Wi-Fi Direct) with an autonomous 4-phase multi-agent crisis command center (Agent 0 + 160 Admin Workforce) and real-time operations running natively on **Amazon Web Services (AWS)**.
 
 ---
 
 ## Table of Contents
 
-1. [System Architecture Overview](#1-system-architecture-overview)
-2. [Monorepo Structure](#2-monorepo-structure)
+1. [System Architecture Overview (AWS Cloud Native)](#1-system-architecture-overview-aws-cloud-native)
+2. [End-to-End Emergency Incident Lifecycle](#2-end-to-end-emergency-incident-lifecycle)
 3. [Autonomous 4-Phase Circular Multi-Agent Pipeline](#3-autonomous-4-phase-circular-multi-agent-pipeline)
 4. [160-Admin Workforce & Department Mapping](#4-160-admin-workforce--department-mapping)
-5. [Off-Grid Mesh Protocol (Android Client)](#5-off-grid-mesh-protocol-android-client)
-6. [Cloud Backend & Real-Time API (`backend/`)](#6-cloud-backend--real-time-api-backend)
-7. [Command Center & Web Dashboard (`frontend/`)](#7-command-center--web-dashboard-frontend)
-8. [AWS Strands Multi-Tier Routing & Detour Engine](#8-aws-strands-multi-tier-routing--detour-engine)
-9. [Voice-AI Dispatch Assistant (`voice-agent/`)](#9-voice-ai-dispatch-assistant-voice-agent)
-10. [Android Native Client (`gridzero/`)](#10-android-native-client-gridzero)
-11. [Setup & Quickstart Guide](#11-setup--quickstart-guide)
-12. [Security & Resilience Model](#12-security--resilience-model)
+5. [Monorepo & Codebase Structure](#5-monorepo--codebase-structure)
+6. [AWS Infrastructure & Service Mapping](#6-aws-infrastructure--service-mapping)
+7. [Off-Grid Mesh Protocol (Android Client)](#7-off-grid-mesh-protocol-android-client)
+8. [Cloud Backend & Real-Time API (`backend/`)](#8-cloud-backend--real-time-api-backend)
+9. [Command Center & Web Dashboard (`frontend/`)](#9-command-center--web-dashboard-frontend)
+10. [Voice-AI Dispatch Assistant (`voice-agent/`)](#10-voice-ai-dispatch-assistant-voice-agent)
+11. [Android Native Client (`gridzero/`)](#11-android-native-client-gridzero)
+12. [Setup & Quickstart Guide](#12-setup--quickstart-guide)
+13. [Security, Identity & Resilience Model](#13-security-identity--resilience-model)
 
 ---
 
-## 1. System Architecture Overview
+## 1. System Architecture Overview (AWS Cloud Native)
 
-ZeroGrid solves communications collapse during severe catastrophic events (floods, power grid cascade failure, heatwaves, structural collapse). It operates across a two-tier hybrid topology:
+ZeroGrid provides continuous disaster coordination even during complete power and cellular communication blackouts. The entire platform is architected natively across five modular AWS tiers:
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        OFF-GRID DISASTER ZONE                          │
-│                                                                        │
-│   [Citizen A (Sender)] ──(BLE GATT / WiFi-P2P)──► [Citizen B (Relay)]   │
-│            │                                              │            │
-│       (No Cellular)                                 (BLE / WiFi-P2P)   │
-│            │                                              ▼            │
-│            └────────────────────────────────────► [Citizen C (Gateway)] │
-└───────────────────────────────────────────────────────────┬────────────┘
-                                                            │ Opportunistic Uplink
-                                                            ▼ (Cellular / Starlink)
-                                            ┌─────────────────────────────┐
-                                            │   gridZeroExpress BACKEND   │
-                                            │ Node.js 20 / Express / Mongo│
-                                            │ Redis / ElastiCache Locks   │
-                                            └──────┬───────────────┬──────┘
-                                                   │               │
-                                (WebSocket / REST) │               │ (Socket.IO / REST)
-                                                   ▼               ▼
-                                        ┌────────────────┐   ┌────────────┐
-                                        │ Agent Zero Web │   │ Mobile     │
-                                        │ Command Center │   │ Tactical   │
-                                        │ (Next.js 16)   │   │ Admin      │
-                                        └────────────────┘   └────────────┘
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                        1. PEOPLE, DEVICES & EDGE CLIENTS                               │
+│                                                                                        │
+│   [Citizen App (Kotlin)] ────(BLE / LoRa Mesh)────► [Offline Peer Relay Mesh]          │
+│            │                                                    │                      │
+│            ▼ (HTTPS / WSS)                                      ▼                      │
+│   ┌────────────────────────────────┐                 ┌──────────────────────┐          │
+│   │ Command Center Web (Next.js)   │                 │ Dispatcher Responder │          │
+│   │ Hosted on AWS Amplify          │                 │ (Kotlin Android APK) │          │
+│   └────────────────┬───────────────┘                 └──────────┬───────────┘          │
+└────────────────────┼────────────────────────────────────────────┼──────────────────────┘
+                     │                                            │
+                     ▼                                            ▼
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                        2. AWS FRONT DOOR & INGRESS BOUNDARY                            │
+│                                                                                        │
+│   ┌──────────────────────┐    ┌───────────────────────────┐    ┌───────────────────┐   │
+│   │     AWS Amplify      │───►│  Amazon Cognito Identity  │───►│ Amazon API Gateway│   │
+│   │  (Next.js Dashboard) │    │      Pools + JWT Auth     │    │ (REST & WebSocket)│   │
+│   └──────────────────────┘    └───────────────────────────┘    └─────────┬─────────┘   │
+│                                                                          │             │
+│   [AWS Secrets Manager] ──(Secure Credentials Ingestion)─────────────────┘             │
+└──────────────────────────────────────────────────────────────────────────┼─────────────┘
+                                                                           │
+                                 ┌─────────────────────────────────────────┴─────────────┐
+                                 ▼                                                       ▼
+┌──────────────────────────────────────────────────┐  ┌──────────────────────────────────┐
+│ 3. COMPUTE & MULTI-AGENT RUNTIME                 │  │ 4. GENERATIVE AI & REASONING     │
+│                                                  │  │                                  │
+│  ┌────────────────────────────────────────────┐  │  │  ┌────────────────────────────┐  │
+│  │ AWS Lambda (FastAPI Voice Microservice)    │──┼──┼─►│ AWS Bedrock Runtime        │  │
+│  │ • Acoustic Ingestion & Feature Extraction  │  │  │  │ • Anthropic Claude 3.5     │  │
+│  │ • Electrical Adjacency Solver              │  │  │  │ • NDMA Situation Reports   │  │
+│  └─────────────────────┬──────────────────────┘  │  │  │ • Executive Directives     │  │
+│                        │                         │  │  └────────────────────────────┘  │
+│                        ▼                         │  │                                  │
+│  ┌────────────────────────────────────────────┐  │  │  ┌────────────────────────────┐  │
+│  │ Agent Zero Autonomous Crisis Orchestrator  │  │  │  │ Amazon Polly               │  │
+│  │ 1. Confidence Gate   2. Classification     │◄─┼──┼──│ • Neural Text-to-Speech   │  │
+│  │ 3. Demand Quota      4. Workforce Allocate │  │  │  │ • Audible Tactical Dispatch│  │
+│  └─────────────────────┬──────────────────────┘  │  │  └────────────────────────────┘  │
+│                        │                         │  └──────────────────────────────────┘
+│                        ▼ (WebSockets / REST)     │
+│  ┌────────────────────────────────────────────┐  │
+│  │ AWS ECS Fargate (Express Node.js Service)  │  │
+│  │ • Socket.io /sos Real-Time Channel         │  │
+│  │ • 24h Predictive Chaos Physics Engine      │  │
+│  │ • 5-Min Spatial DBSCAN Batch Dispatch      │  │
+│  └─────────────────────┬──────────────────────┘  │
+└────────────────────────┼─────────────────────────┘
+                         │
+                         ▼
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                        5. DISTRIBUTED PERSISTENCE & SPATIAL CACHES                     │
+│                                                                                        │
+│   ┌─────────────────────────┐  ┌───────────────────────────┐  ┌────────────────────┐   │
+│   │      MongoDB Atlas      │  │   Amazon DynamoDB State   │  │ Redis ElastiCache  │   │
+│   │ • GeoJSON 2dsphere SOS  │  │ • Single-Table Grid Graph │  │ • Squad Mutex Locks│   │
+│   │ • Active Citizen Tickets│  │ • 33kV/11kV Substation Map│  │ • Spatial Lookups  │   │
+│   │ • 160-Admin Directory   │  │ • Finished Case Archives  │  │ • Socket Pub/Sub   │   │
+│   └─────────────────────────┘  └───────────────────────────┘  └────────────────────┘   │
+└────────────────────────────────────────────────────────────────────────────────────────┘
 ```
-
-1. **Sub-Tier (Offline Mesh)**: Android nodes form ad-hoc peer networks via BLE and Wi-Fi Direct. SOS beacons propagate hop-by-hop without routers or cell towers.
-2. **Ingress Gateway (Opportunistic Uplink)**: Any peer discovering intermittent cellular/satellite backhaul automatically ingests queued mesh beacons into MongoDB.
-3. **Core Multi-Agent Orchestration Tier**: Incoming distress signals are scored, verified, routed, and matched with emergency personnel by Agent 0. Redis atomic locks prevent squad double-booking.
-4. **Command & Operations Tier**: Responders monitor the live map (Amazon Location Service v2 / MapLibre GL), 160 admin department statuses, and automated circuit breaker isolation switches.
 
 ---
 
-## 2. Monorepo Structure
+## 2. End-to-End Emergency Incident Lifecycle
 
+The following sequence illustrates the complete end-to-end lifecycle of an emergency alert, from citizen creation in the field through AWS Front Door verification, multi-agent AI synthesis, electrical breaker actuation, and field squad dispatch:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Citizen as Citizen Mobile (Kotlin APK)
+    participant ApiGw as Amazon API Gateway
+    participant Cognito as Amazon Cognito
+    participant EcsNode as AWS ECS Node.js (Core Backend)
+    participant Mongo as MongoDB Atlas (2D Spatial)
+    participant Redis as Amazon ElastiCache (Redis)
+    participant Lambda as AWS Lambda (FastAPI Voice Agent)
+    participant Dynamo as Amazon DynamoDB (Grid State)
+    participant Bedrock as AWS Bedrock (Claude 3.5)
+    participant Polly as Amazon Polly (Neural TTS)
+    actor Admin as Command Center (Next.js / Amplify)
+    actor Responder as Field Responder (Kotlin Dispatcher)
+
+    Note over Citizen,ApiGw: Phase 1: Ingestion & Front Door Authentication
+    Citizen->>ApiGw: POST /api/sos (Location, Category, Water Depth, Voice Clamor)
+    ApiGw->>Cognito: Verify Citizen JWT Bearer Token
+    Cognito-->>ApiGw: Token Validated (Role: CITIZEN)
+    ApiGw->>EcsNode: Forward Validated SOS Payload
+
+    Note over EcsNode,Mongo: Phase 2: Persistence, Spatial Indexing & Broadcasting
+    EcsNode->>Mongo: Insert SosEvent (status: 'ACTIVE', coordinates: [lng, lat])
+    EcsNode->>Redis: Ingest Geospatial Coordinates (GEOADD active_sos)
+    EcsNode->>Admin: WebSocket emit('sos:new', eventData)
+
+    Note over EcsNode,Bedrock: Phase 3: Autonomous Multi-Agent Synthesis (Agent Zero)
+    EcsNode->>Lambda: POST /api/orchestrate-autonomous
+    Lambda->>Lambda: Confidence Gate (Audio 25%, Vision 35%, IoT 25%, Tide 15% >= 65%)
+    Lambda->>Dynamo: Resolve Nearest 33kV Substation & Power Line Adjacency
+    Lambda->>Bedrock: InvokeModel (Synthesize Executive Directive & Hospital Lifeline)
+    Bedrock-->>Lambda: Structured Plan (Threat Score, Demand Quotas, Air-Gap Breakers)
+    Lambda->>Polly: SynthesizeTacticalSpeech(NDMA Dispatch Directive)
+    Polly-->>Lambda: Neural Speech Audio Stream URL
+    Lambda-->>EcsNode: Return 4-Phase Circular Orchestration Result
+
+    Note over EcsNode,Admin: Phase 4: Atomic Locking & Tactical Workforce Allocation
+    EcsNode->>Redis: SETNX lock:squad:TEAM_NDRF_ALPHA (Atomic Mutex Lock)
+    EcsNode->>Mongo: Update SosEvent (agentZeroAdvisory, workforceDemand, status: 'ACKNOWLEDGED')
+    EcsNode->>Admin: WebSocket emit('sos:updated', orchestrationPlan)
+
+    Note over Admin,Responder: Phase 5: Action, Electrical Isolation & Resolution
+    alt High-Voltage Isolation Required (HITL Safety Gate)
+        Admin->>EcsNode: Confirm Breaker Trip (Modal Digital Signature)
+        EcsNode->>Dynamo: Update Circuit State (status: 'TRIPPED', tieLine: 'ENGAGED')
+    end
+
+    EcsNode->>Responder: Push Notification (Tactical Evasion Route, Audio Dispatch Briefing)
+    Responder->>EcsNode: PUT /api/sos/:id/status (status: 'RESOLVED')
+    EcsNode->>Mongo: Update SosEvent (status: 'RESOLVED', resolvedAt: ISOString)
+    EcsNode->>Dynamo: Archive Case Dossier to ZeroGrid-State
+    EcsNode->>Redis: Release Squad Mutex Lock
+    EcsNode->>Admin: WebSocket emit('sos:resolved', { id, timestamp })
 ```
-AndroidStudioProjects/
-├── gridZeroExpress/                        # Unified Cloud Backend & Web Command Console
-│   ├── backend/                            # Express 5 + MongoDB + Socket.IO Server
-│   │   ├── src/controllers/                # Flow, SOS, Admin, Predictive Hydrodynamics
-│   │   ├── src/models/                     # User (160 Admins), SosEvent, ParentChildLink
-│   │   ├── src/routes/                     # REST API endpoints & Auth guards
-│   │   └── src/utils/                      # Strands Router Agent, Tide/Weather, Grid resolver
-│   │
-│   ├── frontend/                           # Next.js 16 (React 19, Tailwind v4) Web Console
-│   │   ├── public/maplibre-gl-worker.mjs   # Static MapLibre Web Worker (Fixes Next.js MIME block)
-│   │   ├── src/app/(app)/dashboard/        # Agent Zero Command Center (4-Phase Inspector)
-│   │   ├── src/app/(app)/flow/             # Autonomous Multi-Agent Interactive Test Bench
-│   │   ├── src/app/(app)/admin/            # Master Incident Map & Operations Console
-│   │   ├── src/app/(app)/admin/headquarters/ # Headquarters Showcase & 10–15km Hexagonal Zones
-│   │   ├── src/components/admin/           # SosLiveMap (MapLibre + Amazon Location v2), MapCanvas
-│   │   ├── src/components/voice/           # Tactical Voice-AI Assistant (Whisper + Groq)
-│   │   └── src/lib/voiceAgent.ts           # Autonomous Orchestration & Fallback Engine
-│   │
-│   ├── voice-agent/                        # Serverless Voice-AI Microservice (FastAPI + Groq)
-│   │   ├── main.py                         # Groq LLM (openai/gpt-oss-120b) + Mangum Adapter
-│   │   └── build_lambda_zip.py             # Cross-platform Linux wheel bundler for AWS Lambda
-│   │
-│   └── postman/                            # Postman API test collection
-│
-└── gridzero/                               # Native Android Client (Kotlin / Jetpack Compose)
-    └── app/src/main/java/com/example/zerogrid/
-        ├── mesh/                           # BLE/Wi-Fi Direct engines, routing & LRU cache
-        ├── emergency/                      # Unified SOS Dispatcher & WorkManager sync
-        ├── admin/                          # Tactical radar canvas, live maps, responder claims
-        └── service/                        # Foreground BLE Mesh Service & FCM Push receiver
-```
+
+### Detailed Lifecycle Steps
+
+1. **Incident Trigger**: Citizen initiates distress beacon on Android app. If mobile cell tower is down, beacon is forwarded hop-by-hop across the offline LoRa/BLE mesh network until a mule peer reaches an active gateway.
+2. **AWS Ingress & Authentication**: Requests enter through **Amazon API Gateway**, validated against **Amazon Cognito** user pool tokens, while **AWS Secrets Manager** injects credentials securely into downstream runtimes.
+3. **Core Ingestion & Geolocation**: The containerized **Node.js Express** backend on **AWS ECS / Fargate** persists the active ticket in **MongoDB Atlas** using 2dsphere indexing and publishes an immediate alert over Socket.io `/sos` namespace.
+4. **Autonomous Multi-Agent Orchestration**: Backend invokes **AWS Lambda (FastAPI)** running **Agent Zero**:
+   - **Confidence Gating**: Corroborates audio clamor, aerial satellite data, IoT water probes, and astronomical tides ($\ge 65\%$ threshold).
+   - **Electrical Grid Resolver**: Traverses **Amazon DynamoDB** electrical topology to isolate low-lying transformer plinths and secure hospital ICU tie-lines.
+   - **Reasoning with AWS Bedrock**: Prompts Anthropic Claude 3.5 Sonnet to draft NDMA Situation Reports and tactical equipment quotas.
+   - **Audio Generation via Amazon Polly**: Generates neural voice dispatches for first responders.
+5. **Workforce Allocation & Collision Prevention**: Matches required tactical skill loadouts across the 160-Admin roster. **Amazon ElastiCache (Redis)** distributed mutex locks guarantee no squad can be double-booked.
+6. **Field Execution & Grid Protection**: Emergency responders receive real-time evasion corridors computed by **Amazon Location Service v2**, while high-voltage breaker trips execute under Human-in-the-Loop (HITL) authorization.
+7. **Resolution & Archival**: Responders mark tickets resolved, releasing squad mutex locks in Redis, marking MongoDB events `RESOLVED`, and archiving completed incident dossiers in DynamoDB.
 
 ---
 
@@ -167,9 +240,65 @@ The system manages a pre-seeded roster of **160 Admin accounts** in MongoDB (`Us
 
 ---
 
-## 5. Off-Grid Mesh Protocol (Android Client)
+## 5. Monorepo & Codebase Structure
 
-### 5.1 Packet Envelope Specification
+```
+AndroidStudioProjects/
+├── gridZeroExpress/                        # Unified Cloud Backend & Web Command Console
+│   ├── backend/                            # Express 5 + MongoDB + Socket.IO Server (AWS ECS)
+│   │   ├── src/controllers/                # Flow, SOS, Admin, Predictive Hydrodynamics
+│   │   ├── src/models/                     # User (160 Admins), SosEvent, ParentChildLink
+│   │   ├── src/routes/                     # REST API endpoints & Auth guards
+│   │   └── src/utils/                      # Chaos Prediction, Tide/Weather, Grid resolver
+│   │
+│   ├── frontend/                           # Next.js 16 (React 19, Tailwind v4) on AWS Amplify
+│   │   ├── public/maplibre-gl-worker.mjs   # Static MapLibre Web Worker (Fixes Next.js MIME block)
+│   │   ├── src/app/(app)/dashboard/        # Agent Zero Command Center (Telemetry Graphs & KPIs)
+│   │   ├── src/app/(app)/prediction/       # 24-Hour Multi-Domain Chaos Prediction Console
+│   │   ├── src/app/(app)/flow/             # Autonomous Multi-Agent Interactive Test Bench
+│   │   ├── src/app/(app)/admin/            # Master Incident Map & Operations Console
+│   │   ├── src/components/admin/           # DashboardAnalyticsGraphs, SosLiveMap (Amazon Location)
+│   │   ├── src/components/voice/           # Tactical Voice-AI Assistant
+│   │   └── src/lib/voiceAgent.ts           # Autonomous Orchestration & Fallback Engine
+│   │
+│   ├── voice-agent/                        # Serverless Voice-AI Microservice on AWS Lambda
+│   │   ├── main.py                         # FastAPI + Mangum Serverless Adapter
+│   │   ├── grid_graph.py                   # Single-Table DynamoDB Adjacency Graph Engine
+│   │   └── seed_dynamodb.py                # DynamoDB Electrical Topology Seeding Utility
+│   │
+│   └── postman/                            # Postman API test collection
+│
+└── gridzero/                               # Native Android Client (Kotlin / Jetpack Compose)
+    └── app/src/main/java/com/example/zerogrid/
+        ├── mesh/                           # BLE/Wi-Fi Direct engines, routing & LRU cache
+        ├── emergency/                      # Unified SOS Dispatcher & WorkManager sync
+        ├── admin/                          # Tactical radar canvas, live maps, responder claims
+        └── service/                        # Foreground BLE Mesh Service & FCM Push receiver
+```
+
+---
+
+## 6. AWS Infrastructure & Service Mapping
+
+| AWS Service | Configuration & Role in ZeroGrid |
+|---|---|
+| **AWS Amplify** | Hosting & edge SSR/SSG deployment for the Next.js 16 Web Command Center dashboard with zero-downtime CI/CD. |
+| **Amazon Cognito** | Citizen and administrator identity management, MFA validation, and issuance of signed JWT tokens with granular role claims (`ADMIN`, `CITIZEN`). |
+| **Amazon API Gateway** | Central ingress proxy managing REST route dispatch, WebSocket connection handling, and rate-limiting. |
+| **AWS Secrets Manager** | Encrypted key vault storing `MONGODB_URI`, AWS credentials, Groq API keys, and JWT secrets. |
+| **AWS Lambda** | Serverless execution of the Python 3.11 FastAPI Voice Agent microservice and graph traversal engine. |
+| **AWS ECS / Fargate** | High-availability Docker container hosting the Node.js Express core backend, Socket.io `/sos` namespace, and 24h Chaos Prediction Agent. |
+| **AWS Bedrock** | Foundation model execution (Anthropic Claude 3.5 Sonnet) generating NDMA Situation Reports and strategic crisis briefings. |
+| **Amazon Polly** | Neural text-to-speech engine producing tactical field audio instructions for rescue responders. |
+| **Amazon DynamoDB** | Single-table adjacency store (`ZeroGrid-State`) maintaining 33kV/11kV electrical grid topology, breaker states, and archived case dossiers. |
+| **Amazon ElastiCache (Redis)** | In-memory distributed lock manager (`SETNX`), spatial geo-indexing, and real-time Socket.io multi-server pub/sub. |
+| **Amazon Location Service v2** | Vector map tiles, geocoding, and multi-hazard emergency detour routing bypassing submerged streets and downed power lines. |
+
+---
+
+## 7. Off-Grid Mesh Protocol (Android Client)
+
+### 7.1 Packet Envelope Specification
 Every over-the-air packet utilizes a compact, deterministic JSON envelope:
 
 ```json
@@ -195,9 +324,9 @@ Every over-the-air packet utilizes a compact, deterministic JSON envelope:
 
 ---
 
-## 6. Cloud Backend & Real-Time API (`backend/`)
+## 8. Cloud Backend & Real-Time API (`backend/`)
 
-Built on **Node.js 20 LTS**, **Express 5**, **Mongoose 9**, and **Socket.IO 4**.
+Built on **Node.js 20/22 LTS**, **Express 5**, **Mongoose 9**, and **Socket.IO 4**.
 
 ### Core REST Endpoints
 
@@ -205,13 +334,13 @@ Built on **Node.js 20 LTS**, **Express 5**, **Mongoose 9**, and **Socket.IO 4**.
 |---|---|---|---|
 | **Auth** | `/api/auth/register` | `POST` | Register citizen/admin credentials. |
 | | `/api/auth/login` | `POST` | Authenticate and issue 7-day signed JWT. |
-| **Emergency** | `/api/sos` | `POST` | Ingest new SOS beacon (rate-limited: 2/30s). Triggers Agent Zero autonomous loop. |
+| **Emergency** | `/api/sos` | `POST` | Ingest new SOS beacon (rate-limited). Triggers Agent Zero autonomous loop. |
 | | `/api/sos/active` | `GET` | List active emergency alerts. |
 | | `/api/sos/:id/resolve` | `PUT` | **Admin Only.** Mark incident as resolved. |
 | **Workforce** | `/api/admin/workforce/stats` | `GET` | Live availability of the 160 Admin departments. |
 | **Flow Bench** | `/api/flow/run` | `POST` | Execute full 4-phase circular multi-agent pipeline. |
 | | `/api/flow/presets` | `GET` | Retrieve emergency scenario benchmarks. |
-| **Predictive** | `/api/admin/predictive/24h-chaos` | `GET` | 24-hour compound chaos curve, wire placements & staging. |
+| **Predictive** | `/api/admin/predictive/24h-chaos` | `GET` | 24-hour multi-domain chaos trajectory, wire placements & staging. |
 | | `/api/admin/predictive/preemptive-stage` | `POST` | Dispatch preemptive standby orders to 160-admin roster. |
 | | `/api/admin/predictive/tide-summary` | `GET` | Real-time coastal tides and precipitation. |
 | | `/api/admin/predictive/drainage-timeline` | `POST` | Hydrodynamic recession forecasting. |
@@ -220,7 +349,7 @@ Built on **Node.js 20 LTS**, **Express 5**, **Mongoose 9**, and **Socket.IO 4**.
 
 ### Real-Time WebSocket Channel (`/sos` namespace)
 * `sos:new`: Emitted immediately upon new incident registration.
-* `sos:agent_zero_orchestrated`: Emitted when Agent 0 completes autonomous decisions (threat score, domain, squad demands).
+* `sos:agent_zero_orchestrated`: Emitted when Agent 0 completes autonomous decisions.
 * `sos:workforce:dispatched`: Emitted when administrative personnel are locked.
 * `workforce:preemptively_staged`: Broadcast when preemptive 24h hazard standby orders are deployed.
 * `flow:step:update`: Streamed step-by-step progress during pipeline execution.
@@ -228,73 +357,26 @@ Built on **Node.js 20 LTS**, **Express 5**, **Mongoose 9**, and **Socket.IO 4**.
 
 ---
 
-## 7. Command Center & Web Dashboard (`frontend/`)
+## 9. Command Center & Web Dashboard (`frontend/`)
 
-Built on **Next.js 16** (App Router), **React 19**, **Tailwind CSS v4**, and **MapLibre GL JS**:
+Built on **Next.js 16** (App Router), **React 19**, **Tailwind CSS v4**, and **MapLibre GL JS** on **AWS Amplify**:
 
-* **24-Hour Chaos Prediction Console (`/prediction`)**:
-  * Multi-vector forecasting synthesizing: past MongoDB history, 24-hour Open-Meteo precipitation/wind gusts, Arabian Sea tides, area depth, and 33kV/11kV transmission wire placements.
-  * Interactive 24-Hour Hour-by-Hour Chaos Curve HUD identifying peak danger windows.
-  * Wire Placement & Substation Vulnerability Matrix (monitoring overhead wire sway, 45cm plinth clearance, and underground hospital conduit ingress).
-  * 160-Admin Preemptive Manpower Staging Hub with 1-click standby order deployment.
-* **Agent Zero Command Center (`/dashboard`)**:
-  * Real-time executive KPIs (Veracity pass rate, active distress signals, 160 Admin mobilization).
-  * 160-Admin Department Readiness Matrix (live idle/assigned counters & tactical equipment tags).
-  * System-wide Active Distress Command Feed (contextualizing veracity, domain, required tags, and assigned personnel for every live ticket).
-  * 4-Phase Circular Inspector with interactive switchboard and HITL breaker protection.
-* **Autonomous Multi-Agent Flow Bench (`/flow`)**:
-  * Interactive flowchart and visual step runner for simulating scenarios, evaluating shortfall fallback loops, and injecting synthetic faults.
+* **Dashboard Command Center (`/dashboard`)**:
+  * Real-time executive KPIs with embedded micro-sparklines (Inflow wave, Veracity stability, Workforce allocation, 50Hz ICU voltage sine wave).
+  * Interactive 24-Hour Multi-Domain Threat & Chaos Curve with interactive hover scrubbers and series toggles.
+  * 160-Admin Department Donut Allocation Chart and utilization progress bars.
+  * Active Distress Command Feed with domain filters and search.
+* **24-Hour Multi-Domain Chaos Prediction Console (`/prediction`)**:
+  * Meteorological physics coupled to verified Open-Meteo precipitation ($<2\text{mm} \implies 0\text{cm}$ flood depth).
+  * Dynamic disaster classification (`POST_MONSOON_THERMAL_SURGE`, `HIGH_WIND_GRID_EXPOSURE`, `COMPOUND_MONSOON_INUNDATION`).
+  * "What Will Be Required Most" priority equipment quota cards (Misting Shelters, Lineman Toolkits, Dewatering Pumps).
+  * Wire Placement Vulnerability Matrix (33kV overhead lines, 11kV hospital conduits).
 * **Master Incident Operations (`/admin`)**:
-  * Full-screen **Amazon Location Service v2** telemetry canvas powered by **MapLibre GL JS** (`ap-south-1` Mumbai vector endpoint):
-    * Static Web Worker (`/maplibre-gl-worker.mjs` hosted in `public/`) eliminating Next.js routing MIME-type validation failures.
-    * Domain-specific SVG tactical beacons:
-      * 💧 **Hydro Hazard / Flood / Submerged**: Hydro Blue (`#0284C7`)
-      * ⚡ **Power Grid / Substation / Feeder**: Voltage Gold / Amber (`#F59E0B`)
-      * 🔥 **Heatwave / High Temperature**: Flame Orange (`#EA580C`)
-      * 🚨 **Medical / Trapped / Critical SOS**: Alert Crimson Red (`#EF4444`)
-      * 🛡️ **Acknowledged Dispatch**: Emerald Green (`#10B981`)
-    * **Localized Waterlogging Rings**: Accurate street-scale depth circles (50m for <30cm, 80m for 30–60cm, 120m for ≥60cm) with translucent hazard blue fill.
-    * **Interactive Detour Simulation**: Click-to-route crosshair tool allowing dispatchers to select arbitrary start/destination coordinates or click directly on SOS beacons / HQ markers to generate green evasion corridors bypassing submerged zones.
-* **Headquarters Management & Showcase (`/admin/headquarters`)**:
-  * Dedicated command station showcase featuring 10–15km hexagonal honeycomb operational zones.
-  * Rendered as crisp, non-blocking vector outlines (`#38BDF8`, 0% fill opacity) ensuring dispatchers can freely click inside and through hexagons to interact with underlying streets, nodes, and markers.
+  * Full-screen **Amazon Location Service v2** telemetry canvas with street-scale waterlogging rings and green evasion detour corridors.
 
 ---
 
-## 8. AWS Strands Multi-Tier Routing & Detour Engine
-
-ZeroGrid dynamically recalculates emergency rescue corridors to navigate around active flood zones, submerged underpasses, and downed electrical lines using a 3-tier fallback architecture:
-
-```
-[ Origin (A) -> Destination (B) Request ]
-                    │
-                    ▼
-┌──────────────────────────────────────────────────────────┐
-│ TIER 1: AWS STRANDS BEDROCK (Claude 3.5 Sonnet)          │
-│ • Inspects active flood hazards from MongoDB             │
-│ • Synthesizes contextual emergency routing advisory      │
-│ • Returns verified GeoJSON LineString corridor           │
-└──────────────────────────┬───────────────────────────────┘
-                           │ Fallback (Cold start / Timeout)
-                           ▼
-┌──────────────────────────────────────────────────────────┐
-│ TIER 2: GROQ LPU (openai/gpt-oss-120b)                   │
-│ • Ultra-low latency LLM inference (<300ms)               │
-│ • Validates candidate road bypass geometries             │
-└──────────────────────────┬───────────────────────────────┘
-                           │ Fallback (Offline / Network fail)
-                           ▼
-┌──────────────────────────────────────────────────────────┐
-│ TIER 3: DETERMINISTIC GEOMETRIC EVASION ENGINE           │
-│ • Evaluates clearance against 80m–150m hazard buffers    │
-│ • Generates 350m–520m perpendicular bypass waypoints     │
-│ • Zero external dependencies; 100% offline resilient     │
-└──────────────────────────────────────────────────────────┘
-```
-
----
-
-## 9. Voice-AI Dispatch Assistant (`voice-agent/`)
+## 10. Voice-AI Dispatch Assistant (`voice-agent/`)
 
 Hands-free tactical dispatch assistant utilizing serverless inference on **AWS Lambda** (Python 3.11 + FastAPI + Mangum):
 
@@ -305,7 +387,7 @@ Hands-free tactical dispatch assistant utilizing serverless inference on **AWS L
 
 ---
 
-## 10. Android Native Client (`gridzero/`)
+## 11. Android Native Client (`gridzero/`)
 
 Built 100% in **Kotlin** and **Jetpack Compose (Material 3)** for Android 8.0+ (API 26 to 35):
 
@@ -316,13 +398,14 @@ Built 100% in **Kotlin** and **Jetpack Compose (Material 3)** for Android 8.0+ (
 
 ---
 
-## 11. Setup & Quickstart Guide
+## 12. Setup & Quickstart Guide
 
 ### Prerequisites
 * **Node.js** v20+ LTS and **npm**
 * **MongoDB** (local or Atlas cluster)
 * **Python** 3.11+ (for local voice agent)
 * **Android Studio Ladybug / Meerkat** (for Android client)
+* **AWS CLI** configured (`aws configure` with `ap-south-1`)
 
 ### 1. Backend Server Setup
 ```bash
@@ -334,16 +417,13 @@ Configure `.env`:
 PORT=5000
 MONGODB_URI=mongodb+srv://<user>:<password>@cluster.mongodb.net/zerogrid
 JWT_SECRET=super_secret_jwt_key_at_least_32_characters_long
-ALLOWED_ORIGINS=http://localhost:3000,https://frontend-dusky-delta-26.vercel.app
+ALLOWED_ORIGINS=http://localhost:3000
 
 # AWS Credentials (ap-south-1)
 AWS_REGION=ap-south-1
 AWS_ACCESS_KEY_ID=AKIA...
 AWS_SECRET_ACCESS_KEY=...
-
-# Groq LPU Secondary Fallback (Tier 2)
-GROQ_API_KEY=gsk_...
-GROQ_MODEL=openai/gpt-oss-120b
+AWS_BEDROCK_MODEL_ID=anthropic.claude-3-5-sonnet-20240620-v1:0
 
 # Redis / ElastiCache (Atomic Squad Locking)
 REDIS_HOST=zerogrid-redis-cluster.serverless.ap-south-1.cache.amazonaws.com
@@ -351,7 +431,6 @@ REDIS_PORT=6379
 
 # Agent Zero Microservice Webhook & Push
 VOICE_AGENT_LAMBDA_URL=https://<api-id>.execute-api.ap-south-1.amazonaws.com/default/voice-agent-microservice
-FIREBASE_SERVICE_ACCOUNT_BASE64=<base64-encoded-service-account-json>
 ```
 Start server:
 ```bash
@@ -380,46 +459,38 @@ npm run dev
 # Open http://localhost:3000
 ```
 
-### 3. Voice-AI Microservice (Local Execution)
+### 3. Voice-AI Microservice & DynamoDB Seeding
 ```bash
 cd voice-agent
 python -m venv venv
 source venv/bin/activate  # Windows: .\venv\Scripts\activate
 pip install -r requirements.txt
-export GROQ_API_KEY=gsk_...
+
+# Seed electrical grid topology to AWS DynamoDB
+python seed_dynamodb.py
+
+# Run local FastAPI dev server
 uvicorn main:app --reload --port 8000
 ```
 
-### 4. Android Client Setup
-1. Open `gridzero/` in Android Studio.
-2. Create `local.properties`:
-   ```properties
-   MAPS_API_KEY=AIzaSy...
-   ```
-3. Place `google-services.json` in `app/`.
-4. Configure target backend in `app/build.gradle.kts`:
-   * Local emulator: `http://10.0.2.2:5000/`
-   * Local physical device: `http://192.168.x.x:5000/`
-5. Sync Gradle and run on device (Android 8.0+).
-
 ---
 
-## 12. Security & Resilience Model
+## 13. Security, Identity & Resilience Model
 
 | Domain | Security Mechanism | Resilience Guarantee |
 |---|---|---|
-| **API Transport** | TLS 1.3 / HTTPS | All credentials, telemetry, and audio payloads encrypted in transit. |
-| **Authentication** | JWT (HMAC-SHA256) | Stateless 7-day token rotation with role-based claim checking. |
-| **Admin Authorization** | Database Role Verification | Re-checks MongoDB on each privileged route (`role === 'ADMIN'`). |
-| **Workforce Locking** | Redis Serverless Mutex | Eliminates squad contention and race conditions during simultaneous emergency alerts. |
-| **Rate Limiting** | `express-rate-limit` | Prevents alert flooding (strict 2 SOS alerts per 30s limit). |
+| **API Transport** | TLS 1.3 / HTTPS | All credentials, telemetry, and audio payloads encrypted in transit through Amazon API Gateway. |
+| **Authentication** | Amazon Cognito + JWT | Stateless token rotation with claims-based verification (`ADMIN`, `CITIZEN`). |
+| **Admin Authorization** | Database Role Guard | Re-verifies MongoDB Atlas on each privileged administrative endpoint (`role === 'ADMIN'`). |
+| **Workforce Locking** | Redis ElastiCache Mutex | Atomic `SETNX` locks eliminate squad contention and race conditions during simultaneous dispatches. |
+| **Credential Safety** | AWS Secrets Manager | Zero hardcoded keys in codebase; dynamically fetched at runtime. |
 | **Spatial Indexing** | MongoDB `2dsphere` | Fast geospatial lookahead without exposing sequential ID leaks. |
-| **Vector Map Engine** | Amazon Location Service v2 / MapLibre GL | Secure API Key vector styling in `ap-south-1` with dedicated static Web Worker. |
-| **Offline Resilience** | WorkManager Backoff | Failed offline uploads automatically retry upon network recovery. |
-| **Routing Reliability** | 3-Tier Multi-Engine Fallback | AWS Bedrock -> Groq LPU -> Deterministic geometric bypass ensures zero dispatch outage. |
+| **Vector Map Engine** | Amazon Location Service v2 | Secure vector tiles in `ap-south-1` rendered via MapLibre GL JS with static Web Worker. |
+| **Offline Resilience** | Android WorkManager & LoRa | Failed offline uploads automatically retry upon network recovery. |
+| **AI Reliability** | 3-Tier Multi-Engine Fallback | AWS Bedrock (Claude 3.5 Sonnet) $\to$ Groq LPU $\to$ Deterministic Safety Matrix ensures 100% uptime. |
 
 ---
 
 <div align="center">
-  <sub>ZeroGrid &bull; Built for Autonomous Disaster Resilience and Mesh Operations</sub>
+  <sub>ZeroGrid &bull; Built for Autonomous Disaster Resilience, AWS Cloud Native Operations, and Mesh Communication</sub>
 </div>
