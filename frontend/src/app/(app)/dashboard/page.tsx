@@ -47,6 +47,7 @@ import {
   ShieldCheck,
   AlertCircle
 } from 'lucide-react';
+import DashboardAnalyticsGraphs from '@/components/admin/DashboardAnalyticsGraphs';
 import {
   triggerAutonomousOrchestration,
   AutonomousOrchestrationResponse,
@@ -638,18 +639,46 @@ Immediate Automated Actions: ${d.immediate_automated_actions.join(', ')}`;
       {/* ─── 2. SYSTEM-WIDE HEALTH & INCIDENT TELEMETRY STRIP ─── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* KPI 1: Active Distress Requests */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-surfaceCard border border-hairline shadow-sm min-w-0">
-          <div className="flex items-center justify-between text-[11px] font-mono text-mutedGray uppercase font-semibold">
-            <span>Active Distress Signals</span>
-            <AlertTriangle className="w-4 h-4 text-amber-500" />
+        <div className="p-4 sm:p-5 rounded-2xl bg-surfaceCard border border-hairline shadow-sm min-w-0 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between text-[11px] font-mono text-mutedGray uppercase font-semibold">
+              <span>Active Distress Signals</span>
+              <AlertTriangle className="w-4 h-4 text-amber-500" />
+            </div>
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className="text-2xl sm:text-3xl font-black font-mono text-primaryText">
+                {totalActiveSignals}
+              </span>
+              <span className="text-xs text-mutedGray font-mono">requests active</span>
+            </div>
           </div>
-          <div className="flex items-baseline gap-2 mt-1">
-            <span className="text-2xl sm:text-3xl font-black font-mono text-primaryText">
-              {totalActiveSignals}
-            </span>
-            <span className="text-xs text-mutedGray font-mono">requests active</span>
+
+          {/* Micro Sparkline: Activity Inflow */}
+          <div className="my-2 h-7 w-full">
+            <svg viewBox="0 0 120 28" className="w-full h-full overflow-visible">
+              <defs>
+                <linearGradient id="kpiSpark1" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.4" />
+                  <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.0" />
+                </linearGradient>
+              </defs>
+              <path
+                d="M 0 22 Q 15 25 30 18 T 60 14 T 90 20 T 120 8 L 120 28 L 0 28 Z"
+                fill="url(#kpiSpark1)"
+              />
+              <path
+                d="M 0 22 Q 15 25 30 18 T 60 14 T 90 20 T 120 8"
+                fill="none"
+                stroke="#f59e0b"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+              <circle cx="120" cy="8" r="3" fill="#f59e0b" className="animate-ping" />
+              <circle cx="120" cy="8" r="2.5" fill="#f59e0b" />
+            </svg>
           </div>
-          <div className="mt-2 text-[11px] text-secondaryText flex items-center gap-1.5 flex-wrap">
+
+          <div className="text-[11px] text-secondaryText flex items-center gap-1.5 flex-wrap">
             <span className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 font-mono font-bold text-[10px]">
               🌊 {activeSosList.filter(s => s.category.includes('WATER') || s.category.includes('FLOOD')).length} Flood
             </span>
@@ -663,40 +692,94 @@ Immediate Automated Actions: ${d.immediate_automated_actions.join(', ')}`;
         </div>
 
         {/* KPI 2: Average Veracity / Confidence Score */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-surfaceCard border border-hairline shadow-sm min-w-0">
-          <div className="flex items-center justify-between text-[11px] font-mono text-mutedGray uppercase font-semibold">
-            <span>Veracity Pass Rate</span>
-            <ShieldCheck className="w-4 h-4 text-emerald-500" />
+        <div className="p-4 sm:p-5 rounded-2xl bg-surfaceCard border border-hairline shadow-sm min-w-0 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between text-[11px] font-mono text-mutedGray uppercase font-semibold">
+              <span>Veracity Pass Rate</span>
+              <ShieldCheck className="w-4 h-4 text-emerald-500" />
+            </div>
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className="text-2xl sm:text-3xl font-black font-mono text-emerald-600 dark:text-emerald-400">
+                {averageVeracity}%
+              </span>
+              <span className="text-xs text-mutedGray font-mono">&ge; 65% gate</span>
+              <span className="ml-auto text-[10px] font-mono px-2 py-0.5 rounded font-bold uppercase bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                VERIFIED
+              </span>
+            </div>
           </div>
-          <div className="flex items-baseline gap-2 mt-1">
-            <span className="text-2xl sm:text-3xl font-black font-mono text-emerald-600 dark:text-emerald-400">
-              {averageVeracity}%
-            </span>
-            <span className="text-xs text-mutedGray font-mono">&ge; 65% gate</span>
-            <span className="ml-auto text-[10px] font-mono px-2 py-0.5 rounded font-bold uppercase bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
-              VERIFIED
-            </span>
+
+          {/* Micro Sparkline: Veracity Confidence Stability */}
+          <div className="my-2 h-7 w-full">
+            <svg viewBox="0 0 120 28" className="w-full h-full overflow-visible">
+              <defs>
+                <linearGradient id="kpiSpark2" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#10b981" stopOpacity="0.35" />
+                  <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
+                </linearGradient>
+              </defs>
+              <path
+                d="M 0 16 Q 20 12 40 14 T 80 8 T 120 6 L 120 28 L 0 28 Z"
+                fill="url(#kpiSpark2)"
+              />
+              <path
+                d="M 0 16 Q 20 12 40 14 T 80 8 T 120 6"
+                fill="none"
+                stroke="#10b981"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+              <circle cx="120" cy="6" r="2.5" fill="#10b981" />
+            </svg>
           </div>
-          <span className="text-[11px] text-mutedGray mt-2 block">
+
+          <span className="text-[11px] text-mutedGray block truncate">
             Audio (25%) + Visual (35%) + Sensors (25%) + Tide (15%)
           </span>
         </div>
 
         {/* KPI 3: Mobilized Admin Workforce */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-surfaceCard border border-hairline shadow-sm min-w-0">
-          <div className="flex items-center justify-between text-[11px] font-mono text-mutedGray uppercase font-semibold">
-            <span>Workforce Mobilization</span>
-            <Users className="w-4 h-4 text-purple-500" />
+        <div className="p-4 sm:p-5 rounded-2xl bg-surfaceCard border border-hairline shadow-sm min-w-0 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between text-[11px] font-mono text-mutedGray uppercase font-semibold">
+              <span>Workforce Mobilization</span>
+              <Users className="w-4 h-4 text-purple-500" />
+            </div>
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className="text-2xl sm:text-3xl font-black font-mono text-primaryText">
+                {mobilizedAdminsCount} <span className="text-sm font-normal text-mutedGray">/ 160</span>
+              </span>
+              <span className="text-xs font-mono font-bold text-purple-600 dark:text-purple-400">
+                ({mobilizationPct}%)
+              </span>
+            </div>
           </div>
-          <div className="flex items-baseline gap-2 mt-1">
-            <span className="text-2xl sm:text-3xl font-black font-mono text-primaryText">
-              {mobilizedAdminsCount} <span className="text-sm font-normal text-mutedGray">/ 160</span>
-            </span>
-            <span className="text-xs font-mono font-bold text-purple-600 dark:text-purple-400">
-              ({mobilizationPct}%)
-            </span>
+
+          {/* Micro Sparkline: Workforce Stepped Allocation */}
+          <div className="my-2 h-7 w-full">
+            <svg viewBox="0 0 120 28" className="w-full h-full overflow-visible">
+              <defs>
+                <linearGradient id="kpiSpark3" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#a855f7" stopOpacity="0.35" />
+                  <stop offset="100%" stopColor="#a855f7" stopOpacity="0.0" />
+                </linearGradient>
+              </defs>
+              <path
+                d="M 0 24 L 35 24 L 35 18 L 75 18 L 75 12 L 120 12 L 120 28 L 0 28 Z"
+                fill="url(#kpiSpark3)"
+              />
+              <path
+                d="M 0 24 L 35 24 L 35 18 L 75 18 L 75 12 L 120 12"
+                fill="none"
+                stroke="#a855f7"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+              <circle cx="120" cy="12" r="2.5" fill="#a855f7" />
+            </svg>
           </div>
-          <div className="w-full h-1.5 rounded-full bg-surfaceElevated overflow-hidden border border-hairline mt-2.5">
+
+          <div className="w-full h-1.5 rounded-full bg-surfaceElevated overflow-hidden border border-hairline">
             <div
               className="h-full bg-gradient-to-r from-purple-500 to-brandTeal transition-all duration-500"
               style={{ width: `${Math.max(5, mobilizationPct)}%` }}
@@ -705,21 +788,45 @@ Immediate Automated Actions: ${d.immediate_automated_actions.join(', ')}`;
         </div>
 
         {/* KPI 4: Hospital & ICU Lifeline State */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-surfaceCard border border-hairline shadow-sm min-w-0">
-          <div className="flex items-center justify-between text-[11px] font-mono text-mutedGray uppercase font-semibold">
-            <span>Hospital Lifeline Busbar</span>
-            <HeartPulse className="w-4 h-4 text-emerald-500" />
+        <div className="p-4 sm:p-5 rounded-2xl bg-surfaceCard border border-hairline shadow-sm min-w-0 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between text-[11px] font-mono text-mutedGray uppercase font-semibold">
+              <span>Hospital Lifeline Busbar</span>
+              <HeartPulse className="w-4 h-4 text-emerald-500" />
+            </div>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-base sm:text-lg font-bold text-emerald-600 dark:text-emerald-400 font-mono truncate">
+                ICU 100% PROTECTED
+              </span>
+            </div>
           </div>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="text-base sm:text-lg font-bold text-emerald-600 dark:text-emerald-400 font-mono truncate">
-              ICU 100% PROTECTED
-            </span>
+
+          {/* Micro Sparkline: 50Hz Sine Grid Continuity */}
+          <div className="my-2 h-7 w-full">
+            <svg viewBox="0 0 120 28" className="w-full h-full overflow-visible">
+              <path
+                d="M 0 14 Q 10 4 20 14 T 40 14 T 60 14 T 80 14 T 100 14 T 120 14"
+                fill="none"
+                stroke="#14b8a6"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+              <circle cx="120" cy="14" r="3" fill="#14b8a6" className="animate-pulse" />
+            </svg>
           </div>
-          <span className="text-[11px] text-mutedGray mt-2 block truncate">
+
+          <span className="text-[11px] text-mutedGray block truncate">
             Vasai 33kV Tie Line Engaged &bull; 0ms Interruption
           </span>
         </div>
       </div>
+
+      {/* ─── 3. AUTONOMOUS CRISIS ANALYTICS & TELEMETRY GRAPHS ─── */}
+      <DashboardAnalyticsGraphs
+        workforceStats={workforceStats}
+        activeSosList={activeSosList}
+        selectedIncidentId={selectedIncidentId}
+      />
 
       {/* ─── 3. SECTION 2: 160-ADMIN DEPARTMENT READINESS MATRIX ─── */}
       <div className="p-4 sm:p-5 lg:p-6 rounded-2xl bg-surfaceCard border border-hairline shadow-sm space-y-4">
